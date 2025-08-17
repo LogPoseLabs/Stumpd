@@ -43,6 +43,7 @@ class ScoringActivity : ComponentActivity() {
         val jokerName = intent.getStringExtra("joker_name") ?: ""
         val team1PlayerNames = intent.getStringArrayExtra("team1_players") ?: arrayOf("Player 1", "Player 2", "Player 3")
         val team2PlayerNames = intent.getStringArrayExtra("team2_players") ?: arrayOf("Player 4", "Player 5", "Player 6")
+        val matchSettingsJson = intent.getStringExtra("match_settings") ?: ""
 
         setContent {
             StumpdTheme {
@@ -56,78 +57,12 @@ class ScoringActivity : ComponentActivity() {
                         jokerName = jokerName,
                         team1PlayerNames = team1PlayerNames,
                         team2PlayerNames = team2PlayerNames,
+                        matchSettingsJson = matchSettingsJson,
                     )
                 }
             }
         }
     }
-}
-
-// Add this function to your ScoringActivity.kt
-fun saveMatchToHistory(
-    team1Name: String,
-    team2Name: String,
-    jokerPlayerName: String?,
-    firstInningsRuns: Int,
-    firstInningsWickets: Int,
-    secondInningsRuns: Int,
-    secondInningsWickets: Int,
-    winnerTeam: String,
-    winningMargin: String,
-    // Add these new parameters for detailed stats
-    firstInningsBattingStats: List<PlayerMatchStats> = emptyList(),
-    firstInningsBowlingStats: List<PlayerMatchStats> = emptyList(),
-    secondInningsBattingStats: List<PlayerMatchStats> = emptyList(),
-    secondInningsBowlingStats: List<PlayerMatchStats> = emptyList(),
-    context: android.content.Context,
-) {
-    android.util.Log.d("SaveMatch", "Attempting to save match: $team1Name vs $team2Name")
-
-    // Find top performers across all innings
-    val allBattingStats = firstInningsBattingStats + secondInningsBattingStats
-    val allBowlingStats = firstInningsBowlingStats + secondInningsBowlingStats
-
-    val topBatsman = allBattingStats.maxByOrNull { it.runs }
-    val topBowler = allBowlingStats.maxByOrNull { it.wickets }
-
-    val storageManager = MatchStorageManager(context)
-    val matchHistory =
-        MatchHistory(
-            team1Name = team1Name,
-            team2Name = team2Name,
-            jokerPlayerName = jokerPlayerName,
-            firstInningsRuns = firstInningsRuns,
-            firstInningsWickets = firstInningsWickets,
-            secondInningsRuns = secondInningsRuns,
-            secondInningsWickets = secondInningsWickets,
-            winnerTeam = winnerTeam,
-            winningMargin = winningMargin,
-            // Add the detailed innings stats
-            firstInningsBatting = firstInningsBattingStats,
-            firstInningsBowling = firstInningsBowlingStats,
-            secondInningsBatting = secondInningsBattingStats,
-            secondInningsBowling = secondInningsBowlingStats,
-            // Keep backward compatibility
-            team1Players = firstInningsBattingStats + secondInningsBowlingStats,
-            team2Players = firstInningsBowlingStats + secondInningsBattingStats,
-            topBatsman = topBatsman,
-            topBowler = topBowler,
-            matchDate = System.currentTimeMillis(),
-        )
-
-    storageManager.saveMatch(matchHistory)
-
-    // Verify it was saved
-    val allMatches = storageManager.getAllMatches()
-    android.util.Log.d("SaveMatch", "Match saved with detailed stats! Total matches now: ${allMatches.size}")
-    android.util.Log.d("stats", "Current match stats : $matchHistory")
-
-    android.widget.Toast
-        .makeText(
-            context,
-            "Match with detailed stats saved! Total: ${allMatches.size} matches 🏏📊",
-            android.widget.Toast.LENGTH_LONG,
-        ).show()
 }
 
 @Composable
@@ -143,18 +78,17 @@ fun ScoringScreen(
     val gson = Gson()
 
     // Parse match settings or use defaults
-    val matchSettings =
-        remember {
-            try {
-                if (matchSettingsJson.isNotEmpty()) {
-                    gson.fromJson(matchSettingsJson, MatchSettings::class.java)
-                } else {
-                    MatchSettingsManager(context).getDefaultMatchSettings()
-                }
-            } catch (e: Exception) {
-                MatchSettings()
+    val matchSettings = remember {
+        try {
+            if (matchSettingsJson.isNotEmpty()) {
+                gson.fromJson(matchSettingsJson, MatchSettings::class.java)
+            } else {
+                MatchSettingsManager(context).getDefaultMatchSettings()
             }
+        } catch (e: Exception) {
+            MatchSettings()
         }
+    }
 
     // Create teams with dynamic player data as MutableList
     var team1Players by remember {
@@ -165,10 +99,9 @@ fun ScoringScreen(
         mutableStateOf(team2PlayerNames.map { Player(it) }.toMutableList())
     }
 
-    val jokerPlayer =
-        remember {
-            if (jokerName.isNotEmpty()) Player(jokerName, isJoker = true) else null
-        }
+    val jokerPlayer = remember {
+        if (jokerName.isNotEmpty()) Player(jokerName, isJoker = true) else null
+    }
 
     // Current innings and teams
     var currentInnings by remember { mutableStateOf(1) }
@@ -189,22 +122,20 @@ fun ScoringScreen(
     var secondInningsBattingPlayers by remember { mutableStateOf<List<Player>>(emptyList()) }
     var secondInningsBowlingPlayers by remember { mutableStateOf<List<Player>>(emptyList()) }
 
-    // Calculate totals from actual player stats (REAL-TIME SYNC)
-    val calculatedTotalRuns =
-        remember(battingTeamPlayers) {
-            battingTeamPlayers.sumOf { it.runs }
-        }
-
-    val calculatedTotalRunsConceded =
-        remember(bowlingTeamPlayers) {
-            bowlingTeamPlayers.sumOf { it.runsConceded }
-        }
-
     // Current match state
     var totalWickets by remember { mutableStateOf(0) }
     var currentOver by remember { mutableStateOf(0) }
     var ballsInOver by remember { mutableStateOf(0) }
     var totalExtras by remember { mutableStateOf(0) }
+
+    // UPDATED: Calculate totals INCLUDING extras
+    val calculatedTotalRuns = remember(battingTeamPlayers, totalExtras) {
+        battingTeamPlayers.sumOf { it.runs } + totalExtras
+    }
+
+    val calculatedTotalRunsConceded = remember(bowlingTeamPlayers) {
+        bowlingTeamPlayers.sumOf { it.runsConceded }
+    }
 
     // Bowler rotation tracking
     var previousBowlerIndex by remember { mutableStateOf<Int?>(null) }
@@ -249,16 +180,25 @@ fun ScoringScreen(
     }
 
     fun swapStrike() {
-        val temp = strikerIndex
-        strikerIndex = nonStrikerIndex
-        nonStrikerIndex = temp
+        // Only swap if single side batting is disabled and non-striker exists
+        if (!matchSettings.allowSingleSideBatting && nonStriker != null) {
+            val temp = strikerIndex
+            strikerIndex = nonStrikerIndex
+            nonStrikerIndex = temp
+        }
     }
 
-    // Match completion check with settings
+    // UPDATED: Better innings completion check
+    val availableBatsmen = battingTeamPlayers.count { !it.isOut }
     val isInningsComplete =
         currentOver >= matchSettings.totalOvers ||
-            totalWickets >= battingTeamPlayers.size - 1 ||
-            (currentInnings == 2 && calculatedTotalRuns > firstInningsRuns)
+                (currentInnings == 2 && calculatedTotalRuns > firstInningsRuns) ||
+                // All out logic - consider single side batting
+                if (matchSettings.allowSingleSideBatting) {
+                    availableBatsmen == 0 // Only complete when NO batsmen left
+                } else {
+                    totalWickets >= battingTeamPlayers.size - 1 // Traditional: need 2 batsmen
+                }
 
     // Enhanced Check for match completion with second innings stats
     LaunchedEffect(isInningsComplete) {
@@ -284,11 +224,7 @@ fun ScoringScreen(
 
                 // Save second innings player lists
                 val secondInningsBattingPlayersList = battingTeamPlayers.filter { it.ballsFaced > 0 || it.runs > 0 }
-                val secondInningsBowlingPlayersList =
-                    bowlingTeamPlayers.filter {
-                        it.ballsBowled > 0 || it.wickets > 0 ||
-                            it.runsConceded > 0
-                    }
+                val secondInningsBowlingPlayersList = bowlingTeamPlayers.filter { it.ballsBowled > 0 || it.wickets > 0 || it.runsConceded > 0 }
 
                 // Store second innings data in state variables for dialog access
                 secondInningsBattingPlayers = secondInningsBattingPlayersList
@@ -300,10 +236,9 @@ fun ScoringScreen(
     }
 
     Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .padding(16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
     ) {
         // Enhanced Score Header with match settings info
         Card(
@@ -338,12 +273,11 @@ fun ScoringScreen(
                         color = Color.White,
                     )
 
-                    val runRate =
-                        if (currentOver == 0 && ballsInOver == 0) {
-                            0.0
-                        } else {
-                            calculatedTotalRuns.toDouble() / ((currentOver * 6 + ballsInOver) / 6.0)
-                        }
+                    val runRate = if (currentOver == 0 && ballsInOver == 0) {
+                        0.0
+                    } else {
+                        calculatedTotalRuns.toDouble() / ((currentOver * 6 + ballsInOver) / 6.0)
+                    }
                     Text(
                         text = "RR: ${"%.2f".format(runRate)}",
                         fontSize = 14.sp,
@@ -359,6 +293,17 @@ fun ScoringScreen(
                     }
                 }
 
+                // UPDATED: Add breakdown below main score
+                if (totalExtras > 0) {
+                    val playerRuns = battingTeamPlayers.sumOf { it.runs }
+                    Text(
+                        text = "($playerRuns runs + $totalExtras extras)",
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontStyle = FontStyle.Italic
+                    )
+                }
+
                 // Show target in second innings
                 if (currentInnings == 2) {
                     val target = firstInningsRuns + 1
@@ -367,14 +312,11 @@ fun ScoringScreen(
                     val requiredRunRate = if (ballsLeft > 0) (required.toDouble() / ballsLeft) * 6 else 0.0
 
                     Text(
-                        text =
-                            if (required >
-                                0
-                            ) {
-                                "Need $required runs in $ballsLeft balls (RRR: ${"%.2f".format(requiredRunRate)})"
-                            } else {
-                                "🎉 Target achieved!"
-                            },
+                        text = if (required > 0) {
+                            "Need $required runs in $ballsLeft balls (RRR: ${"%.2f".format(requiredRunRate)})"
+                        } else {
+                            "🎉 Target achieved!"
+                        },
                         fontSize = 14.sp,
                         color = if (required > 0) Color.Yellow else Color.Green,
                         fontWeight = FontWeight.Bold,
@@ -433,19 +375,19 @@ fun ScoringScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Batsmen with real-time live stats
+                // UPDATED: Enhanced batsmen display with single side batting awareness
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = if (matchSettings.allowSingleSideBatting && nonStriker == null)
+                        Arrangement.Center else Arrangement.SpaceBetween,
                 ) {
                     Column(
-                        modifier =
-                            Modifier
-                                .weight(1f)
-                                .clickable {
-                                    selectingBatsman = 1
-                                    showBatsmanDialog = true
-                                },
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable {
+                                selectingBatsman = 1
+                                showBatsmanDialog = true
+                            },
                     ) {
                         Text(
                             text = "🏏 ${striker?.name ?: "Select Batsman 1"}",
@@ -467,38 +409,42 @@ fun ScoringScreen(
                         }
                     }
 
-                    Column(
-                        modifier =
-                            Modifier
+                    // Only show non-striker if not single side batting or if non-striker exists
+                    if (!matchSettings.allowSingleSideBatting || nonStriker != null) {
+                        Column(
+                            modifier = Modifier
                                 .weight(1f)
                                 .clickable {
-                                    selectingBatsman = 2
-                                    showBatsmanDialog = true
+                                    if (!matchSettings.allowSingleSideBatting) {
+                                        selectingBatsman = 2
+                                        showBatsmanDialog = true
+                                    }
                                 },
-                        horizontalAlignment = Alignment.End,
-                    ) {
-                        Text(
-                            text = "${nonStriker?.name ?: "Select Batsman 2"}",
-                            fontWeight = FontWeight.Normal,
-                            color = if (nonStriker == null) Color.Red else Color.Black,
-                        )
-                        nonStriker?.let { currentNonStriker ->
+                            horizontalAlignment = Alignment.End,
+                        ) {
                             Text(
-                                text = "${currentNonStriker.runs}${if (!currentNonStriker.isOut && currentNonStriker.ballsFaced > 0) "*" else ""} (${currentNonStriker.ballsFaced}) - 4s: ${currentNonStriker.fours}, 6s: ${currentNonStriker.sixes}",
-                                fontSize = 12.sp,
-                                color = Color.Gray,
+                                text = "${nonStriker?.name ?: if (matchSettings.allowSingleSideBatting) "Single Side" else "Select Batsman 2"}",
+                                fontWeight = FontWeight.Normal,
+                                color = if (nonStriker == null && !matchSettings.allowSingleSideBatting) Color.Red else Color.Black,
                             )
-                            Text(
-                                text = "SR: ${"%.1f".format(currentNonStriker.strikeRate)}",
-                                fontSize = 10.sp,
-                                color = Color(0xFF4CAF50),
-                                fontWeight = FontWeight.Medium,
-                            )
+                            nonStriker?.let { currentNonStriker ->
+                                Text(
+                                    text = "${currentNonStriker.runs}${if (!currentNonStriker.isOut && currentNonStriker.ballsFaced > 0) "*" else ""} (${currentNonStriker.ballsFaced}) - 4s: ${currentNonStriker.fours}, 6s: ${currentNonStriker.sixes}",
+                                    fontSize = 12.sp,
+                                    color = Color.Gray,
+                                )
+                                Text(
+                                    text = "SR: ${"%.1f".format(currentNonStriker.strikeRate)}",
+                                    fontSize = 10.sp,
+                                    color = Color(0xFF4CAF50),
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
                         }
                     }
                 }
 
-                // Swap Strike Button
+                // Swap Strike Button (only if not single side batting and both players exist)
                 if (striker != null && nonStriker != null && !matchSettings.allowSingleSideBatting) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Button(
@@ -532,16 +478,12 @@ fun ScoringScreen(
                     )
                     bowler?.let { currentBowler ->
                         Text(
-                            text = "${"%.1f".format(
-                                currentBowler.oversBowled,
-                            )} overs, ${currentBowler.runsConceded} runs, ${currentBowler.wickets} wickets",
+                            text = "${"%.1f".format(currentBowler.oversBowled)} overs, ${currentBowler.runsConceded} runs, ${currentBowler.wickets} wickets",
                             fontSize = 12.sp,
                             color = Color.Gray,
                         )
                         Text(
-                            text = "Economy: ${"%.1f".format(
-                                currentBowler.economy,
-                            )} | Spell: $currentBowlerSpell over${if (currentBowlerSpell != 1) "s" else ""}",
+                            text = "Economy: ${"%.1f".format(currentBowler.economy)} | Spell: $currentBowlerSpell over${if (currentBowlerSpell != 1) "s" else ""}",
                             fontSize = 10.sp,
                             color = Color(0xFFFF5722),
                             fontWeight = FontWeight.Medium,
@@ -569,13 +511,29 @@ fun ScoringScreen(
                         fontWeight = FontWeight.Medium,
                     )
                 }
+
+                // Show single side batting status
+                if (matchSettings.allowSingleSideBatting && striker != null && nonStriker == null && availableBatsmen == 1) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))
+                    ) {
+                        Text(
+                            text = "⚡ Single Side Batting: ${striker?.name} continues alone",
+                            fontSize = 12.sp,
+                            color = Color(0xFFFF9800),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                }
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Scoring Buttons (only if players selected and innings not complete)
-        if (striker != null && (nonStriker != null || matchSettings.allowSingleSideBatting) && bowler != null && !isInningsComplete) {
+        // UPDATED: Scoring Buttons with proper single side batting check
+        if (striker != null && (nonStriker != null || (matchSettings.allowSingleSideBatting && availableBatsmen >= 1)) && bowler != null && !isInningsComplete) {
             Text(
                 text = "Runs",
                 fontSize = 16.sp,
@@ -607,8 +565,8 @@ fun ScoringScreen(
                                 )
                             }
 
-                            // Change strike on odd runs (if non-striker exists)
-                            if (i % 2 == 1 && nonStriker != null) {
+                            // Change strike on odd runs (only if not single side batting and non-striker exists)
+                            if (i % 2 == 1 && !matchSettings.allowSingleSideBatting && nonStriker != null) {
                                 swapStrike()
                             }
 
@@ -623,7 +581,8 @@ fun ScoringScreen(
                                 bowlerIndex = null
                                 currentBowlerSpell = 0
 
-                                if (nonStriker != null) {
+                                // Swap strike at end of over (if not single side batting and non-striker exists)
+                                if (!matchSettings.allowSingleSideBatting && nonStriker != null) {
                                     swapStrike()
                                 }
                                 showBowlerDialog = true
@@ -631,23 +590,20 @@ fun ScoringScreen(
                                 Toast.makeText(context, "Over complete! Select new bowler", Toast.LENGTH_LONG).show()
                             }
 
-                            Toast
-                                .makeText(
-                                    context,
-                                    "$i run(s) scored by ${striker?.name}! Total: $calculatedTotalRuns",
-                                    Toast.LENGTH_SHORT,
-                                ).show()
+                            Toast.makeText(
+                                context,
+                                "$i run(s) scored by ${striker?.name}! Total: $calculatedTotalRuns",
+                                Toast.LENGTH_SHORT,
+                            ).show()
                         },
                         modifier = Modifier.weight(1f),
-                        colors =
-                            ButtonDefaults.buttonColors(
-                                containerColor =
-                                    when (i) {
-                                        4 -> Color(0xFF4CAF50)
-                                        6 -> Color(0xFF2196F3)
-                                        else -> Color(0xFF9E9E9E)
-                                    },
-                            ),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = when (i) {
+                                4 -> Color(0xFF4CAF50)
+                                6 -> Color(0xFF2196F3)
+                                else -> Color(0xFF9E9E9E)
+                            },
+                        ),
                     ) {
                         Text(i.toString(), fontWeight = FontWeight.Bold)
                     }
@@ -748,96 +704,104 @@ fun ScoringScreen(
     if (showExtrasDialog) {
         ExtrasDialog(
             matchSettings = matchSettings,
-            onExtraSelected = { extraType, runs ->
+            onExtraSelected = { extraType, totalRuns ->
                 when (extraType) {
-                    ExtraType.OFF_SIDE_WIDE -> {
+                    ExtraType.OFF_SIDE_WIDE, ExtraType.LEG_SIDE_WIDE -> {
+                        // Wide balls: runs to team, no ball count for bowler, batsman doesn't face
                         updateBowlerStats { player ->
-                            player.copy(runsConceded = player.runsConceded + runs)
+                            player.copy(runsConceded = player.runsConceded + totalRuns)
                         }
-                        totalExtras += runs
-                        Toast.makeText(context, "Off Side Wide ball! +$runs runs", Toast.LENGTH_SHORT).show()
-                    }
-                    ExtraType.LEG_SIDE_WIDE -> {
-                        updateBowlerStats { player ->
-                            player.copy(runsConceded = player.runsConceded + runs)
+                        totalExtras += totalRuns
+
+                        // Change strike only on odd additional runs (not base wide)
+                        val baseWideRuns = if (extraType == ExtraType.OFF_SIDE_WIDE) matchSettings.offSideWideRuns else matchSettings.legSideWideRuns
+                        val additionalRuns = totalRuns - baseWideRuns
+                        if (additionalRuns % 2 == 1 && !matchSettings.allowSingleSideBatting && nonStriker != null) {
+                            swapStrike()
                         }
-                        totalExtras += runs
-                        Toast.makeText(context, "Leg Side Wide ball! +$runs runs", Toast.LENGTH_SHORT).show()
+
+                        Toast.makeText(context, "${extraType.displayName}! +$totalRuns runs", Toast.LENGTH_SHORT).show()
                     }
+
                     ExtraType.NO_BALL -> {
+                        // No ball: runs to team, ball counts for batsman, NO ball count for bowler
                         updateStrikerAndTotals { player ->
                             player.copy(ballsFaced = player.ballsFaced + 1)
                         }
                         updateBowlerStats { player ->
                             player.copy(
-                                runsConceded = player.runsConceded + runs,
-                                ballsBowled = player.ballsBowled + 1,
+                                runsConceded = player.runsConceded + totalRuns
+                                // Note: ballsBowled is NOT incremented for no balls
                             )
                         }
-                        totalExtras += runs
-                        ballsInOver += 1
-                        if (ballsInOver == 6) {
-                            currentOver += 1
-                            ballsInOver = 0
-                            previousBowlerIndex = bowlerIndex
-                            bowlerIndex = null
-                            showBowlerDialog = true
-                        }
-                        Toast.makeText(context, "No ball! +$runs runs", Toast.LENGTH_SHORT).show()
-                    }
-                    ExtraType.BYE -> {
-                        updateStrikerAndTotals { player ->
-                            player.copy(ballsFaced = player.ballsFaced + 1)
-                        }
-                        updateBowlerStats { player ->
-                            player.copy(ballsBowled = player.ballsBowled + 1)
-                        }
-                        totalExtras += runs
-                        ballsInOver += 1
-                        if (ballsInOver == 6) {
-                            currentOver += 1
-                            ballsInOver = 0
-                            previousBowlerIndex = bowlerIndex
-                            bowlerIndex = null
-                            showBowlerDialog = true
-                        }
-                        Toast.makeText(context, "Bye! +$runs runs", Toast.LENGTH_SHORT).show()
-                    }
-                    ExtraType.LEG_BYE -> {
-                        updateStrikerAndTotals { player ->
-                            player.copy(ballsFaced = player.ballsFaced + 1)
-                        }
-                        updateBowlerStats { player ->
-                            player.copy(ballsBowled = player.ballsBowled + 1)
-                        }
-                        totalExtras += runs
-                        ballsInOver += 1
-                        if (ballsInOver == 6) {
-                            currentOver += 1
-                            ballsInOver = 0
-                            previousBowlerIndex = bowlerIndex
-                            bowlerIndex = null
-                            showBowlerDialog = true
-                        }
-                        Toast.makeText(context, "Leg bye! +$runs runs", Toast.LENGTH_SHORT).show()
-                    }
-                }
+                        totalExtras += totalRuns
 
-                // Change strike on odd runs if both batsmen exist
-                if (runs % 2 == 1 && nonStriker != null) {
-                    swapStrike()
+                        // Change strike only on odd additional runs (not base no-ball)
+                        val additionalRuns = totalRuns - matchSettings.noballRuns
+                        if (additionalRuns % 2 == 1 && !matchSettings.allowSingleSideBatting && nonStriker != null) {
+                            swapStrike()
+                        }
+
+                        // No ball doesn't advance the over count
+                        Toast.makeText(context, "No ball! +$totalRuns runs", Toast.LENGTH_SHORT).show()
+                    }
+
+                    ExtraType.BYE, ExtraType.LEG_BYE -> {
+                        // Byes/Leg byes: runs to team, ball counts for both batsman and bowler
+                        updateStrikerAndTotals { player ->
+                            player.copy(ballsFaced = player.ballsFaced + 1)
+                        }
+                        updateBowlerStats { player ->
+                            player.copy(ballsBowled = player.ballsBowled + 1)
+                        }
+                        totalExtras += totalRuns
+                        ballsInOver += 1
+
+                        // Check for over completion
+                        if (ballsInOver == 6) {
+                            currentOver += 1
+                            ballsInOver = 0
+                            previousBowlerIndex = bowlerIndex
+                            bowlerIndex = null
+                            currentBowlerSpell = 0
+
+                            // Swap strike at end of over (if not single side batting and non-striker exists)
+                            if (!matchSettings.allowSingleSideBatting && nonStriker != null) {
+                                swapStrike()
+                            }
+                            showBowlerDialog = true
+                            Toast.makeText(context, "Over complete! Select new bowler", Toast.LENGTH_LONG).show()
+                        } else {
+                            // Change strike only on odd total runs
+                            val baseByeRuns = if (extraType == ExtraType.BYE) matchSettings.byeRuns else matchSettings.legByeRuns
+                            val additionalRuns = totalRuns - baseByeRuns
+                            if (additionalRuns % 2 == 1 && !matchSettings.allowSingleSideBatting && nonStriker != null) {
+                                swapStrike()
+                            }
+                        }
+
+                        Toast.makeText(context, "${extraType.displayName}! +$totalRuns runs", Toast.LENGTH_SHORT).show()
+                    }
                 }
 
                 showExtrasDialog = false
             },
-            onDismiss = { showExtrasDialog = false },
+            onDismiss = { showExtrasDialog = false }
         )
     }
 
-    // Batsman Selection Dialog with duplicate prevention
+
+    // UPDATED: Enhanced batsman selection dialog
     if (showBatsmanDialog) {
+        val availableBatsmenCount = battingTeamPlayers.count { !it.isOut }
+
         EnhancedPlayerSelectionDialog(
-            title = if (selectingBatsman == 1) "Select First Batsman" else "Select Second Batsman",
+            title = when {
+                selectingBatsman == 1 && nonStriker == null && matchSettings.allowSingleSideBatting ->
+                    "Select Batsman (Single Side Batting)"
+                selectingBatsman == 1 -> "Select First Batsman"
+                else -> "Select Second Batsman"
+            },
             players = battingTeamPlayers,
             jokerPlayer = jokerPlayer,
             currentStrikerIndex = strikerIndex,
@@ -845,22 +809,30 @@ fun ScoringScreen(
             allowSingleSide = matchSettings.allowSingleSideBatting,
             onPlayerSelected = { player ->
                 if (selectingBatsman == 1) {
-                    strikerIndex =
-                        if (player.isJoker) {
-                            if (!battingTeamPlayers.any { it.isJoker }) {
-                                val newList = battingTeamPlayers.toMutableList()
-                                newList.add(jokerPlayer!!.copy())
-                                battingTeamPlayers = newList
-                                battingTeamPlayers.size - 1
-                            } else {
-                                battingTeamPlayers.indexOfFirst { it.isJoker }
-                            }
+                    strikerIndex = if (player.isJoker) {
+                        if (!battingTeamPlayers.any { it.isJoker }) {
+                            val newList = battingTeamPlayers.toMutableList()
+                            newList.add(jokerPlayer!!.copy())
+                            battingTeamPlayers = newList
+                            battingTeamPlayers.size - 1
                         } else {
-                            battingTeamPlayers.indexOfFirst { it.name == player.name }
+                            battingTeamPlayers.indexOfFirst { it.isJoker }
                         }
+                    } else {
+                        battingTeamPlayers.indexOfFirst { it.name == player.name }
+                    }
+
+                    // Auto-select non-striker if available and not single side batting
+                    if (!matchSettings.allowSingleSideBatting && nonStriker == null && availableBatsmenCount > 1) {
+                        val otherAvailable = battingTeamPlayers.find { !it.isOut && it.name != player.name }
+                        if (otherAvailable != null) {
+                            nonStrikerIndex = battingTeamPlayers.indexOf(otherAvailable)
+                        }
+                    }
                 } else {
-                    nonStrikerIndex =
-                        if (player.isJoker) {
+                    // Only allow second batsman if not single side batting
+                    if (!matchSettings.allowSingleSideBatting) {
+                        nonStrikerIndex = if (player.isJoker) {
                             if (!battingTeamPlayers.any { it.isJoker }) {
                                 val newList = battingTeamPlayers.toMutableList()
                                 newList.add(jokerPlayer!!.copy())
@@ -872,6 +844,7 @@ fun ScoringScreen(
                         } else {
                             battingTeamPlayers.indexOfFirst { it.name == player.name }
                         }
+                    }
                 }
                 showBatsmanDialog = false
             },
@@ -883,30 +856,27 @@ fun ScoringScreen(
     if (showBowlerDialog) {
         EnhancedPlayerSelectionDialog(
             title = if (previousBowlerIndex != null) "Select New Bowler (Same bowler cannot bowl consecutive overs)" else "Select Bowler",
-            players =
-                bowlingTeamPlayers.filterIndexed { index, _ ->
-                    index != previousBowlerIndex // Exclude previous bowler
-                },
-            jokerPlayer =
-                if (previousBowlerIndex != null && bowlingTeamPlayers.getOrNull(previousBowlerIndex!!)?.isJoker == true) {
-                    null // Exclude joker if they were the previous bowler
-                } else {
-                    jokerPlayer
-                },
+            players = bowlingTeamPlayers.filterIndexed { index, _ ->
+                index != previousBowlerIndex // Exclude previous bowler
+            },
+            jokerPlayer = if (previousBowlerIndex != null && bowlingTeamPlayers.getOrNull(previousBowlerIndex!!)?.isJoker == true) {
+                null // Exclude joker if they were the previous bowler
+            } else {
+                jokerPlayer
+            },
             onPlayerSelected = { player ->
-                bowlerIndex =
-                    if (player.isJoker) {
-                        if (!bowlingTeamPlayers.any { it.isJoker }) {
-                            val newList = bowlingTeamPlayers.toMutableList()
-                            newList.add(jokerPlayer!!.copy())
-                            bowlingTeamPlayers = newList
-                            bowlingTeamPlayers.size - 1
-                        } else {
-                            bowlingTeamPlayers.indexOfFirst { it.isJoker }
-                        }
+                bowlerIndex = if (player.isJoker) {
+                    if (!bowlingTeamPlayers.any { it.isJoker }) {
+                        val newList = bowlingTeamPlayers.toMutableList()
+                        newList.add(jokerPlayer!!.copy())
+                        bowlingTeamPlayers = newList
+                        bowlingTeamPlayers.size - 1
                     } else {
-                        bowlingTeamPlayers.indexOfFirst { it.name == player.name }
+                        bowlingTeamPlayers.indexOfFirst { it.isJoker }
                     }
+                } else {
+                    bowlingTeamPlayers.indexOfFirst { it.name == player.name }
+                }
 
                 currentBowlerSpell = 1
                 showBowlerDialog = false
@@ -921,7 +891,7 @@ fun ScoringScreen(
         )
     }
 
-    // Enhanced Wicket Dialog
+    // UPDATED: Enhanced Wicket Dialog with single side batting logic
     if (showWicketDialog) {
         WicketTypeDialog(
             onWicketSelected = { wicketType ->
@@ -955,27 +925,51 @@ fun ScoringScreen(
                     showBowlerDialog = true
                 }
 
-                Toast
-                    .makeText(
-                        context,
-                        "Wicket! ${striker?.name} is ${wicketType.name.lowercase().replace("_", " ")}",
-                        Toast.LENGTH_LONG,
-                    ).show()
+                Toast.makeText(
+                    context,
+                    "Wicket! ${striker?.name} is ${wicketType.name.lowercase().replace("_", " ")}",
+                    Toast.LENGTH_LONG,
+                ).show()
 
-                // Reset striker and show new batsman dialog if not all out
-                strikerIndex = null
-                selectingBatsman = 1
+                // ENHANCED: Better single side batting logic
+                val availableBatsmenAfterWicket = battingTeamPlayers.count { !it.isOut }
 
-                // Check if single side batting is allowed and non-striker exists
-                if (matchSettings.allowSingleSideBatting && nonStriker != null && totalWickets < battingTeamPlayers.size - 1) {
-                    // Continue with non-striker alone
-                    strikerIndex = nonStrikerIndex
-                    nonStrikerIndex = null
-                } else if (totalWickets < battingTeamPlayers.size - 1) {
-                    if (ballsInOver == 0 && currentOver > 0) {
-                        // Bowler dialog will show automatically above
-                    } else {
-                        showBatsmanDialog = true
+                when {
+                    // Case 1: No batsmen left - innings over
+                    availableBatsmenAfterWicket == 0 -> {
+                        strikerIndex = null
+                        nonStrikerIndex = null
+                        // Innings will end automatically via isInningsComplete
+                    }
+
+                    // Case 2: Single side batting enabled and only 1 batsman left
+                    matchSettings.allowSingleSideBatting && availableBatsmenAfterWicket == 1 -> {
+                        val lastBatsman = battingTeamPlayers.indexOfFirst { !it.isOut }
+                        strikerIndex = lastBatsman
+                        nonStrikerIndex = null
+                        Toast.makeText(
+                            context,
+                            "Single side batting: ${battingTeamPlayers[lastBatsman].name} continues alone",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+
+                    // Case 3: Traditional cricket - need 2 batsmen
+                    !matchSettings.allowSingleSideBatting && availableBatsmenAfterWicket == 1 -> {
+                        strikerIndex = null
+                        nonStrikerIndex = null
+                        // Innings ends (traditional all-out)
+                    }
+
+                    // Case 4: Multiple batsmen available - select new batsman
+                    else -> {
+                        strikerIndex = null
+                        selectingBatsman = 1
+                        if (ballsInOver == 0 && currentOver > 0) {
+                            // Bowler dialog will show automatically
+                        } else {
+                            showBatsmanDialog = true
+                        }
                     }
                 }
 
@@ -1010,27 +1004,23 @@ fun ScoringScreen(
                 bowlingTeamName = tempName
 
                 // Reset all player stats for second innings
-                battingTeamPlayers =
-                    battingTeamPlayers
-                        .map { player ->
-                            player.copy(
-                                runs = 0,
-                                ballsFaced = 0,
-                                fours = 0,
-                                sixes = 0,
-                                isOut = false,
-                            )
-                        }.toMutableList()
+                battingTeamPlayers = battingTeamPlayers.map { player ->
+                    player.copy(
+                        runs = 0,
+                        ballsFaced = 0,
+                        fours = 0,
+                        sixes = 0,
+                        isOut = false,
+                    )
+                }.toMutableList()
 
-                bowlingTeamPlayers =
-                    bowlingTeamPlayers
-                        .map { player ->
-                            player.copy(
-                                wickets = 0,
-                                runsConceded = 0,
-                                ballsBowled = 0,
-                            )
-                        }.toMutableList()
+                bowlingTeamPlayers = bowlingTeamPlayers.map { player ->
+                    player.copy(
+                        wickets = 0,
+                        runsConceded = 0,
+                        ballsBowled = 0,
+                    )
+                }.toMutableList()
 
                 // Reset match state
                 totalWickets = 0
@@ -1069,11 +1059,12 @@ fun ScoringScreen(
             onNewMatch = {
                 val intent = android.content.Intent(context, MainActivity::class.java)
                 intent.flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
                 context.startActivity(intent)
                 (context as androidx.activity.ComponentActivity).finish()
             },
             onDismiss = { showMatchCompleteDialog = false },
+            matchSettings = matchSettings
         )
     }
 
@@ -1102,6 +1093,87 @@ fun ScoringScreen(
             },
         )
     }
+}
+
+
+// Add the missing saveMatchToHistory function and other helper functions from your existing code
+fun saveMatchToHistory(
+    team1Name: String,
+    team2Name: String,
+    jokerPlayerName: String?,
+    firstInningsRuns: Int,
+    firstInningsWickets: Int,
+    secondInningsRuns: Int,
+    secondInningsWickets: Int,
+    winnerTeam: String,
+    winningMargin: String,
+    firstInningsBattingStats: List<PlayerMatchStats> = emptyList(),
+    firstInningsBowlingStats: List<PlayerMatchStats> = emptyList(),
+    secondInningsBattingStats: List<PlayerMatchStats> = emptyList(),
+    secondInningsBowlingStats: List<PlayerMatchStats> = emptyList(),
+    context: android.content.Context,
+    matchSettings: MatchSettings,
+) {
+    android.util.Log.d("SaveMatch", "Attempting to save match: $team1Name vs $team2Name")
+
+    // Find top performers across all innings
+    val allBattingStats = firstInningsBattingStats + secondInningsBattingStats
+    val allBowlingStats = firstInningsBowlingStats + secondInningsBowlingStats
+
+    val topBatsman = allBattingStats.maxByOrNull { it.runs }
+    val topBowler = allBowlingStats.maxByOrNull { it.wickets }
+
+    val storageManager = MatchStorageManager(context)
+    val matchHistory = MatchHistory(
+        team1Name = team1Name,
+        team2Name = team2Name,
+        jokerPlayerName = jokerPlayerName,
+        firstInningsRuns = firstInningsRuns,
+        firstInningsWickets = firstInningsWickets,
+        secondInningsRuns = secondInningsRuns,
+        secondInningsWickets = secondInningsWickets,
+        winnerTeam = winnerTeam,
+        winningMargin = winningMargin,
+        firstInningsBatting = firstInningsBattingStats,
+        firstInningsBowling = firstInningsBowlingStats,
+        secondInningsBatting = secondInningsBattingStats,
+        secondInningsBowling = secondInningsBowlingStats,
+        team1Players = firstInningsBattingStats + secondInningsBowlingStats,
+        team2Players = firstInningsBowlingStats + secondInningsBattingStats,
+        topBatsman = topBatsman,
+        topBowler = topBowler,
+        matchDate = System.currentTimeMillis(),
+        matchSettings = matchSettings
+    )
+
+    storageManager.saveMatch(matchHistory)
+
+    val allMatches = storageManager.getAllMatches()
+    android.util.Log.d("SaveMatch", "Match saved with detailed stats! Total matches now: ${allMatches.size}")
+    android.util.Log.d("stats", "Current match stats : $matchHistory")
+
+    android.widget.Toast.makeText(
+        context,
+        "Match with detailed stats saved! Total: ${allMatches.size} matches 🏏📊",
+        android.widget.Toast.LENGTH_LONG,
+    ).show()
+}
+
+// Extension function to convert Player to PlayerMatchStats
+fun Player.toMatchStats(teamName: String): PlayerMatchStats {
+    return PlayerMatchStats(
+        name = this.name,
+        runs = this.runs,
+        ballsFaced = this.ballsFaced,
+        fours = this.fours,
+        sixes = this.sixes,
+        wickets = this.wickets,
+        runsConceded = this.runsConceded,
+        oversBowled = this.oversBowled,
+        isOut = this.isOut,
+        isJoker = this.isJoker,
+        team = teamName
+    )
 }
 
 // Enhanced Live Scorecard Dialog with complete player info
@@ -1523,48 +1595,86 @@ fun EnhancedInningsBreakDialog(
 fun ExtrasDialog(
     matchSettings: MatchSettings,
     onExtraSelected: (ExtraType, Int) -> Unit,
-    onDismiss: () -> Unit,
+    onDismiss: () -> Unit
 ) {
+    var selectedExtraType by remember { mutableStateOf<ExtraType?>(null) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select Extra Type") },
+        title = { Text("Select Extra Type + Runs") },
         text = {
-            Column {
-                Button(
-                    onClick = { onExtraSelected(ExtraType.NO_BALL, matchSettings.noballRuns) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800)),
-                ) {
-                    Text("No Ball (+${matchSettings.noballRuns} runs)")
+            if (selectedExtraType == null) {
+                // Step 1: Select extra type
+                Column {
+                    Text("Select Extra Type:", fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+
+                    ExtraType.values().forEach { extraType ->
+                        val baseRuns = when(extraType) {
+                            ExtraType.OFF_SIDE_WIDE -> matchSettings.offSideWideRuns
+                            ExtraType.LEG_SIDE_WIDE -> matchSettings.legSideWideRuns
+                            ExtraType.NO_BALL -> matchSettings.noballRuns
+                            ExtraType.BYE -> matchSettings.byeRuns
+                            ExtraType.LEG_BYE -> matchSettings.legByeRuns
+                        }
+
+                        Button(
+                            onClick = { selectedExtraType = extraType },
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                        ) {
+                            Text("${extraType.displayName} ($baseRuns)")
+                        }
+                    }
                 }
+            } else {
+                // Step 2: Select additional runs (0-6)
+                Column {
+                    Text("${selectedExtraType!!.displayName} + Additional Runs:",
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp))
 
-                Spacer(modifier = Modifier.height(8.dp))
+                    val baseRuns = when(selectedExtraType!!) {
+                        ExtraType.OFF_SIDE_WIDE -> matchSettings.offSideWideRuns
+                        ExtraType.LEG_SIDE_WIDE -> matchSettings.legSideWideRuns
+                        ExtraType.NO_BALL -> matchSettings.noballRuns
+                        ExtraType.BYE -> matchSettings.byeRuns
+                        ExtraType.LEG_BYE -> matchSettings.legByeRuns
+                    }
 
-                Button(
-                    onClick = { onExtraSelected(ExtraType.BYE, matchSettings.byeRuns) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9E9E9E)),
-                ) {
-                    Text("Bye (+${matchSettings.byeRuns} runs)")
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = { onExtraSelected(ExtraType.LEG_BYE, matchSettings.legByeRuns) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9E9E9E)),
-                ) {
-                    Text("Leg Bye (+${matchSettings.legByeRuns} runs)")
+                    LazyColumn {
+                        items((0..6).toList()) { additionalRuns ->
+                            val totalRuns = baseRuns + additionalRuns
+                            Button(
+                                onClick = { onExtraSelected(selectedExtraType!!, totalRuns) },
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = when(additionalRuns) {
+                                        0 -> Color(0xFFFF9800)
+                                        4 -> Color(0xFF4CAF50)
+                                        6 -> Color(0xFF2196F3)
+                                        else -> Color(0xFF9E9E9E)
+                                    }
+                                )
+                            ) {
+                                Text("${selectedExtraType!!.displayName} + $additionalRuns runs = $totalRuns total")
+                            }
+                        }
+                    }
                 }
             }
         },
-        confirmButton = {},
+        confirmButton = {
+            if (selectedExtraType != null) {
+                TextButton(onClick = { selectedExtraType = null }) {
+                    Text("Back")
+                }
+            }
+        },
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
             }
-        },
+        }
     )
 }
 
@@ -1633,6 +1743,7 @@ fun EnhancedMatchCompleteDialog(
     secondInningsBowlingPlayers: List<Player> = emptyList(),
     onNewMatch: () -> Unit,
     onDismiss: () -> Unit,
+    matchSettings: MatchSettings
 ) {
     val context = LocalContext.current
     val winner = if (secondInningsRuns > firstInningsRuns) team2Name else team1Name
@@ -1676,6 +1787,7 @@ fun EnhancedMatchCompleteDialog(
             secondInningsBattingStats = secondInningsBattingStats,
             secondInningsBowlingStats = secondInningsBowlingStats,
             context = context,
+            matchSettings = matchSettings
         )
     }
 
