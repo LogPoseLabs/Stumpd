@@ -1,6 +1,5 @@
 package com.oreki.stumpd
 
-import android.content.Context
 import com.google.gson.Gson
 
 data class Player(
@@ -13,7 +12,7 @@ data class Player(
     var wickets: Int = 0,
     var runsConceded: Int = 0,
     var ballsBowled: Int = 0,
-    val isJoker: Boolean = false
+    val isJoker: Boolean = false,
 ) {
     val strikeRate: Double
         get() = if (ballsFaced > 0) (runs.toDouble() / ballsFaced) * 100 else 0.0
@@ -26,8 +25,8 @@ data class Player(
         get() = if (ballsBowled > 0) (runsConceded.toDouble() / ballsBowled) * 6 else 0.0
 
     // Convert to PlayerMatchStats for saving
-    fun toMatchStats(teamName: String): PlayerMatchStats {
-        return PlayerMatchStats(
+    fun toMatchStats(teamName: String): PlayerMatchStats =
+        PlayerMatchStats(
             name = name,
             runs = runs,
             ballsFaced = ballsFaced,
@@ -38,17 +37,14 @@ data class Player(
             oversBowled = oversBowled,
             isOut = isOut,
             isJoker = isJoker,
-            team = teamName
+            team = teamName,
         )
-    }
 }
-
-
 
 // Enhanced Team data class
 data class Team(
     val name: String,
-    val players: MutableList<Player> = mutableListOf() // Changed from List to MutableList
+    val players: MutableList<Player> = mutableListOf(), // Changed from List to MutableList
 ) {
     val regularPlayersCount: Int
         get() = players.count { !it.isJoker }
@@ -58,13 +54,15 @@ data class Team(
 data class MatchSetup(
     val team1: Team,
     val team2: Team,
-    val jokerPlayer: Player? = null,  // Single joker for both teams
+    val jokerPlayer: Player? = null, // Single joker for both teams
     val matchType: MatchType = MatchType.T20,
-    val overs: Int = 20
+    val overs: Int = 20,
 )
 
 enum class MatchType {
-    T20, ODI, TEST
+    T20,
+    ODI,
+    TEST,
 }
 
 // Ball-by-ball tracking
@@ -77,24 +75,24 @@ data class Ball(
     val wicketType: WicketType? = null,
     val batsman: Player,
     val bowler: Player,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
 )
 
 enum class ExtraType {
-    OFF_SIDE_WIDE, NO_BALL, BYE, LEG_BYE, LEG_SIDE_WIDE
+    OFF_SIDE_WIDE,
+    NO_BALL,
+    BYE,
+    LEG_BYE,
+    LEG_SIDE_WIDE,
 }
 
-enum class WicketType(val displayName: String) {
-    BOWLED("Bowled"),
-    CAUGHT("Caught"),
-    LBW("LBW"),
-    STUMPED("Stumped"),
-    RUN_OUT("Run Out"),
-    HIT_WICKET("Hit Wicket"),
-    HANDLED_BALL("Handled Ball"),
-    OBSTRUCTING_FIELD("Obstructing Field"),
-    TIMED_OUT("Timed Out"),
-    BOUNDARY_OUT("Boundary Out")
+enum class WicketType {
+    BOWLED,
+    CAUGHT,
+    LBW,
+    RUN_OUT,
+    STUMPED,
+    HIT_WICKET,
 }
 
 // Match state tracking
@@ -111,7 +109,7 @@ data class MatchState(
     var currentOver: Int = 0,
     var ballsInOver: Int = 0,
     var balls: MutableList<Ball> = mutableListOf(),
-    val maxOvers: Int = 20
+    val maxOvers: Int = 20,
 ) {
     val currentScore: String
         get() = "$totalRuns/$totalWickets"
@@ -120,8 +118,12 @@ data class MatchState(
         get() = "$currentOver.$ballsInOver"
 
     val runRate: Double
-        get() = if (currentOver == 0 && ballsInOver == 0) 0.0
-        else totalRuns.toDouble() / ((currentOver * 6 + ballsInOver) / 6.0)
+        get() =
+            if (currentOver == 0 && ballsInOver == 0) {
+                0.0
+            } else {
+                totalRuns.toDouble() / ((currentOver * 6 + ballsInOver) / 6.0)
+            }
 }
 
 // Innings management
@@ -133,29 +135,37 @@ data class Innings(
     var totalWickets: Int = 0,
     var balls: MutableList<Ball> = mutableListOf(),
     val maxOvers: Int = 20,
-    var isCompleted: Boolean = false
+    var isCompleted: Boolean = false,
 ) {
     val currentOver: Int
-        get() = balls.count { ball ->
-            ball.extras == null ||
+        get() =
+            balls.count { ball ->
+                ball.extras == null ||
                     ball.extras == ExtraType.BYE ||
                     ball.extras == ExtraType.LEG_BYE
-        } / 6
+            } / 6
 
     val ballsInCurrentOver: Int
-        get() = balls.count { ball ->
-            ball.extras == null ||
+        get() =
+            balls.count { ball ->
+                ball.extras == null ||
                     ball.extras == ExtraType.BYE ||
                     ball.extras == ExtraType.LEG_BYE
-        } % 6
+            } % 6
 
     val runRate: Double
-        get() = if (balls.isEmpty()) 0.0
-        else totalRuns.toDouble() / (balls.count { ball ->
-            ball.extras == null ||
-                    ball.extras == ExtraType.BYE ||
-                    ball.extras == ExtraType.LEG_BYE
-        } / 6.0)
+        get() =
+            if (balls.isEmpty()) {
+                0.0
+            } else {
+                totalRuns.toDouble() / (
+                    balls.count { ball ->
+                        ball.extras == null ||
+                            ball.extras == ExtraType.BYE ||
+                            ball.extras == ExtraType.LEG_BYE
+                    } / 6.0
+                )
+            }
 }
 
 // Complete match structure
@@ -169,20 +179,25 @@ data class CricketMatch(
     var firstInnings: Innings? = null,
     var secondInnings: Innings? = null,
     var tossWinner: Team? = null,
-    var tossDecision: TossDecision? = null
+    var tossDecision: TossDecision? = null,
 ) {
     val isMatchCompleted: Boolean
-        get() = secondInnings?.isCompleted == true ||
+        get() =
+            secondInnings?.isCompleted == true ||
                 (secondInnings != null && secondInnings!!.totalRuns > (firstInnings?.totalRuns ?: 0))
 }
 
 enum class TossDecision {
-    BAT_FIRST, BOWL_FIRST
+    BAT_FIRST,
+    BOWL_FIRST,
 }
 
 // Enhanced MatchHistory with proper innings separation
 data class MatchHistory(
-    val id: String = java.util.UUID.randomUUID().toString(),
+    val id: String =
+        java.util.UUID
+            .randomUUID()
+            .toString(),
     val team1Name: String,
     val team2Name: String,
     val jokerPlayerName: String? = null,
@@ -193,20 +208,17 @@ data class MatchHistory(
     val winnerTeam: String,
     val winningMargin: String,
     val matchDate: Long = System.currentTimeMillis(),
-
     // Separate batting and bowling stats by innings
-    val firstInningsBatting: List<PlayerMatchStats> = emptyList(),  // Team1 batting in 1st innings
+    val firstInningsBatting: List<PlayerMatchStats> = emptyList(), // Team1 batting in 1st innings
     val firstInningsBowling: List<PlayerMatchStats> = emptyList(), // Team2 bowling in 1st innings
     val secondInningsBatting: List<PlayerMatchStats> = emptyList(), // Team2 batting in 2nd innings
     val secondInningsBowling: List<PlayerMatchStats> = emptyList(), // Team1 bowling in 2nd innings
-
     // Keep for backward compatibility
     val team1Players: List<PlayerMatchStats> = emptyList(),
     val team2Players: List<PlayerMatchStats> = emptyList(),
     val topBatsman: PlayerMatchStats? = null,
-    val topBowler: PlayerMatchStats? = null
+    val topBowler: PlayerMatchStats? = null,
 )
-
 
 // Individual player performance in a match
 data class PlayerMatchStats(
@@ -220,7 +232,7 @@ data class PlayerMatchStats(
     val oversBowled: Double = 0.0,
     val isOut: Boolean = false,
     val isJoker: Boolean = false,
-    val team: String = ""
+    val team: String = "",
 ) {
     val strikeRate: Double
         get() = if (ballsFaced > 0) (runs.toDouble() / ballsFaced) * 100 else 0.0
@@ -229,10 +241,11 @@ data class PlayerMatchStats(
         get() = if (oversBowled > 0) runsConceded / oversBowled else 0.0
 }
 
-
 // Simple storage using SharedPreferences (works immediately)
 // Enhanced MatchStorageManager with better persistence
-class MatchStorageManager(private val context: android.content.Context) {
+class MatchStorageManager(
+    private val context: android.content.Context,
+) {
     private val prefs = context.getSharedPreferences("cricket_matches_v2", android.content.Context.MODE_PRIVATE)
     private val gson = Gson()
 
@@ -249,7 +262,8 @@ class MatchStorageManager(private val context: android.content.Context) {
             // Convert to JSON string
             val matchesJson = gson.toJson(matches)
 
-            prefs.edit()
+            prefs
+                .edit()
                 .putString("matches_json", matchesJson)
                 .putLong("last_updated", System.currentTimeMillis())
                 .apply()
@@ -257,14 +271,13 @@ class MatchStorageManager(private val context: android.content.Context) {
             // Debug log
             android.util.Log.d("MatchStorage", "Saved match: ${match.team1Name} vs ${match.team2Name}")
             android.util.Log.d("MatchStorage", "Total matches saved: ${matches.size}")
-
         } catch (e: Exception) {
             android.util.Log.e("MatchStorage", "Error saving match", e)
         }
     }
 
-    fun getAllMatches(): List<MatchHistory> {
-        return try {
+    fun getAllMatches(): List<MatchHistory> =
+        try {
             val matchesJson = prefs.getString("matches_json", null)
             if (matchesJson.isNullOrEmpty()) {
                 android.util.Log.d("MatchStorage", "No matches found in storage")
@@ -278,21 +291,20 @@ class MatchStorageManager(private val context: android.content.Context) {
             android.util.Log.e("MatchStorage", "Error loading matches", e)
             emptyList()
         }
-    }
 
     fun deleteMatch(matchId: String) {
         try {
             val matches = getAllMatches().filter { it.id != matchId }
             val matchesJson = gson.toJson(matches)
 
-            prefs.edit()
+            prefs
+                .edit()
                 .putString("matches_json", matchesJson)
                 .putLong("last_updated", System.currentTimeMillis())
                 .apply()
 
             android.util.Log.d("MatchStorage", "Deleted match with ID: $matchId")
             android.util.Log.d("MatchStorage", "Remaining matches: ${matches.size}")
-
         } catch (e: Exception) {
             android.util.Log.e("MatchStorage", "Error deleting match", e)
         }
@@ -328,7 +340,6 @@ class MatchStorageManager(private val context: android.content.Context) {
 
             android.util.Log.d("Export", "Exported ${matches.size} matches to ${file.absolutePath}")
             file.absolutePath
-
         } catch (e: Exception) {
             android.util.Log.e("Export", "Failed to export matches", e)
             null
@@ -345,10 +356,12 @@ class MatchStorageManager(private val context: android.content.Context) {
 
             val json = file.readText()
             val gson = Gson()
-            val type = com.google.gson.reflect.TypeToken.getParameterized(
-                List::class.java,
-                MatchHistory::class.java
-            ).type
+            val type =
+                com.google.gson.reflect.TypeToken
+                    .getParameterized(
+                        List::class.java,
+                        MatchHistory::class.java,
+                    ).type
 
             val matches: List<MatchHistory> = gson.fromJson(json, type)
 
@@ -362,7 +375,6 @@ class MatchStorageManager(private val context: android.content.Context) {
 
             android.util.Log.d("Import", "Imported ${matches.size} matches")
             true
-
         } catch (e: Exception) {
             android.util.Log.e("Import", "Failed to import matches", e)
             false
@@ -377,5 +389,4 @@ class MatchStorageManager(private val context: android.content.Context) {
         }
         return null
     }
-
 }

@@ -8,12 +8,15 @@ import java.util.*
 
 // Basic stored player for simple operations
 data class StoredPlayer(
-    val id: String = java.util.UUID.randomUUID().toString(),
+    val id: String =
+        java.util.UUID
+            .randomUUID()
+            .toString(),
     val name: String,
     var matchesPlayed: Int = 0,
     var totalRuns: Int = 0,
     var totalWickets: Int = 0,
-    var lastPlayed: Long = System.currentTimeMillis()
+    var lastPlayed: Long = System.currentTimeMillis(),
 )
 
 // Detailed player statistics for comprehensive analysis
@@ -33,10 +36,17 @@ data class PlayerDetailedStats(
     var notOuts: Int = 0,
     val lastPlayed: Long = System.currentTimeMillis(),
     // Match-wise performance
-    val matchPerformances: MutableList<MatchPerformance> = mutableListOf()
+    val matchPerformances: MutableList<MatchPerformance> = mutableListOf(),
 ) {
     val battingAverage: Double
-        get() = if (timesOut > 0) totalRuns.toDouble() / timesOut else if (totalRuns > 0) totalRuns.toDouble() else 0.0
+        get() =
+            if (timesOut > 0) {
+                totalRuns.toDouble() / timesOut
+            } else if (totalRuns > 0) {
+                totalRuns.toDouble()
+            } else {
+                0.0
+            }
 
     val strikeRate: Double
         get() = if (totalBallsFaced > 0) (totalRuns.toDouble() / totalBallsFaced) * 100 else 0.0
@@ -69,16 +79,18 @@ data class MatchPerformance(
     val ballsBowled: Int = 0,
     // Match context
     val isWinner: Boolean = false,
-    val isJoker: Boolean = false
+    val isJoker: Boolean = false,
 )
 
 // Basic player storage manager
-class PlayerStorageManager(private val context: Context) {
+class PlayerStorageManager(
+    private val context: Context,
+) {
     private val prefs = context.getSharedPreferences("cricket_players", Context.MODE_PRIVATE)
     private val gson = Gson()
 
-    fun getAllPlayers(): List<StoredPlayer> {
-        return try {
+    fun getAllPlayers(): List<StoredPlayer> =
+        try {
             val playersJson = prefs.getString("players_json", null)
             if (playersJson.isNullOrEmpty()) {
                 syncBasicPlayersFromMatches()
@@ -105,7 +117,6 @@ class PlayerStorageManager(private val context: Context) {
             android.util.Log.e("PlayerStorage", "Error loading players", e)
             emptyList()
         }
-    }
 
     private fun syncBasicPlayersFromMatches() {
         val matchStorage = MatchStorageManager(context)
@@ -113,24 +124,25 @@ class PlayerStorageManager(private val context: Context) {
 
         if (allMatches.isEmpty()) return
 
-        val existingPlayers = try {
-            val playersJson = prefs.getString("players_json", null)
-            if (playersJson.isNullOrEmpty()) {
+        val existingPlayers =
+            try {
+                val playersJson = prefs.getString("players_json", null)
+                if (playersJson.isNullOrEmpty()) {
+                    mutableMapOf<String, StoredPlayer>()
+                } else {
+                    val type = TypeToken.getParameterized(List::class.java, StoredPlayer::class.java).type
+                    val playersList: List<StoredPlayer> = gson.fromJson(playersJson, type)
+                    playersList.associateBy { it.name }.toMutableMap()
+                }
+            } catch (e: Exception) {
                 mutableMapOf<String, StoredPlayer>()
-            } else {
-                val type = TypeToken.getParameterized(List::class.java, StoredPlayer::class.java).type
-                val playersList: List<StoredPlayer> = gson.fromJson(playersJson, type)
-                playersList.associateBy { it.name }.toMutableMap()
             }
-        } catch (e: Exception) {
-            mutableMapOf<String, StoredPlayer>()
-        }
 
         data class PlayerStats(
             var matchesPlayed: Int = 0,
             var totalRuns: Int = 0,
             var totalWickets: Int = 0,
-            var lastPlayed: Long = 0L
+            var lastPlayed: Long = 0L,
         )
         val playerStats = mutableMapOf<String, PlayerStats>()
 
@@ -168,22 +180,23 @@ class PlayerStorageManager(private val context: Context) {
         playerStats.forEach { (playerName, stats) ->
             val existingPlayer = existingPlayers[playerName]
 
-            existingPlayers[playerName] = if (existingPlayer != null) {
-                existingPlayer.copy(
-                    matchesPlayed = stats.matchesPlayed,
-                    totalRuns = stats.totalRuns,
-                    totalWickets = stats.totalWickets,
-                    lastPlayed = stats.lastPlayed
-                )
-            } else {
-                StoredPlayer(
-                    name = playerName,
-                    matchesPlayed = stats.matchesPlayed,
-                    totalRuns = stats.totalRuns,
-                    totalWickets = stats.totalWickets,
-                    lastPlayed = stats.lastPlayed
-                )
-            }
+            existingPlayers[playerName] =
+                if (existingPlayer != null) {
+                    existingPlayer.copy(
+                        matchesPlayed = stats.matchesPlayed,
+                        totalRuns = stats.totalRuns,
+                        totalWickets = stats.totalWickets,
+                        lastPlayed = stats.lastPlayed,
+                    )
+                } else {
+                    StoredPlayer(
+                        name = playerName,
+                        matchesPlayed = stats.matchesPlayed,
+                        totalRuns = stats.totalRuns,
+                        totalWickets = stats.totalWickets,
+                        lastPlayed = stats.lastPlayed,
+                    )
+                }
         }
 
         val playersJson = gson.toJson(existingPlayers.values.toList())
@@ -196,11 +209,12 @@ class PlayerStorageManager(private val context: Context) {
         val players = getAllPlayers().toMutableList()
         val existingPlayer = players.find { it.name.equals(playerName, ignoreCase = true) }
 
-        val updatedPlayer = if (existingPlayer != null) {
-            existingPlayer.copy(lastPlayed = System.currentTimeMillis())
-        } else {
-            StoredPlayer(name = playerName)
-        }
+        val updatedPlayer =
+            if (existingPlayer != null) {
+                existingPlayer.copy(lastPlayed = System.currentTimeMillis())
+            } else {
+                StoredPlayer(name = playerName)
+            }
 
         if (existingPlayer != null) {
             players.removeAll { it.id == existingPlayer.id }
@@ -213,24 +227,26 @@ class PlayerStorageManager(private val context: Context) {
         return updatedPlayer
     }
 
-    fun searchPlayers(query: String): List<StoredPlayer> {
-        return getAllPlayers()
+    fun searchPlayers(query: String): List<StoredPlayer> =
+        getAllPlayers()
             .filter { it.name.contains(query, ignoreCase = true) }
             .sortedByDescending { it.matchesPlayed }
-    }
 
-    fun getRecentPlayers(limit: Int = 10): List<StoredPlayer> {
-        return getAllPlayers()
+    fun getRecentPlayers(limit: Int = 10): List<StoredPlayer> =
+        getAllPlayers()
             .sortedByDescending { it.lastPlayed }
             .take(limit)
-    }
 
-    fun updatePlayerStats(playerName: String, runs: Int, wickets: Int) {
+    fun updatePlayerStats(
+        playerName: String,
+        runs: Int,
+        wickets: Int,
+    ) {
         syncBasicPlayersFromMatches()
     }
 
-    fun deletePlayer(playerId: String): Boolean {
-        return try {
+    fun deletePlayer(playerId: String): Boolean =
+        try {
             val players = getAllPlayers().toMutableList()
             val removed = players.removeAll { it.id == playerId }
 
@@ -245,10 +261,12 @@ class PlayerStorageManager(private val context: Context) {
             android.util.Log.e("PlayerStorage", "Error deleting player", e)
             false
         }
-    }
 
-    fun updatePlayerName(oldName: String, newName: String): Boolean {
-        return try {
+    fun updatePlayerName(
+        oldName: String,
+        newName: String,
+    ): Boolean =
+        try {
             val players = getAllPlayers().toMutableList()
             val playerIndex = players.indexOfFirst { it.name.equals(oldName, ignoreCase = true) }
 
@@ -264,7 +282,6 @@ class PlayerStorageManager(private val context: Context) {
             android.util.Log.e("PlayerStorage", "Error updating player name", e)
             false
         }
-    }
 
     fun forceSyncWithMatches() {
         syncBasicPlayersFromMatches()
@@ -272,7 +289,9 @@ class PlayerStorageManager(private val context: Context) {
 }
 
 // Enhanced player storage manager for detailed statistics
-class EnhancedPlayerStorageManager(private val context: Context) {
+class EnhancedPlayerStorageManager(
+    private val context: Context,
+) {
     private val prefs = context.getSharedPreferences("cricket_players_detailed", Context.MODE_PRIVATE)
     private val gson = Gson()
 
@@ -286,12 +305,13 @@ class EnhancedPlayerStorageManager(private val context: Context) {
             // Process first innings batting (Team 1)
             match.firstInningsBatting.forEach { playerStat ->
                 val playerName = playerStat.name
-                val player = playersMap.getOrPut(playerName) {
-                    PlayerDetailedStats(
-                        playerId = playerName.replace(" ", "_").lowercase(),
-                        name = playerName
-                    )
-                }
+                val player =
+                    playersMap.getOrPut(playerName) {
+                        PlayerDetailedStats(
+                            playerId = playerName.replace(" ", "_").lowercase(),
+                            name = playerName,
+                        )
+                    }
 
                 player.totalRuns += playerStat.runs
                 player.totalBallsFaced += playerStat.ballsFaced
@@ -314,8 +334,8 @@ class EnhancedPlayerStorageManager(private val context: Context) {
                             sixes = playerStat.sixes,
                             isOut = playerStat.isOut,
                             isWinner = match.winnerTeam == match.team1Name,
-                            isJoker = playerStat.isJoker
-                        )
+                            isJoker = playerStat.isJoker,
+                        ),
                     )
                 }
             }
@@ -323,12 +343,13 @@ class EnhancedPlayerStorageManager(private val context: Context) {
             // Process first innings bowling (Team 2)
             match.firstInningsBowling.forEach { playerStat ->
                 val playerName = playerStat.name
-                val player = playersMap.getOrPut(playerName) {
-                    PlayerDetailedStats(
-                        playerId = playerName.replace(" ", "_").lowercase(),
-                        name = playerName
-                    )
-                }
+                val player =
+                    playersMap.getOrPut(playerName) {
+                        PlayerDetailedStats(
+                            playerId = playerName.replace(" ", "_").lowercase(),
+                            name = playerName,
+                        )
+                    }
 
                 player.totalWickets += playerStat.wickets
                 player.totalRunsConceded += playerStat.runsConceded
@@ -337,11 +358,12 @@ class EnhancedPlayerStorageManager(private val context: Context) {
                 val existingPerf = player.matchPerformances.find { it.matchId == match.id }
                 if (existingPerf != null) {
                     val index = player.matchPerformances.indexOf(existingPerf)
-                    player.matchPerformances[index] = existingPerf.copy(
-                        wickets = playerStat.wickets,
-                        runsConceded = playerStat.runsConceded,
-                        ballsBowled = (playerStat.oversBowled * 6).toInt()
-                    )
+                    player.matchPerformances[index] =
+                        existingPerf.copy(
+                            wickets = playerStat.wickets,
+                            runsConceded = playerStat.runsConceded,
+                            ballsBowled = (playerStat.oversBowled * 6).toInt(),
+                        )
                 } else {
                     player.totalMatches++
                     player.matchPerformances.add(
@@ -354,8 +376,8 @@ class EnhancedPlayerStorageManager(private val context: Context) {
                             runsConceded = playerStat.runsConceded,
                             ballsBowled = (playerStat.oversBowled * 6).toInt(),
                             isWinner = match.winnerTeam == match.team2Name,
-                            isJoker = playerStat.isJoker
-                        )
+                            isJoker = playerStat.isJoker,
+                        ),
                     )
                 }
             }
@@ -363,12 +385,13 @@ class EnhancedPlayerStorageManager(private val context: Context) {
             // Process second innings batting (Team 2)
             match.secondInningsBatting.forEach { playerStat ->
                 val playerName = playerStat.name
-                val player = playersMap.getOrPut(playerName) {
-                    PlayerDetailedStats(
-                        playerId = playerName.replace(" ", "_").lowercase(),
-                        name = playerName
-                    )
-                }
+                val player =
+                    playersMap.getOrPut(playerName) {
+                        PlayerDetailedStats(
+                            playerId = playerName.replace(" ", "_").lowercase(),
+                            name = playerName,
+                        )
+                    }
 
                 player.totalRuns += playerStat.runs
                 player.totalBallsFaced += playerStat.ballsFaced
@@ -391,30 +414,32 @@ class EnhancedPlayerStorageManager(private val context: Context) {
                             sixes = playerStat.sixes,
                             isOut = playerStat.isOut,
                             isWinner = match.winnerTeam == match.team2Name,
-                            isJoker = playerStat.isJoker
-                        )
+                            isJoker = playerStat.isJoker,
+                        ),
                     )
                 } else {
                     val index = player.matchPerformances.indexOf(existingPerf)
-                    player.matchPerformances[index] = existingPerf.copy(
-                        runs = existingPerf.runs + playerStat.runs,
-                        ballsFaced = existingPerf.ballsFaced + playerStat.ballsFaced,
-                        fours = existingPerf.fours + playerStat.fours,
-                        sixes = existingPerf.sixes + playerStat.sixes,
-                        isOut = existingPerf.isOut || playerStat.isOut
-                    )
+                    player.matchPerformances[index] =
+                        existingPerf.copy(
+                            runs = existingPerf.runs + playerStat.runs,
+                            ballsFaced = existingPerf.ballsFaced + playerStat.ballsFaced,
+                            fours = existingPerf.fours + playerStat.fours,
+                            sixes = existingPerf.sixes + playerStat.sixes,
+                            isOut = existingPerf.isOut || playerStat.isOut,
+                        )
                 }
             }
 
             // Process second innings bowling (Team 1)
             match.secondInningsBowling.forEach { playerStat ->
                 val playerName = playerStat.name
-                val player = playersMap.getOrPut(playerName) {
-                    PlayerDetailedStats(
-                        playerId = playerName.replace(" ", "_").lowercase(),
-                        name = playerName
-                    )
-                }
+                val player =
+                    playersMap.getOrPut(playerName) {
+                        PlayerDetailedStats(
+                            playerId = playerName.replace(" ", "_").lowercase(),
+                            name = playerName,
+                        )
+                    }
 
                 player.totalWickets += playerStat.wickets
                 player.totalRunsConceded += playerStat.runsConceded
@@ -423,11 +448,12 @@ class EnhancedPlayerStorageManager(private val context: Context) {
                 val existingPerf = player.matchPerformances.find { it.matchId == match.id }
                 if (existingPerf != null) {
                     val index = player.matchPerformances.indexOf(existingPerf)
-                    player.matchPerformances[index] = existingPerf.copy(
-                        wickets = existingPerf.wickets + playerStat.wickets,
-                        runsConceded = existingPerf.runsConceded + playerStat.runsConceded,
-                        ballsBowled = existingPerf.ballsBowled + (playerStat.oversBowled * 6).toInt()
-                    )
+                    player.matchPerformances[index] =
+                        existingPerf.copy(
+                            wickets = existingPerf.wickets + playerStat.wickets,
+                            runsConceded = existingPerf.runsConceded + playerStat.runsConceded,
+                            ballsBowled = existingPerf.ballsBowled + (playerStat.oversBowled * 6).toInt(),
+                        )
                 } else {
                     player.totalMatches++
                     player.matchPerformances.add(
@@ -440,8 +466,8 @@ class EnhancedPlayerStorageManager(private val context: Context) {
                             runsConceded = playerStat.runsConceded,
                             ballsBowled = (playerStat.oversBowled * 6).toInt(),
                             isWinner = match.winnerTeam == match.team1Name,
-                            isJoker = playerStat.isJoker
-                        )
+                            isJoker = playerStat.isJoker,
+                        ),
                     )
                 }
             }
@@ -453,8 +479,8 @@ class EnhancedPlayerStorageManager(private val context: Context) {
         android.util.Log.d("PlayerSync", "Synced ${playersMap.size} players from ${allMatches.size} matches")
     }
 
-    fun getAllPlayersDetailed(): List<PlayerDetailedStats> {
-        return try {
+    fun getAllPlayersDetailed(): List<PlayerDetailedStats> =
+        try {
             val playersJson = prefs.getString("detailed_players", null)
             if (playersJson.isNullOrEmpty()) {
                 syncPlayerStatsFromMatches()
@@ -473,11 +499,11 @@ class EnhancedPlayerStorageManager(private val context: Context) {
             android.util.Log.e("PlayerSync", "Error loading detailed players", e)
             emptyList()
         }
-    }
 
-    fun getPlayerDetailed(playerName: String): PlayerDetailedStats? {
-        return getAllPlayersDetailed().find { it.name.equals(playerName, ignoreCase = true) }
-    }
+    fun getPlayerDetailed(playerName: String): PlayerDetailedStats? =
+        getAllPlayersDetailed().find {
+            it.name.equals(playerName, ignoreCase = true)
+        }
 }
 
 // Helper function to format date

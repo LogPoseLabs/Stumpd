@@ -30,7 +30,7 @@ class MatchSettingsActivity : ComponentActivity() {
             StumpdTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = MaterialTheme.colorScheme.background,
                 ) {
                     MatchSettingsScreen(isPerMatch = isPerMatch)
                 }
@@ -46,19 +46,20 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
 
     var currentSettings by remember {
         mutableStateOf(
-            if (isPerMatch) MatchSettings() else settingsManager.getDefaultMatchSettings()
+            if (isPerMatch) MatchSettings() else settingsManager.getDefaultMatchSettings(),
         )
     }
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(16.dp),
     ) {
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(
                     onClick = {
@@ -71,12 +72,12 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
                             context.startActivity(intent)
                             (context as ComponentActivity).finish()
                         }
-                    }
+                    },
                 ) {
                     Icon(
                         Icons.Default.ArrowBack,
                         contentDescription = "Back",
-                        tint = Color(0xFF2E7D32)
+                        tint = Color(0xFF2E7D32),
                     )
                 }
 
@@ -85,12 +86,12 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
                         text = if (isPerMatch) "Match Settings" else "Default Settings",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32)
+                        color = Color(0xFF2E7D32),
                     )
                     Text(
                         text = if (isPerMatch) "Configure this match" else "Set default match rules",
                         fontSize = 14.sp,
-                        color = Color.Gray
+                        color = Color.Gray,
                     )
                 }
             }
@@ -104,7 +105,7 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
                 text = "Match Format",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
+                color = Color(0xFF2E7D32),
             )
         }
 
@@ -115,23 +116,31 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     MatchFormat.values().forEach { format ->
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .selectable(
-                                    selected = currentSettings.matchFormat == format,
-                                    onClick = {
-                                        currentSettings = currentSettings.copy(
-                                            matchFormat = format,
-                                            totalOvers = if (format != MatchFormat.CUSTOM) format.defaultOvers else currentSettings.totalOvers
-                                        )
-                                    }
-                                )
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .selectable(
+                                        selected = currentSettings.matchFormat == format,
+                                        onClick = {
+                                            currentSettings =
+                                                currentSettings.copy(
+                                                    matchFormat = format,
+                                                    totalOvers =
+                                                        if (format !=
+                                                            MatchFormat.CUSTOM
+                                                        ) {
+                                                            format.defaultOvers
+                                                        } else {
+                                                            currentSettings.totalOvers
+                                                        },
+                                                )
+                                        },
+                                    ).padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             RadioButton(
                                 selected = currentSettings.matchFormat == format,
-                                onClick = null
+                                onClick = null,
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(format.displayName)
@@ -150,7 +159,7 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
                     text = "Match Configuration",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32)
+                    color = Color(0xFF2E7D32),
                 )
             }
 
@@ -163,7 +172,7 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text("Total Overs per innings")
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -172,7 +181,7 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
                                         if (currentSettings.totalOvers > 1) {
                                             currentSettings = currentSettings.copy(totalOvers = currentSettings.totalOvers - 1)
                                         }
-                                    }
+                                    },
                                 ) {
                                     Text("-")
                                 }
@@ -181,7 +190,7 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
                                     text = "${currentSettings.totalOvers}",
                                     modifier = Modifier.padding(horizontal = 16.dp),
                                     fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
                                 )
 
                                 OutlinedButton(
@@ -189,7 +198,7 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
                                         if (currentSettings.totalOvers < 50) {
                                             currentSettings = currentSettings.copy(totalOvers = currentSettings.totalOvers + 1)
                                         }
-                                    }
+                                    },
                                 ) {
                                     Text("+")
                                 }
@@ -202,16 +211,17 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text("Players per team")
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 OutlinedButton(
                                     onClick = {
                                         if (currentSettings.maxPlayersPerTeam > 3) {
-                                            currentSettings = currentSettings.copy(maxPlayersPerTeam = currentSettings.maxPlayersPerTeam - 1)
+                                            currentSettings =
+                                                currentSettings.copy(maxPlayersPerTeam = currentSettings.maxPlayersPerTeam - 1)
                                         }
-                                    }
+                                    },
                                 ) {
                                     Text("-")
                                 }
@@ -220,15 +230,16 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
                                     text = "${currentSettings.maxPlayersPerTeam}",
                                     modifier = Modifier.padding(horizontal = 16.dp),
                                     fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
                                 )
 
                                 OutlinedButton(
                                     onClick = {
                                         if (currentSettings.maxPlayersPerTeam < 15) {
-                                            currentSettings = currentSettings.copy(maxPlayersPerTeam = currentSettings.maxPlayersPerTeam + 1)
+                                            currentSettings =
+                                                currentSettings.copy(maxPlayersPerTeam = currentSettings.maxPlayersPerTeam + 1)
                                         }
-                                    }
+                                    },
                                 ) {
                                     Text("+")
                                 }
@@ -247,7 +258,7 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
                 text = "Extras & Penalties",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
+                color = Color(0xFF2E7D32),
             )
         }
 
@@ -279,7 +290,7 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
                 text = "Special Rules",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
+                color = Color(0xFF2E7D32),
             )
         }
 
@@ -292,21 +303,21 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Single Side Batting")
                             Text(
                                 text = "Allow one batsman to continue if partner gets out",
                                 fontSize = 12.sp,
-                                color = Color.Gray
+                                color = Color.Gray,
                             )
                         }
                         Switch(
                             checked = currentSettings.allowSingleSideBatting,
                             onCheckedChange = { checked ->
                                 currentSettings = currentSettings.copy(allowSingleSideBatting = checked)
-                            }
+                            },
                         )
                     }
 
@@ -316,21 +327,21 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Joker Can Bat & Bowl")
                             Text(
                                 text = "Joker player can play for both teams",
                                 fontSize = 12.sp,
-                                color = Color.Gray
+                                color = Color.Gray,
                             )
                         }
                         Switch(
                             checked = currentSettings.jokerCanBatAndBowl,
                             onCheckedChange = { checked ->
                                 currentSettings = currentSettings.copy(jokerCanBatAndBowl = checked)
-                            }
+                            },
                         )
                     }
                 }
@@ -359,12 +370,12 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
             ) {
                 Text(
                     text = if (isPerMatch) "Apply & Continue" else "Save Default Settings",
                     fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
                 )
             }
         }
@@ -375,12 +386,12 @@ fun MatchSettingsScreen(isPerMatch: Boolean = false) {
 fun ExtrasSettingRow(
     title: String,
     currentValue: Int,
-    onValueChange: (Int) -> Unit
+    onValueChange: (Int) -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title)
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -389,7 +400,7 @@ fun ExtrasSettingRow(
                     if (currentValue > 0) {
                         onValueChange(currentValue - 1)
                     }
-                }
+                },
             ) {
                 Text("-")
             }
@@ -398,7 +409,7 @@ fun ExtrasSettingRow(
                 text = "$currentValue",
                 modifier = Modifier.padding(horizontal = 16.dp),
                 fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
             )
 
             OutlinedButton(
@@ -406,7 +417,7 @@ fun ExtrasSettingRow(
                     if (currentValue < 5) {
                         onValueChange(currentValue + 1)
                     }
-                }
+                },
             ) {
                 Text("+")
             }

@@ -1,16 +1,23 @@
 package com.oreki.stumpd
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,18 +25,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import android.widget.Toast
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.ui.text.font.FontStyle
 import com.google.gson.Gson
 import com.oreki.stumpd.ui.theme.StumpdTheme
 
@@ -48,14 +48,14 @@ class ScoringActivity : ComponentActivity() {
             StumpdTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = MaterialTheme.colorScheme.background,
                 ) {
                     ScoringScreen(
                         team1Name = team1Name,
                         team2Name = team2Name,
                         jokerName = jokerName,
                         team1PlayerNames = team1PlayerNames,
-                        team2PlayerNames = team2PlayerNames
+                        team2PlayerNames = team2PlayerNames,
                     )
                 }
             }
@@ -63,6 +63,72 @@ class ScoringActivity : ComponentActivity() {
     }
 }
 
+// Add this function to your ScoringActivity.kt
+fun saveMatchToHistory(
+    team1Name: String,
+    team2Name: String,
+    jokerPlayerName: String?,
+    firstInningsRuns: Int,
+    firstInningsWickets: Int,
+    secondInningsRuns: Int,
+    secondInningsWickets: Int,
+    winnerTeam: String,
+    winningMargin: String,
+    // Add these new parameters for detailed stats
+    firstInningsBattingStats: List<PlayerMatchStats> = emptyList(),
+    firstInningsBowlingStats: List<PlayerMatchStats> = emptyList(),
+    secondInningsBattingStats: List<PlayerMatchStats> = emptyList(),
+    secondInningsBowlingStats: List<PlayerMatchStats> = emptyList(),
+    context: android.content.Context,
+) {
+    android.util.Log.d("SaveMatch", "Attempting to save match: $team1Name vs $team2Name")
+
+    // Find top performers across all innings
+    val allBattingStats = firstInningsBattingStats + secondInningsBattingStats
+    val allBowlingStats = firstInningsBowlingStats + secondInningsBowlingStats
+
+    val topBatsman = allBattingStats.maxByOrNull { it.runs }
+    val topBowler = allBowlingStats.maxByOrNull { it.wickets }
+
+    val storageManager = MatchStorageManager(context)
+    val matchHistory =
+        MatchHistory(
+            team1Name = team1Name,
+            team2Name = team2Name,
+            jokerPlayerName = jokerPlayerName,
+            firstInningsRuns = firstInningsRuns,
+            firstInningsWickets = firstInningsWickets,
+            secondInningsRuns = secondInningsRuns,
+            secondInningsWickets = secondInningsWickets,
+            winnerTeam = winnerTeam,
+            winningMargin = winningMargin,
+            // Add the detailed innings stats
+            firstInningsBatting = firstInningsBattingStats,
+            firstInningsBowling = firstInningsBowlingStats,
+            secondInningsBatting = secondInningsBattingStats,
+            secondInningsBowling = secondInningsBowlingStats,
+            // Keep backward compatibility
+            team1Players = firstInningsBattingStats + secondInningsBowlingStats,
+            team2Players = firstInningsBowlingStats + secondInningsBattingStats,
+            topBatsman = topBatsman,
+            topBowler = topBowler,
+            matchDate = System.currentTimeMillis(),
+        )
+
+    storageManager.saveMatch(matchHistory)
+
+    // Verify it was saved
+    val allMatches = storageManager.getAllMatches()
+    android.util.Log.d("SaveMatch", "Match saved with detailed stats! Total matches now: ${allMatches.size}")
+    android.util.Log.d("stats", "Current match stats : $matchHistory")
+
+    android.widget.Toast
+        .makeText(
+            context,
+            "Match with detailed stats saved! Total: ${allMatches.size} matches 🏏📊",
+            android.widget.Toast.LENGTH_LONG,
+        ).show()
+}
 
 @Composable
 fun ScoringScreen(
@@ -71,23 +137,24 @@ fun ScoringScreen(
     jokerName: String = "",
     team1PlayerNames: Array<String> = arrayOf("Player 1", "Player 2", "Player 3"),
     team2PlayerNames: Array<String> = arrayOf("Player 4", "Player 5", "Player 6"),
-    matchSettingsJson: String = ""
+    matchSettingsJson: String = "",
 ) {
     val context = LocalContext.current
     val gson = Gson()
 
     // Parse match settings or use defaults
-    val matchSettings = remember {
-        try {
-            if (matchSettingsJson.isNotEmpty()) {
-                gson.fromJson(matchSettingsJson, MatchSettings::class.java)
-            } else {
-                MatchSettingsManager(context).getDefaultMatchSettings()
+    val matchSettings =
+        remember {
+            try {
+                if (matchSettingsJson.isNotEmpty()) {
+                    gson.fromJson(matchSettingsJson, MatchSettings::class.java)
+                } else {
+                    MatchSettingsManager(context).getDefaultMatchSettings()
+                }
+            } catch (e: Exception) {
+                MatchSettings()
             }
-        } catch (e: Exception) {
-            MatchSettings()
         }
-    }
 
     // Create teams with dynamic player data as MutableList
     var team1Players by remember {
@@ -98,9 +165,10 @@ fun ScoringScreen(
         mutableStateOf(team2PlayerNames.map { Player(it) }.toMutableList())
     }
 
-    val jokerPlayer = remember {
-        if (jokerName.isNotEmpty()) Player(jokerName, isJoker = true) else null
-    }
+    val jokerPlayer =
+        remember {
+            if (jokerName.isNotEmpty()) Player(jokerName, isJoker = true) else null
+        }
 
     // Current innings and teams
     var currentInnings by remember { mutableStateOf(1) }
@@ -122,13 +190,15 @@ fun ScoringScreen(
     var secondInningsBowlingPlayers by remember { mutableStateOf<List<Player>>(emptyList()) }
 
     // Calculate totals from actual player stats (REAL-TIME SYNC)
-    val calculatedTotalRuns = remember(battingTeamPlayers) {
-        battingTeamPlayers.sumOf { it.runs }
-    }
+    val calculatedTotalRuns =
+        remember(battingTeamPlayers) {
+            battingTeamPlayers.sumOf { it.runs }
+        }
 
-    val calculatedTotalRunsConceded = remember(bowlingTeamPlayers) {
-        bowlingTeamPlayers.sumOf { it.runsConceded }
-    }
+    val calculatedTotalRunsConceded =
+        remember(bowlingTeamPlayers) {
+            bowlingTeamPlayers.sumOf { it.runsConceded }
+        }
 
     // Current match state
     var totalWickets by remember { mutableStateOf(0) }
@@ -185,7 +255,8 @@ fun ScoringScreen(
     }
 
     // Match completion check with settings
-    val isInningsComplete = currentOver >= matchSettings.totalOvers ||
+    val isInningsComplete =
+        currentOver >= matchSettings.totalOvers ||
             totalWickets >= battingTeamPlayers.size - 1 ||
             (currentInnings == 2 && calculatedTotalRuns > firstInningsRuns)
 
@@ -213,7 +284,11 @@ fun ScoringScreen(
 
                 // Save second innings player lists
                 val secondInningsBattingPlayersList = battingTeamPlayers.filter { it.ballsFaced > 0 || it.runs > 0 }
-                val secondInningsBowlingPlayersList = bowlingTeamPlayers.filter { it.ballsBowled > 0 || it.wickets > 0 || it.runsConceded > 0 }
+                val secondInningsBowlingPlayersList =
+                    bowlingTeamPlayers.filter {
+                        it.ballsBowled > 0 || it.wickets > 0 ||
+                            it.runsConceded > 0
+                    }
 
                 // Store second innings data in state variables for dialog access
                 secondInningsBattingPlayers = secondInningsBattingPlayersList
@@ -225,56 +300,61 @@ fun ScoringScreen(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(16.dp),
     ) {
         // Enhanced Score Header with match settings info
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF2E7D32))
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF2E7D32)),
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
                     text = "$battingTeamName - Innings $currentInnings (${matchSettings.totalOvers} overs)",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = Color.White,
                 )
 
                 Text(
                     text = "$calculatedTotalRuns/$totalWickets",
                     fontSize = 40.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = Color.White,
                 )
 
                 Row(
                     horizontalArrangement = Arrangement.SpaceEvenly,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
                         text = "Overs: $currentOver.$ballsInOver/${matchSettings.totalOvers}",
                         fontSize = 14.sp,
-                        color = Color.White
+                        color = Color.White,
                     )
 
-                    val runRate = if (currentOver == 0 && ballsInOver == 0) 0.0
-                    else calculatedTotalRuns.toDouble() / ((currentOver * 6 + ballsInOver) / 6.0)
+                    val runRate =
+                        if (currentOver == 0 && ballsInOver == 0) {
+                            0.0
+                        } else {
+                            calculatedTotalRuns.toDouble() / ((currentOver * 6 + ballsInOver) / 6.0)
+                        }
                     Text(
                         text = "RR: ${"%.2f".format(runRate)}",
                         fontSize = 14.sp,
-                        color = Color.White
+                        color = Color.White,
                     )
 
                     if (totalExtras > 0) {
                         Text(
                             text = "Extras: $totalExtras",
                             fontSize = 14.sp,
-                            color = Color.Yellow
+                            color = Color.Yellow,
                         )
                     }
                 }
@@ -287,10 +367,17 @@ fun ScoringScreen(
                     val requiredRunRate = if (ballsLeft > 0) (required.toDouble() / ballsLeft) * 6 else 0.0
 
                     Text(
-                        text = if (required > 0) "Need $required runs in $ballsLeft balls (RRR: ${"%.2f".format(requiredRunRate)})" else "🎉 Target achieved!",
+                        text =
+                            if (required >
+                                0
+                            ) {
+                                "Need $required runs in $ballsLeft balls (RRR: ${"%.2f".format(requiredRunRate)})"
+                            } else {
+                                "🎉 Target achieved!"
+                            },
                         fontSize = 14.sp,
                         color = if (required > 0) Color.Yellow else Color.Green,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
                     )
                 }
             }
@@ -304,23 +391,23 @@ fun ScoringScreen(
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
                         text = "Current Players",
                         fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
                     )
 
                     Row {
                         // Live Scorecard Button
                         IconButton(
-                            onClick = { showLiveScorecardDialog = true }
+                            onClick = { showLiveScorecardDialog = true },
                         ) {
                             Icon(
                                 Icons.Default.List,
                                 contentDescription = "Live Scorecard",
-                                tint = Color(0xFF2196F3)
+                                tint = Color(0xFF2196F3),
                             )
                         }
 
@@ -333,12 +420,12 @@ fun ScoringScreen(
                                     context.startActivity(intent)
                                     (context as androidx.activity.ComponentActivity).finish()
                                 }
-                            }
+                            },
                         ) {
                             Icon(
                                 Icons.Default.ArrowBack,
                                 contentDescription = "Back to Home",
-                                tint = Color(0xFF2E7D32)
+                                tint = Color(0xFF2E7D32),
                             )
                         }
                     }
@@ -349,61 +436,63 @@ fun ScoringScreen(
                 // Batsmen with real-time live stats
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable {
-                                selectingBatsman = 1
-                                showBatsmanDialog = true
-                            }
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .clickable {
+                                    selectingBatsman = 1
+                                    showBatsmanDialog = true
+                                },
                     ) {
                         Text(
                             text = "🏏 ${striker?.name ?: "Select Batsman 1"}",
                             fontWeight = FontWeight.Bold,
-                            color = if (striker == null) Color.Red else Color(0xFF2E7D32)
+                            color = if (striker == null) Color.Red else Color(0xFF2E7D32),
                         )
                         striker?.let { currentStriker ->
                             Text(
                                 text = "${currentStriker.runs}${if (!currentStriker.isOut && currentStriker.ballsFaced > 0) "*" else ""} (${currentStriker.ballsFaced}) - 4s: ${currentStriker.fours}, 6s: ${currentStriker.sixes}",
                                 fontSize = 12.sp,
-                                color = Color.Gray
+                                color = Color.Gray,
                             )
                             Text(
                                 text = "SR: ${"%.1f".format(currentStriker.strikeRate)}",
                                 fontSize = 10.sp,
                                 color = Color(0xFF4CAF50),
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
                             )
                         }
                     }
 
                     Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable {
-                                selectingBatsman = 2
-                                showBatsmanDialog = true
-                            },
-                        horizontalAlignment = Alignment.End
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .clickable {
+                                    selectingBatsman = 2
+                                    showBatsmanDialog = true
+                                },
+                        horizontalAlignment = Alignment.End,
                     ) {
                         Text(
                             text = "${nonStriker?.name ?: "Select Batsman 2"}",
                             fontWeight = FontWeight.Normal,
-                            color = if (nonStriker == null) Color.Red else Color.Black
+                            color = if (nonStriker == null) Color.Red else Color.Black,
                         )
                         nonStriker?.let { currentNonStriker ->
                             Text(
                                 text = "${currentNonStriker.runs}${if (!currentNonStriker.isOut && currentNonStriker.ballsFaced > 0) "*" else ""} (${currentNonStriker.ballsFaced}) - 4s: ${currentNonStriker.fours}, 6s: ${currentNonStriker.sixes}",
                                 fontSize = 12.sp,
-                                color = Color.Gray
+                                color = Color.Gray,
                             )
                             Text(
                                 text = "SR: ${"%.1f".format(currentNonStriker.strikeRate)}",
                                 fontSize = 10.sp,
                                 color = Color(0xFF4CAF50),
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
                             )
                         }
                     }
@@ -418,12 +507,12 @@ fun ScoringScreen(
                             Toast.makeText(context, "Strike swapped! ${striker?.name} now on strike", Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.align(Alignment.CenterHorizontally),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)),
                     ) {
                         Icon(
                             imageVector = Icons.Default.Share,
                             contentDescription = "Swap Strike",
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(16.dp),
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Swap Strike", fontSize = 12.sp)
@@ -434,24 +523,28 @@ fun ScoringScreen(
 
                 // Bowler with real-time stats
                 Column(
-                    modifier = Modifier.clickable { showBowlerDialog = true }
+                    modifier = Modifier.clickable { showBowlerDialog = true },
                 ) {
                     Text(
                         text = "⚾ Bowler: ${bowler?.name ?: "Select Bowler"}",
                         fontWeight = FontWeight.Medium,
-                        color = if (bowler == null) Color.Red else Color.Black
+                        color = if (bowler == null) Color.Red else Color.Black,
                     )
                     bowler?.let { currentBowler ->
                         Text(
-                            text = "${"%.1f".format(currentBowler.oversBowled)} overs, ${currentBowler.runsConceded} runs, ${currentBowler.wickets} wickets",
+                            text = "${"%.1f".format(
+                                currentBowler.oversBowled,
+                            )} overs, ${currentBowler.runsConceded} runs, ${currentBowler.wickets} wickets",
                             fontSize = 12.sp,
-                            color = Color.Gray
+                            color = Color.Gray,
                         )
                         Text(
-                            text = "Economy: ${"%.1f".format(currentBowler.economy)} | Spell: ${currentBowlerSpell} over${if (currentBowlerSpell != 1) "s" else ""}",
+                            text = "Economy: ${"%.1f".format(
+                                currentBowler.economy,
+                            )} | Spell: $currentBowlerSpell over${if (currentBowlerSpell != 1) "s" else ""}",
                             fontSize = 10.sp,
                             color = Color(0xFFFF5722),
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
                         )
 
                         // Show next over warning
@@ -460,7 +553,7 @@ fun ScoringScreen(
                                 text = "⚠️ Bowler change required after this over",
                                 fontSize = 10.sp,
                                 color = Color(0xFFFF5722),
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
                             )
                         }
                     }
@@ -473,7 +566,7 @@ fun ScoringScreen(
                         text = "🃏 Joker Available: ${joker.name}",
                         fontSize = 12.sp,
                         color = Color(0xFFFF9800),
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
                     )
                 }
             }
@@ -486,12 +579,12 @@ fun ScoringScreen(
             Text(
                 text = "Runs",
                 fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
             )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 for (i in 0..6) {
                     Button(
@@ -502,7 +595,7 @@ fun ScoringScreen(
                                     runs = player.runs + i,
                                     ballsFaced = player.ballsFaced + 1,
                                     fours = if (i == 4) player.fours + 1 else player.fours,
-                                    sixes = if (i == 6) player.sixes + 1 else player.sixes
+                                    sixes = if (i == 6) player.sixes + 1 else player.sixes,
                                 )
                             }
 
@@ -510,7 +603,7 @@ fun ScoringScreen(
                             updateBowlerStats { player ->
                                 player.copy(
                                     runsConceded = player.runsConceded + i,
-                                    ballsBowled = player.ballsBowled + 1
+                                    ballsBowled = player.ballsBowled + 1,
                                 )
                             }
 
@@ -538,16 +631,23 @@ fun ScoringScreen(
                                 Toast.makeText(context, "Over complete! Select new bowler", Toast.LENGTH_LONG).show()
                             }
 
-                            Toast.makeText(context, "$i run(s) scored by ${striker?.name}! Total: $calculatedTotalRuns", Toast.LENGTH_SHORT).show()
+                            Toast
+                                .makeText(
+                                    context,
+                                    "$i run(s) scored by ${striker?.name}! Total: $calculatedTotalRuns",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
                         },
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = when(i) {
-                                4 -> Color(0xFF4CAF50)
-                                6 -> Color(0xFF2196F3)
-                                else -> Color(0xFF9E9E9E)
-                            }
-                        )
+                        colors =
+                            ButtonDefaults.buttonColors(
+                                containerColor =
+                                    when (i) {
+                                        4 -> Color(0xFF4CAF50)
+                                        6 -> Color(0xFF2196F3)
+                                        else -> Color(0xFF9E9E9E)
+                                    },
+                            ),
                     ) {
                         Text(i.toString(), fontWeight = FontWeight.Bold)
                     }
@@ -559,12 +659,12 @@ fun ScoringScreen(
             // Enhanced Extras and Wicket buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Button(
                     onClick = { showExtrasDialog = true },
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800)),
                 ) {
                     Text("Extras", fontSize = 12.sp)
                 }
@@ -572,7 +672,7 @@ fun ScoringScreen(
                 Button(
                     onClick = { showWicketDialog = true },
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
                 ) {
                     Text("Wicket", fontSize = 12.sp)
                 }
@@ -581,7 +681,7 @@ fun ScoringScreen(
             // Innings complete message
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5))
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5)),
             ) {
                 Text(
                     text = if (currentInnings == 1) "First Innings Complete! Total: $calculatedTotalRuns runs" else "Match Complete!",
@@ -589,24 +689,24 @@ fun ScoringScreen(
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF7B1FA2),
                     modifier = Modifier.padding(16.dp),
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
                 )
             }
         } else {
             // Setup required message
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
                         text = "⚠️ Please select players to start scoring",
                         fontSize = 16.sp,
                         color = Color(0xFFFF9800),
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
                     )
 
                     if (matchSettings.allowSingleSideBatting) {
@@ -614,7 +714,7 @@ fun ScoringScreen(
                             text = "Single side batting enabled - only one batsman required",
                             fontSize = 12.sp,
                             color = Color.Gray,
-                            fontStyle = FontStyle.Italic
+                            fontStyle = FontStyle.Italic,
                         )
                     }
                 }
@@ -640,7 +740,7 @@ fun ScoringScreen(
             currentBalls = ballsInOver,
             totalOvers = matchSettings.totalOvers,
             jokerPlayerName = jokerName,
-            onDismiss = { showLiveScorecardDialog = false }
+            onDismiss = { showLiveScorecardDialog = false },
         )
     }
 
@@ -671,7 +771,7 @@ fun ScoringScreen(
                         updateBowlerStats { player ->
                             player.copy(
                                 runsConceded = player.runsConceded + runs,
-                                ballsBowled = player.ballsBowled + 1
+                                ballsBowled = player.ballsBowled + 1,
                             )
                         }
                         totalExtras += runs
@@ -730,7 +830,7 @@ fun ScoringScreen(
 
                 showExtrasDialog = false
             },
-            onDismiss = { showExtrasDialog = false }
+            onDismiss = { showExtrasDialog = false },
         )
     }
 
@@ -745,35 +845,37 @@ fun ScoringScreen(
             allowSingleSide = matchSettings.allowSingleSideBatting,
             onPlayerSelected = { player ->
                 if (selectingBatsman == 1) {
-                    strikerIndex = if (player.isJoker) {
-                        if (!battingTeamPlayers.any { it.isJoker }) {
-                            val newList = battingTeamPlayers.toMutableList()
-                            newList.add(jokerPlayer!!.copy())
-                            battingTeamPlayers = newList
-                            battingTeamPlayers.size - 1
+                    strikerIndex =
+                        if (player.isJoker) {
+                            if (!battingTeamPlayers.any { it.isJoker }) {
+                                val newList = battingTeamPlayers.toMutableList()
+                                newList.add(jokerPlayer!!.copy())
+                                battingTeamPlayers = newList
+                                battingTeamPlayers.size - 1
+                            } else {
+                                battingTeamPlayers.indexOfFirst { it.isJoker }
+                            }
                         } else {
-                            battingTeamPlayers.indexOfFirst { it.isJoker }
+                            battingTeamPlayers.indexOfFirst { it.name == player.name }
                         }
-                    } else {
-                        battingTeamPlayers.indexOfFirst { it.name == player.name }
-                    }
                 } else {
-                    nonStrikerIndex = if (player.isJoker) {
-                        if (!battingTeamPlayers.any { it.isJoker }) {
-                            val newList = battingTeamPlayers.toMutableList()
-                            newList.add(jokerPlayer!!.copy())
-                            battingTeamPlayers = newList
-                            battingTeamPlayers.size - 1
+                    nonStrikerIndex =
+                        if (player.isJoker) {
+                            if (!battingTeamPlayers.any { it.isJoker }) {
+                                val newList = battingTeamPlayers.toMutableList()
+                                newList.add(jokerPlayer!!.copy())
+                                battingTeamPlayers = newList
+                                battingTeamPlayers.size - 1
+                            } else {
+                                battingTeamPlayers.indexOfFirst { it.isJoker }
+                            }
                         } else {
-                            battingTeamPlayers.indexOfFirst { it.isJoker }
+                            battingTeamPlayers.indexOfFirst { it.name == player.name }
                         }
-                    } else {
-                        battingTeamPlayers.indexOfFirst { it.name == player.name }
-                    }
                 }
                 showBatsmanDialog = false
             },
-            onDismiss = { showBatsmanDialog = false }
+            onDismiss = { showBatsmanDialog = false },
         )
     }
 
@@ -781,26 +883,30 @@ fun ScoringScreen(
     if (showBowlerDialog) {
         EnhancedPlayerSelectionDialog(
             title = if (previousBowlerIndex != null) "Select New Bowler (Same bowler cannot bowl consecutive overs)" else "Select Bowler",
-            players = bowlingTeamPlayers.filterIndexed { index, _ ->
-                index != previousBowlerIndex // Exclude previous bowler
-            },
-            jokerPlayer = if (previousBowlerIndex != null && bowlingTeamPlayers.getOrNull(previousBowlerIndex!!)?.isJoker == true)
-                null // Exclude joker if they were the previous bowler
-            else
-                jokerPlayer,
-            onPlayerSelected = { player ->
-                bowlerIndex = if (player.isJoker) {
-                    if (!bowlingTeamPlayers.any { it.isJoker }) {
-                        val newList = bowlingTeamPlayers.toMutableList()
-                        newList.add(jokerPlayer!!.copy())
-                        bowlingTeamPlayers = newList
-                        bowlingTeamPlayers.size - 1
-                    } else {
-                        bowlingTeamPlayers.indexOfFirst { it.isJoker }
-                    }
+            players =
+                bowlingTeamPlayers.filterIndexed { index, _ ->
+                    index != previousBowlerIndex // Exclude previous bowler
+                },
+            jokerPlayer =
+                if (previousBowlerIndex != null && bowlingTeamPlayers.getOrNull(previousBowlerIndex!!)?.isJoker == true) {
+                    null // Exclude joker if they were the previous bowler
                 } else {
-                    bowlingTeamPlayers.indexOfFirst { it.name == player.name }
-                }
+                    jokerPlayer
+                },
+            onPlayerSelected = { player ->
+                bowlerIndex =
+                    if (player.isJoker) {
+                        if (!bowlingTeamPlayers.any { it.isJoker }) {
+                            val newList = bowlingTeamPlayers.toMutableList()
+                            newList.add(jokerPlayer!!.copy())
+                            bowlingTeamPlayers = newList
+                            bowlingTeamPlayers.size - 1
+                        } else {
+                            bowlingTeamPlayers.indexOfFirst { it.isJoker }
+                        }
+                    } else {
+                        bowlingTeamPlayers.indexOfFirst { it.name == player.name }
+                    }
 
                 currentBowlerSpell = 1
                 showBowlerDialog = false
@@ -811,7 +917,7 @@ fun ScoringScreen(
                 } else {
                     showBowlerDialog = false
                 }
-            }
+            },
         )
     }
 
@@ -826,7 +932,7 @@ fun ScoringScreen(
                 updateStrikerAndTotals { player ->
                     player.copy(
                         isOut = true,
-                        ballsFaced = player.ballsFaced + 1
+                        ballsFaced = player.ballsFaced + 1,
                     )
                 }
 
@@ -834,7 +940,7 @@ fun ScoringScreen(
                 updateBowlerStats { player ->
                     player.copy(
                         wickets = player.wickets + 1,
-                        ballsBowled = player.ballsBowled + 1
+                        ballsBowled = player.ballsBowled + 1,
                     )
                 }
 
@@ -849,11 +955,12 @@ fun ScoringScreen(
                     showBowlerDialog = true
                 }
 
-                Toast.makeText(
-                    context,
-                    "Wicket! ${striker?.name} is ${wicketType.name.lowercase().replace("_", " ")}",
-                    Toast.LENGTH_LONG
-                ).show()
+                Toast
+                    .makeText(
+                        context,
+                        "Wicket! ${striker?.name} is ${wicketType.name.lowercase().replace("_", " ")}",
+                        Toast.LENGTH_LONG,
+                    ).show()
 
                 // Reset striker and show new batsman dialog if not all out
                 strikerIndex = null
@@ -874,7 +981,7 @@ fun ScoringScreen(
 
                 showWicketDialog = false
             },
-            onDismiss = { showWicketDialog = false }
+            onDismiss = { showWicketDialog = false },
         )
     }
 
@@ -903,23 +1010,27 @@ fun ScoringScreen(
                 bowlingTeamName = tempName
 
                 // Reset all player stats for second innings
-                battingTeamPlayers = battingTeamPlayers.map { player ->
-                    player.copy(
-                        runs = 0,
-                        ballsFaced = 0,
-                        fours = 0,
-                        sixes = 0,
-                        isOut = false
-                    )
-                }.toMutableList()
+                battingTeamPlayers =
+                    battingTeamPlayers
+                        .map { player ->
+                            player.copy(
+                                runs = 0,
+                                ballsFaced = 0,
+                                fours = 0,
+                                sixes = 0,
+                                isOut = false,
+                            )
+                        }.toMutableList()
 
-                bowlingTeamPlayers = bowlingTeamPlayers.map { player ->
-                    player.copy(
-                        wickets = 0,
-                        runsConceded = 0,
-                        ballsBowled = 0
-                    )
-                }.toMutableList()
+                bowlingTeamPlayers =
+                    bowlingTeamPlayers
+                        .map { player ->
+                            player.copy(
+                                wickets = 0,
+                                runsConceded = 0,
+                                ballsBowled = 0,
+                            )
+                        }.toMutableList()
 
                 // Reset match state
                 totalWickets = 0
@@ -937,7 +1048,7 @@ fun ScoringScreen(
                 showInningsBreakDialog = false
                 showBatsmanDialog = true
                 selectingBatsman = 1
-            }
+            },
         )
     }
 
@@ -958,11 +1069,11 @@ fun ScoringScreen(
             onNewMatch = {
                 val intent = android.content.Intent(context, MainActivity::class.java)
                 intent.flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
                 context.startActivity(intent)
                 (context as androidx.activity.ComponentActivity).finish()
             },
-            onDismiss = { showMatchCompleteDialog = false }
+            onDismiss = { showMatchCompleteDialog = false },
         )
     }
 
@@ -979,7 +1090,7 @@ fun ScoringScreen(
                         context.startActivity(intent)
                         (context as androidx.activity.ComponentActivity).finish()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
                 ) {
                     Text("Exit")
                 }
@@ -988,7 +1099,7 @@ fun ScoringScreen(
                 TextButton(onClick = { showExitDialog = false }) {
                     Text("Continue Match")
                 }
-            }
+            },
         )
     }
 }
@@ -1011,7 +1122,7 @@ fun LiveScorecardDialog(
     currentBalls: Int,
     totalOvers: Int,
     jokerPlayerName: String,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1019,34 +1130,34 @@ fun LiveScorecardDialog(
             Text(
                 text = "🏏 Live Scorecard",
                 fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
             )
         },
         text = {
             LazyColumn(
                 modifier = Modifier.height(500.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 // Current Innings Score
                 item {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF2E7D32))
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF2E7D32)),
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                            horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Text(
                                 text = "$battingTeamName - Innings $currentInnings",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = Color.White,
                             )
                             Text(
                                 text = "$currentRuns/$currentWickets ($currentOvers.$currentBalls/$totalOvers overs)",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = Color.White,
                             )
 
                             if (currentInnings == 2) {
@@ -1055,7 +1166,7 @@ fun LiveScorecardDialog(
                                 Text(
                                     text = if (required > 0) "Need $required runs" else "Target achieved!",
                                     fontSize = 12.sp,
-                                    color = if (required > 0) Color.Yellow else Color.Green
+                                    color = if (required > 0) Color.Yellow else Color.Green,
                                 )
                             }
                         }
@@ -1069,7 +1180,7 @@ fun LiveScorecardDialog(
                             text = "First Innings Summary",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2E7D32)
+                            color = Color(0xFF2E7D32),
                         )
                     }
 
@@ -1079,7 +1190,7 @@ fun LiveScorecardDialog(
                                 Text(
                                     text = "${if (battingTeamName == "Team A") "Team B" else "Team A"}: $firstInningsRuns/$firstInningsWickets",
                                     fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
                                 )
 
                                 if (firstInningsBattingPlayers.isNotEmpty()) {
@@ -1108,7 +1219,7 @@ fun LiveScorecardDialog(
                         text = "Current Innings - Batting",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2196F3)
+                        color = Color(0xFF2196F3),
                     )
                 }
 
@@ -1123,7 +1234,7 @@ fun LiveScorecardDialog(
                             text = "No batting data yet",
                             fontSize = 12.sp,
                             color = Color.Gray,
-                            fontStyle = FontStyle.Italic
+                            fontStyle = FontStyle.Italic,
                         )
                     }
                 }
@@ -1137,7 +1248,7 @@ fun LiveScorecardDialog(
                             fontSize = 11.sp,
                             color = Color.Gray,
                             fontStyle = FontStyle.Italic,
-                            modifier = Modifier.padding(start = 8.dp)
+                            modifier = Modifier.padding(start = 8.dp),
                         )
                     }
                 }
@@ -1149,7 +1260,7 @@ fun LiveScorecardDialog(
                         text = "Current Innings - Bowling",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFF5722)
+                        color = Color(0xFFFF5722),
                     )
                 }
 
@@ -1164,7 +1275,7 @@ fun LiveScorecardDialog(
                             text = "No bowling data yet",
                             fontSize = 12.sp,
                             color = Color.Gray,
-                            fontStyle = FontStyle.Italic
+                            fontStyle = FontStyle.Italic,
                         )
                     }
                 }
@@ -1178,7 +1289,7 @@ fun LiveScorecardDialog(
                             fontSize = 11.sp,
                             color = Color.Gray,
                             fontStyle = FontStyle.Italic,
-                            modifier = Modifier.padding(start = 8.dp)
+                            modifier = Modifier.padding(start = 8.dp),
                         )
                     }
                 }
@@ -1196,7 +1307,7 @@ fun LiveScorecardDialog(
                                     text = "🃏 Joker Player: $jokerPlayerName",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFFF9800)
+                                    color = Color(0xFFFF9800),
                                 )
 
                                 when {
@@ -1204,21 +1315,23 @@ fun LiveScorecardDialog(
                                         Text(
                                             text = "Currently batting: ${jokerInBatting.runs} runs (${jokerInBatting.ballsFaced} balls)",
                                             fontSize = 10.sp,
-                                            color = Color(0xFFFF9800)
+                                            color = Color(0xFFFF9800),
                                         )
                                     }
                                     jokerInBowling != null -> {
                                         Text(
-                                            text = "Currently bowling: ${jokerInBowling.wickets}/${jokerInBowling.runsConceded} (${"%.1f".format(jokerInBowling.oversBowled)} overs)",
+                                            text = "Currently bowling: ${jokerInBowling.wickets}/${jokerInBowling.runsConceded} (${"%.1f".format(
+                                                jokerInBowling.oversBowled,
+                                            )} overs)",
                                             fontSize = 10.sp,
-                                            color = Color(0xFFFF9800)
+                                            color = Color(0xFFFF9800),
                                         )
                                     }
                                     else -> {
                                         Text(
                                             text = "Available for both teams",
                                             fontSize = 10.sp,
-                                            color = Color(0xFFFF9800)
+                                            color = Color(0xFFFF9800),
                                         )
                                     }
                                 }
@@ -1232,25 +1345,29 @@ fun LiveScorecardDialog(
             TextButton(onClick = onDismiss) {
                 Text("Close")
             }
-        }
+        },
     )
 }
 
 @Composable
-fun LivePlayerStatCard(player: Player, type: String) {
+fun LivePlayerStatCard(
+    player: Player,
+    type: String,
+) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = if (player.isJoker) "🃏 ${player.name}" else player.name,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.weight(1f),
-            color = if (player.isJoker) Color(0xFFFF9800) else Color.Black
+            color = if (player.isJoker) Color(0xFFFF9800) else Color.Black,
         )
 
         when (type) {
@@ -1259,13 +1376,13 @@ fun LivePlayerStatCard(player: Player, type: String) {
                     Text(
                         text = "${player.runs}${if (!player.isOut && player.ballsFaced > 0) "*" else ""} (${player.ballsFaced})",
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
                     )
                     if (player.fours > 0 || player.sixes > 0) {
                         Text(
                             text = "4s:${player.fours} 6s:${player.sixes}",
                             fontSize = 10.sp,
-                            color = Color.Gray
+                            color = Color.Gray,
                         )
                     }
                 }
@@ -1276,12 +1393,12 @@ fun LivePlayerStatCard(player: Player, type: String) {
                         text = "${player.wickets}/${player.runsConceded}",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFFFF5722)
+                        color = Color(0xFFFF5722),
                     )
                     Text(
                         text = "${"%.1f".format(player.oversBowled)} ov, Eco: ${"%.1f".format(player.economy)}",
                         fontSize = 10.sp,
-                        color = Color.Gray
+                        color = Color.Gray,
                     )
                 }
             }
@@ -1301,7 +1418,7 @@ fun EnhancedInningsBreakDialog(
     battingPlayers: List<Player>,
     bowlingPlayers: List<Player>,
     totalOvers: Int,
-    onStartSecondInnings: () -> Unit
+    onStartSecondInnings: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = { },
@@ -1309,31 +1426,31 @@ fun EnhancedInningsBreakDialog(
             Text(
                 text = "🏏 First Innings Complete",
                 fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
             )
         },
         text = {
             LazyColumn(
                 modifier = Modifier.height(400.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 item {
                     Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF2E7D32))) {
                         Column(
                             modifier = Modifier.padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                            horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Text(
                                 text = battingTeam,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = Color.White,
                             )
                             Text(
                                 text = "$runs/$wickets ($overs.$balls/$totalOvers overs)",
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = Color.White,
                             )
                         }
                     }
@@ -1344,7 +1461,7 @@ fun EnhancedInningsBreakDialog(
                         text = "Batting Performance",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2196F3)
+                        color = Color(0xFF2196F3),
                     )
                 }
 
@@ -1359,7 +1476,7 @@ fun EnhancedInningsBreakDialog(
                             text = "Did not bat: ${didNotBat.joinToString(", ") { it.name }}",
                             fontSize = 12.sp,
                             color = Color.Gray,
-                            fontStyle = FontStyle.Italic
+                            fontStyle = FontStyle.Italic,
                         )
                     }
                 }
@@ -1370,7 +1487,7 @@ fun EnhancedInningsBreakDialog(
                         text = "Bowling Performance",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFF5722)
+                        color = Color(0xFFFF5722),
                     )
                 }
 
@@ -1385,7 +1502,7 @@ fun EnhancedInningsBreakDialog(
                             text = "Did not bowl: ${didNotBowl.joinToString(", ") { it.name }}",
                             fontSize = 12.sp,
                             color = Color.Gray,
-                            fontStyle = FontStyle.Italic
+                            fontStyle = FontStyle.Italic,
                         )
                     }
                 }
@@ -1394,11 +1511,11 @@ fun EnhancedInningsBreakDialog(
         confirmButton = {
             Button(
                 onClick = onStartSecondInnings,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
             ) {
                 Text("Start 2nd Innings")
             }
-        }
+        },
     )
 }
 
@@ -1406,7 +1523,7 @@ fun EnhancedInningsBreakDialog(
 fun ExtrasDialog(
     matchSettings: MatchSettings,
     onExtraSelected: (ExtraType, Int) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1416,7 +1533,7 @@ fun ExtrasDialog(
                 Button(
                     onClick = { onExtraSelected(ExtraType.NO_BALL, matchSettings.noballRuns) },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800)),
                 ) {
                     Text("No Ball (+${matchSettings.noballRuns} runs)")
                 }
@@ -1426,7 +1543,7 @@ fun ExtrasDialog(
                 Button(
                     onClick = { onExtraSelected(ExtraType.BYE, matchSettings.byeRuns) },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9E9E9E))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9E9E9E)),
                 ) {
                     Text("Bye (+${matchSettings.byeRuns} runs)")
                 }
@@ -1436,7 +1553,7 @@ fun ExtrasDialog(
                 Button(
                     onClick = { onExtraSelected(ExtraType.LEG_BYE, matchSettings.legByeRuns) },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9E9E9E))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9E9E9E)),
                 ) {
                     Text("Leg Bye (+${matchSettings.legByeRuns} runs)")
                 }
@@ -1447,14 +1564,14 @@ fun ExtrasDialog(
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
             }
-        }
+        },
     )
 }
 
 @Composable
 fun WicketTypeDialog(
     onWicketSelected: (WicketType) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1462,25 +1579,31 @@ fun WicketTypeDialog(
             Text(
                 text = "How was the batsman out?",
                 fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
             )
         },
         text = {
             LazyColumn {
                 items(WicketType.values()) { wicketType ->
                     Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .clickable { onWicketSelected(wicketType) },
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFFFFEBEE)
-                        )
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable { onWicketSelected(wicketType) },
+                        colors =
+                            CardDefaults.cardColors(
+                                containerColor = Color(0xFFFFEBEE),
+                            ),
                     ) {
                         Text(
-                            text = wicketType.name.lowercase().replace("_", " ").uppercase(),
+                            text =
+                                wicketType.name
+                                    .lowercase()
+                                    .replace("_", " ")
+                                    .uppercase(),
                             modifier = Modifier.padding(16.dp),
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
                         )
                     }
                 }
@@ -1491,7 +1614,7 @@ fun WicketTypeDialog(
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
             }
-        }
+        },
     )
 }
 
@@ -1504,48 +1627,91 @@ fun EnhancedMatchCompleteDialog(
     team1Name: String,
     team2Name: String,
     jokerPlayerName: String?,
-    firstInningsBattingPlayers: List<Player>,
-    firstInningsBowlingPlayers: List<Player>,
-    secondInningsBattingPlayers: List<Player>,
-    secondInningsBowlingPlayers: List<Player>,
+    firstInningsBattingPlayers: List<Player> = emptyList(),
+    firstInningsBowlingPlayers: List<Player> = emptyList(),
+    secondInningsBattingPlayers: List<Player> = emptyList(),
+    secondInningsBowlingPlayers: List<Player> = emptyList(),
     onNewMatch: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val winner = if (secondInningsRuns > firstInningsRuns) team2Name else team1Name
+    val margin =
+        if (secondInningsRuns > firstInningsRuns) {
+            "${calculateWicketMargin(secondInningsWickets)} wickets"
+        } else {
+            "${firstInningsRuns - secondInningsRuns} runs"
+        }
+
+    // Convert Player objects to PlayerMatchStats for analysis
+    val firstInningsBattingStats = firstInningsBattingPlayers.map { it.toMatchStats(team1Name) }
+    val firstInningsBowlingStats = firstInningsBowlingPlayers.map { it.toMatchStats(team2Name) }
+    val secondInningsBattingStats = secondInningsBattingPlayers.map { it.toMatchStats(team2Name) }
+    val secondInningsBowlingStats = secondInningsBowlingPlayers.map { it.toMatchStats(team1Name) }
+
+    // Find overall top performers across both innings
+    val allBattingStats = firstInningsBattingStats + secondInningsBattingStats
+    val allBowlingStats = firstInningsBowlingStats + secondInningsBowlingStats
+    val topBatsman = allBattingStats.maxByOrNull { it.runs }
+    val topBowler = allBowlingStats.maxByOrNull { it.wickets }
+
+    // Find best performances by innings
+    val bestFirstInningsBat = firstInningsBattingStats.maxByOrNull { it.runs }
+    val bestSecondInningsBat = secondInningsBattingStats.maxByOrNull { it.runs }
+
+    LaunchedEffect(Unit) {
+        // Save complete match with all detailed statistics
+        saveMatchToHistory(
+            team1Name = team1Name,
+            team2Name = team2Name,
+            jokerPlayerName = jokerPlayerName,
+            firstInningsRuns = firstInningsRuns,
+            firstInningsWickets = firstInningsWickets,
+            secondInningsRuns = secondInningsRuns,
+            secondInningsWickets = secondInningsWickets,
+            winnerTeam = winner,
+            winningMargin = margin,
+            firstInningsBattingStats = firstInningsBattingStats,
+            firstInningsBowlingStats = firstInningsBowlingStats,
+            secondInningsBattingStats = secondInningsBattingStats,
+            secondInningsBowlingStats = secondInningsBowlingStats,
+            context = context,
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "Match Complete!",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
+                text = "🏆 Match Complete!",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFFFD700),
             )
         },
         text = {
-            LazyColumn(
-                modifier = Modifier.height(500.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Match Result
+            LazyColumn {
                 item {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E8))
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E8)),
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                            horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             val winner = if (secondInningsRuns > firstInningsRuns) team2Name else team1Name
-                            val margin = if (secondInningsRuns > firstInningsRuns) {
-                                "${10 - secondInningsWickets} wickets"
-                            } else {
-                                "${firstInningsRuns - secondInningsRuns} runs"
-                            }
+                            val margin =
+                                if (secondInningsRuns > firstInningsRuns) {
+                                    "${10 - secondInningsWickets} wickets"
+                                } else {
+                                    "${firstInningsRuns - secondInningsRuns} runs"
+                                }
 
                             Text(
                                 text = "$winner won by $margin",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF2E7D32)
+                                color = Color(0xFF2E7D32),
                             )
                         }
                     }
@@ -1556,7 +1722,7 @@ fun EnhancedMatchCompleteDialog(
                     Text(
                         text = "$team1Name - 1st Innings: $firstInningsRuns/$firstInningsWickets",
                         fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
                     )
                 }
 
@@ -1566,7 +1732,7 @@ fun EnhancedMatchCompleteDialog(
                         text = "Batting",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFF2196F3)
+                        color = Color(0xFF2196F3),
                     )
                 }
 
@@ -1575,9 +1741,11 @@ fun EnhancedMatchCompleteDialog(
                 }
 
                 // Players who didn't bat in first innings
-                val team1AllPlayers = firstInningsBattingPlayers + firstInningsBowlingPlayers.filter { bowler ->
-                    !firstInningsBattingPlayers.any { it.name == bowler.name }
-                }
+                val team1AllPlayers =
+                    firstInningsBattingPlayers +
+                        firstInningsBowlingPlayers.filter { bowler ->
+                            !firstInningsBattingPlayers.any { it.name == bowler.name }
+                        }
 
                 // First Innings Bowling
                 item {
@@ -1586,7 +1754,7 @@ fun EnhancedMatchCompleteDialog(
                         text = "Bowling",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFFFF5722)
+                        color = Color(0xFFFF5722),
                     )
                 }
 
@@ -1595,9 +1763,11 @@ fun EnhancedMatchCompleteDialog(
                 }
 
                 // Players who didn't bowl in first innings
-                val team2AllPlayers = firstInningsBowlingPlayers + firstInningsBattingPlayers.filter { batter ->
-                    !firstInningsBowlingPlayers.any { it.name == batter.name }
-                }
+                val team2AllPlayers =
+                    firstInningsBowlingPlayers +
+                        firstInningsBattingPlayers.filter { batter ->
+                            !firstInningsBowlingPlayers.any { it.name == batter.name }
+                        }
 
                 // Second Innings Summary
                 item {
@@ -1605,7 +1775,7 @@ fun EnhancedMatchCompleteDialog(
                     Text(
                         text = "$team2Name - 2nd Innings: $secondInningsRuns/$secondInningsWickets",
                         fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
                     )
                 }
 
@@ -1615,7 +1785,7 @@ fun EnhancedMatchCompleteDialog(
                         text = "Batting",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFF2196F3)
+                        color = Color(0xFF2196F3),
                     )
                 }
 
@@ -1630,14 +1800,13 @@ fun EnhancedMatchCompleteDialog(
                         text = "Bowling",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFFFF5722)
+                        color = Color(0xFFFF5722),
                     )
                 }
 
                 items(secondInningsBowlingPlayers.sortedByDescending { it.wickets }) { player ->
                     PlayerStatCard(player, "bowling")
                 }
-
 
                 // Joker player performance
                 jokerPlayerName?.let { jokerName ->
@@ -1647,19 +1816,19 @@ fun EnhancedMatchCompleteDialog(
                     val jokerSecondInningsBowl = secondInningsBowlingPlayers.find { it.name == jokerName }
 
                     if (jokerFirstInningsBat != null || jokerFirstInningsBowl != null ||
-                        jokerSecondInningsBat != null || jokerSecondInningsBowl != null) {
-
+                        jokerSecondInningsBat != null || jokerSecondInningsBowl != null
+                    ) {
                         item {
                             Spacer(modifier = Modifier.height(16.dp))
                             Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
                             ) {
                                 Column(modifier = Modifier.padding(12.dp)) {
                                     Text(
                                         text = "🃏 Joker Performance: $jokerName",
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFFF9800)
+                                        color = Color(0xFFFF9800),
                                     )
 
                                     val totalRuns = (jokerFirstInningsBat?.runs ?: 0) + (jokerSecondInningsBat?.runs ?: 0)
@@ -1668,7 +1837,7 @@ fun EnhancedMatchCompleteDialog(
                                     Text(
                                         text = "Total: $totalRuns runs, $totalWickets wickets",
                                         fontSize = 12.sp,
-                                        color = Color(0xFFFF9800)
+                                        color = Color(0xFFFF9800),
                                     )
                                 }
                             }
@@ -1680,7 +1849,7 @@ fun EnhancedMatchCompleteDialog(
         confirmButton = {
             Button(
                 onClick = onNewMatch,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
             ) {
                 Text("New Match")
             }
@@ -1689,22 +1858,26 @@ fun EnhancedMatchCompleteDialog(
             TextButton(onClick = onDismiss) {
                 Text("View Details")
             }
-        }
+        },
     )
 }
 
 @Composable
-fun PlayerStatCard(player: Player, type: String) {
+fun PlayerStatCard(
+    player: Player,
+    type: String,
+) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
             text = if (player.isJoker) "🃏 ${player.name}" else player.name,
             fontSize = 12.sp,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
         )
 
         when (type) {
@@ -1712,20 +1885,21 @@ fun PlayerStatCard(player: Player, type: String) {
                 Text(
                     text = "${player.runs}${if (!player.isOut && player.ballsFaced > 0) "*" else ""} (${player.ballsFaced}) - 4s:${player.fours} 6s:${player.sixes}",
                     fontSize = 12.sp,
-                    color = Color.Gray
+                    color = Color.Gray,
                 )
             }
             "bowling" -> {
                 Text(
-                    text = "${player.wickets}/${player.runsConceded} (${"%.1f".format(player.oversBowled)} ov) Eco: ${"%.1f".format(player.economy)}",
+                    text = "${player.wickets}/${player.runsConceded} (${"%.1f".format(
+                        player.oversBowled,
+                    )} ov) Eco: ${"%.1f".format(player.economy)}",
                     fontSize = 12.sp,
-                    color = Color.Gray
+                    color = Color.Gray,
                 )
             }
         }
     }
 }
-
 
 // Helper function to calculate wicket margin
 fun calculateWicketMargin(wicketsLost: Int): Int {
@@ -1742,7 +1916,7 @@ fun EnhancedPlayerSelectionDialog(
     currentNonStrikerIndex: Int? = null,
     allowSingleSide: Boolean = false,
     onPlayerSelected: (Player) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1750,55 +1924,60 @@ fun EnhancedPlayerSelectionDialog(
             Text(
                 text = title,
                 fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
             )
         },
         text = {
             LazyColumn(
                 modifier = Modifier.height(300.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 // Filter available players
-                val availablePlayers = players.filterIndexed { index, player ->
-                    // Player is available if:
-                    // 1. Not currently out
-                    // 2. Not already selected as striker or non-striker
-                    // 3. Or if single side batting is allowed, can reselect same player
-                    !player.isOut &&
+                val availablePlayers =
+                    players.filterIndexed { index, player ->
+                        // Player is available if:
+                        // 1. Not currently out
+                        // 2. Not already selected as striker or non-striker
+                        // 3. Or if single side batting is allowed, can reselect same player
+                        !player.isOut &&
                             (index != currentStrikerIndex && index != currentNonStrikerIndex)
-                }
+                    }
 
                 items(availablePlayers) { player ->
                     Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onPlayerSelected(player) },
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (player.isJoker) Color(0xFFFFF3E0) else Color(0xFFF5F5F5)
-                        )
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { onPlayerSelected(player) },
+                        colors =
+                            CardDefaults.cardColors(
+                                containerColor = if (player.isJoker) Color(0xFFFFF3E0) else Color(0xFFF5F5F5),
+                            ),
                     ) {
                         Column(
-                            modifier = Modifier.padding(16.dp)
+                            modifier = Modifier.padding(16.dp),
                         ) {
                             Text(
                                 text = if (player.isJoker) "🃏 ${player.name}" else player.name,
                                 fontWeight = FontWeight.Medium,
-                                color = if (player.isJoker) Color(0xFFFF9800) else Color.Black
+                                color = if (player.isJoker) Color(0xFFFF9800) else Color.Black,
                             )
 
                             // Show current match stats for batsmen
                             if (title.contains("Batsman", ignoreCase = true)) {
                                 if (player.ballsFaced > 0 || player.runs > 0) {
                                     Text(
-                                        text = "${player.runs}${if (!player.isOut && player.ballsFaced > 0) "*" else ""} (${player.ballsFaced}) - SR: ${"%.1f".format(player.strikeRate)}",
+                                        text = "${player.runs}${if (!player.isOut && player.ballsFaced > 0) "*" else ""} (${player.ballsFaced}) - SR: ${"%.1f".format(
+                                            player.strikeRate,
+                                        )}",
                                         fontSize = 12.sp,
-                                        color = if (player.isJoker) Color(0xFFFF9800) else Color.Gray
+                                        color = if (player.isJoker) Color(0xFFFF9800) else Color.Gray,
                                     )
                                     if (player.fours > 0 || player.sixes > 0) {
                                         Text(
                                             text = "4s: ${player.fours}, 6s: ${player.sixes}",
                                             fontSize = 10.sp,
-                                            color = Color.Gray
+                                            color = Color.Gray,
                                         )
                                     }
                                 } else {
@@ -1806,7 +1985,7 @@ fun EnhancedPlayerSelectionDialog(
                                         text = if (player.isJoker) "JOKER - Available for both teams" else "Yet to bat",
                                         fontSize = 12.sp,
                                         color = if (player.isJoker) Color(0xFFFF9800) else Color.Gray,
-                                        fontStyle = FontStyle.Italic
+                                        fontStyle = FontStyle.Italic,
                                     )
                                 }
                             }
@@ -1815,16 +1994,18 @@ fun EnhancedPlayerSelectionDialog(
                             if (title.contains("Bowler", ignoreCase = true)) {
                                 if (player.ballsBowled > 0 || player.wickets > 0 || player.runsConceded > 0) {
                                     Text(
-                                        text = "${player.wickets}/${player.runsConceded} (${"%.1f".format(player.oversBowled)} ov) - Eco: ${"%.1f".format(player.economy)}",
+                                        text = "${player.wickets}/${player.runsConceded} (${"%.1f".format(
+                                            player.oversBowled,
+                                        )} ov) - Eco: ${"%.1f".format(player.economy)}",
                                         fontSize = 12.sp,
-                                        color = if (player.isJoker) Color(0xFFFF9800) else Color.Gray
+                                        color = if (player.isJoker) Color(0xFFFF9800) else Color.Gray,
                                     )
                                 } else {
                                     Text(
                                         text = if (player.isJoker) "JOKER - Available for both teams" else "Yet to bowl",
                                         fontSize = 12.sp,
                                         color = if (player.isJoker) Color(0xFFFF9800) else Color.Gray,
-                                        fontStyle = FontStyle.Italic
+                                        fontStyle = FontStyle.Italic,
                                     )
                                 }
                             }
@@ -1837,33 +2018,37 @@ fun EnhancedPlayerSelectionDialog(
                     if (!players.any { it.name == joker.name && it.isJoker } && !joker.isOut) {
                         item {
                             Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onPlayerSelected(joker) },
-                                colors = CardDefaults.cardColors(
-                                    containerColor = Color(0xFFFFF3E0)
-                                )
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onPlayerSelected(joker) },
+                                colors =
+                                    CardDefaults.cardColors(
+                                        containerColor = Color(0xFFFFF3E0),
+                                    ),
                             ) {
                                 Column(
-                                    modifier = Modifier.padding(16.dp)
+                                    modifier = Modifier.padding(16.dp),
                                 ) {
                                     Text(
                                         text = "🃏 ${joker.name}",
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFFF9800)
+                                        color = Color(0xFFFF9800),
                                     )
 
                                     if (title.contains("Batsman", ignoreCase = true)) {
                                         Text(
                                             text = "JOKER - Can bat for this team (${joker.runs} runs, ${joker.ballsFaced} balls)",
                                             fontSize = 12.sp,
-                                            color = Color(0xFFFF9800)
+                                            color = Color(0xFFFF9800),
                                         )
                                     } else if (title.contains("Bowler", ignoreCase = true)) {
                                         Text(
-                                            text = "JOKER - Can bowl for this team (${joker.wickets} wickets, ${"%.1f".format(joker.oversBowled)} overs)",
+                                            text = "JOKER - Can bowl for this team (${joker.wickets} wickets, ${"%.1f".format(
+                                                joker.oversBowled,
+                                            )} overs)",
                                             fontSize = 12.sp,
-                                            color = Color(0xFFFF9800)
+                                            color = Color(0xFFFF9800),
                                         )
                                     }
                                 }
@@ -1877,17 +2062,18 @@ fun EnhancedPlayerSelectionDialog(
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE))
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
                         ) {
                             Text(
-                                text = if (title.contains("Batsman", ignoreCase = true)) {
-                                    if (allowSingleSide) "All batsmen are out or selected" else "No available batsmen"
-                                } else {
-                                    "No available bowlers"
-                                },
+                                text =
+                                    if (title.contains("Batsman", ignoreCase = true)) {
+                                        if (allowSingleSide) "All batsmen are out or selected" else "No available batsmen"
+                                    } else {
+                                        "No available bowlers"
+                                    },
                                 modifier = Modifier.padding(16.dp),
                                 color = Color(0xFFF44336),
-                                textAlign = TextAlign.Center
+                                textAlign = TextAlign.Center,
                             )
                         }
                     }
@@ -1899,6 +2085,6 @@ fun EnhancedPlayerSelectionDialog(
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
             }
-        }
+        },
     )
 }

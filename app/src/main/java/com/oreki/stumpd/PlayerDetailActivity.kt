@@ -30,7 +30,7 @@ class PlayerDetailActivity : ComponentActivity() {
             StumpdTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = MaterialTheme.colorScheme.background,
                 ) {
                     PlayerDetailScreen(playerName)
                 }
@@ -54,7 +54,7 @@ fun PlayerDetailScreen(playerName: String) {
     if (player == null) {
         Box(
             modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator()
@@ -66,25 +66,26 @@ fun PlayerDetailScreen(playerName: String) {
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(16.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(
                 onClick = {
                     val intent = Intent(context, AddPlayerActivity::class.java)
                     context.startActivity(intent)
                     (context as ComponentActivity).finish()
-                }
+                },
             ) {
                 Icon(
                     Icons.Default.ArrowBack,
                     contentDescription = "Back",
-                    tint = Color(0xFF2E7D32)
+                    tint = Color(0xFF2E7D32),
                 )
             }
 
@@ -93,12 +94,12 @@ fun PlayerDetailScreen(playerName: String) {
                     text = player!!.name,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32)
+                    color = Color(0xFF2E7D32),
                 )
                 Text(
                     text = "${player!!.totalMatches} matches • Last played ${formatDate(player!!.lastPlayed)}",
                     fontSize = 14.sp,
-                    color = Color.Gray
+                    color = Color.Gray,
                 )
             }
         }
@@ -107,23 +108,23 @@ fun PlayerDetailScreen(playerName: String) {
 
         TabRow(
             selectedTabIndex = selectedTab,
-            containerColor = Color.Transparent
+            containerColor = Color.Transparent,
         ) {
             Tab(
                 selected = selectedTab == 0,
-                onClick = { selectedTab = 0 }
+                onClick = { selectedTab = 0 },
             ) {
                 Text("Overview", modifier = Modifier.padding(16.dp))
             }
             Tab(
                 selected = selectedTab == 1,
-                onClick = { selectedTab = 1 }
+                onClick = { selectedTab = 1 },
             ) {
                 Text("Matches", modifier = Modifier.padding(16.dp))
             }
             Tab(
                 selected = selectedTab == 2,
-                onClick = { selectedTab = 2 }
+                onClick = { selectedTab = 2 },
             ) {
                 Text("Statistics", modifier = Modifier.padding(16.dp))
             }
@@ -145,21 +146,21 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F8FF))
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F8FF)),
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
                         text = "🏏 Batting Summary",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32)
+                        color = Color(0xFF2E7D32),
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         StatBox("Runs", player.totalRuns.toString(), Modifier.weight(1f))
                         StatBox("Average", "%.1f".format(player.battingAverage), Modifier.weight(1f))
@@ -170,7 +171,7 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         StatBox("4s", player.totalFours.toString(), Modifier.weight(1f))
                         StatBox("6s", player.totalSixes.toString(), Modifier.weight(1f))
@@ -183,14 +184,14 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1))
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
                         text = "⚾ Bowling Summary",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32)
+                        color = Color(0xFF2E7D32),
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -198,10 +199,20 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
                     if (player.totalWickets > 0 || player.totalBallsBowled > 0) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
                             StatBox("Wickets", player.totalWickets.toString(), Modifier.weight(1f))
-                            StatBox("Average", if (player.totalWickets > 0) "%.1f".format(player.bowlingAverage) else "-", Modifier.weight(1f))
+                            StatBox(
+                                "Average",
+                                if (player.totalWickets >
+                                    0
+                                ) {
+                                    "%.1f".format(player.bowlingAverage)
+                                } else {
+                                    "-"
+                                },
+                                Modifier.weight(1f),
+                            )
                             StatBox("Economy", "%.1f".format(player.economyRate), Modifier.weight(1f))
                         }
 
@@ -209,7 +220,7 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
                             StatBox("Overs", "%.1f".format(player.oversBowled), Modifier.weight(1f))
                             StatBox("Runs Given", player.totalRunsConceded.toString(), Modifier.weight(1f))
@@ -219,7 +230,7 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
                         Text(
                             text = "No bowling statistics available",
                             fontSize = 14.sp,
-                            color = Color.Gray
+                            color = Color.Gray,
                         )
                     }
                 }
@@ -229,21 +240,22 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA)),
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
                         text = "📈 Recent Form (Last 5 Matches)",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32)
+                        color = Color(0xFF2E7D32),
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    val recentMatches = player.matchPerformances
-                        .sortedByDescending { it.matchDate }
-                        .take(5)
+                    val recentMatches =
+                        player.matchPerformances
+                            .sortedByDescending { it.matchDate }
+                            .take(5)
 
                     if (recentMatches.isEmpty()) {
                         Text("No recent matches", color = Color.Gray, fontSize = 14.sp)
@@ -266,17 +278,17 @@ fun PlayerMatchesTab(player: PlayerDetailedStats) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
                 ) {
                     Column(
                         modifier = Modifier.padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(text = "🏏", fontSize = 48.sp)
                         Text(
                             text = "No match data available",
                             fontSize = 18.sp,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
                         )
                     }
                 }
@@ -297,7 +309,7 @@ fun PlayerStatisticsTab(player: PlayerDetailedStats) {
                 text = "Career Statistics",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
+                color = Color(0xFF2E7D32),
             )
         }
 
@@ -308,7 +320,7 @@ fun PlayerStatisticsTab(player: PlayerDetailedStats) {
                         text = "Overall Performance",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        modifier = Modifier.padding(bottom = 8.dp),
                     )
 
                     StatRow("Matches Played", player.totalMatches.toString())
@@ -323,7 +335,7 @@ fun PlayerStatisticsTab(player: PlayerDetailedStats) {
                         Text(
                             text = "Bowling Records",
                             fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
                         )
                         StatRow("Overs Bowled", "%.1f".format(player.oversBowled))
                         StatRow("Runs Conceded", player.totalRunsConceded.toString())
@@ -339,7 +351,7 @@ fun PlayerStatisticsTab(player: PlayerDetailedStats) {
                         text = "Best Performances",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        modifier = Modifier.padding(bottom = 8.dp),
                     )
 
                     val bestBattingScore = player.matchPerformances.maxByOrNull { it.runs }
@@ -366,32 +378,40 @@ fun PlayerStatisticsTab(player: PlayerDetailedStats) {
 }
 
 @Composable
-fun StatBox(title: String, value: String, modifier: Modifier = Modifier) {
+fun StatBox(
+    title: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
             text = value,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF2E7D32)
+            color = Color(0xFF2E7D32),
         )
         Text(
             text = title,
             fontSize = 12.sp,
-            color = Color.Gray
+            color = Color.Gray,
         )
     }
 }
 
 @Composable
-fun StatRow(label: String, value: String) {
+fun StatRow(
+    label: String,
+    value: String,
+) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(text = label, fontSize = 14.sp)
         Text(text = value, fontSize = 14.sp, fontWeight = FontWeight.Medium)
@@ -401,22 +421,23 @@ fun StatRow(label: String, value: String) {
 @Composable
 fun RecentMatchCard(match: MatchPerformance) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Column {
             Text(
                 text = "vs ${match.opposingTeam}",
                 fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
             )
             Text(
                 text = formatDate(match.matchDate),
                 fontSize = 10.sp,
-                color = Color.Gray
+                color = Color.Gray,
             )
         }
 
@@ -425,14 +446,14 @@ fun RecentMatchCard(match: MatchPerformance) {
                 Text(
                     text = "${match.runs} (${match.ballsFaced})",
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
                 )
             }
             if (match.wickets > 0) {
                 Text(
                     text = "${match.wickets}/${match.runsConceded}",
                     fontSize = 12.sp,
-                    color = Color(0xFFFF5722)
+                    color = Color(0xFFFF5722),
                 )
             }
         }
@@ -441,7 +462,7 @@ fun RecentMatchCard(match: MatchPerformance) {
             imageVector = if (match.isWinner) Icons.Default.CheckCircle else Icons.Default.Close,
             contentDescription = if (match.isWinner) "Won" else "Lost",
             tint = if (match.isWinner) Color(0xFF4CAF50) else Color(0xFFF44336),
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(16.dp),
         )
     }
 }
@@ -450,29 +471,30 @@ fun RecentMatchCard(match: MatchPerformance) {
 fun MatchPerformanceCard(match: MatchPerformance) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (match.isWinner) Color(0xFFF0F8FF) else Color.White
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        colors =
+            CardDefaults.cardColors(
+                containerColor = if (match.isWinner) Color(0xFFF0F8FF) else Color.White,
+            ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(16.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column {
                     Text(
                         text = "${match.myTeam} vs ${match.opposingTeam}",
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
                     )
                     Text(
                         text = formatDate(match.matchDate),
                         fontSize = 12.sp,
-                        color = Color.Gray
+                        color = Color.Gray,
                     )
                 }
 
@@ -481,14 +503,14 @@ fun MatchPerformanceCard(match: MatchPerformance) {
                         Text(
                             text = "🃏",
                             fontSize = 14.sp,
-                            modifier = Modifier.padding(end = 4.dp)
+                            modifier = Modifier.padding(end = 4.dp),
                         )
                     }
                     Icon(
                         imageVector = if (match.isWinner) Icons.Default.CheckCircle else Icons.Default.Close,
                         contentDescription = if (match.isWinner) "Won" else "Lost",
                         tint = if (match.isWinner) Color(0xFF4CAF50) else Color(0xFFF44336),
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
@@ -497,17 +519,17 @@ fun MatchPerformanceCard(match: MatchPerformance) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
                         text = "Batting:",
                         fontSize = 12.sp,
-                        color = Color.Gray
+                        color = Color.Gray,
                     )
                     Text(
                         text = "${match.runs}${if (!match.isOut) "*" else ""} (${match.ballsFaced}) - 4s: ${match.fours}, 6s: ${match.sixes}",
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
                     )
                 }
             }
@@ -516,18 +538,18 @@ fun MatchPerformanceCard(match: MatchPerformance) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
                         text = "Bowling:",
                         fontSize = 12.sp,
-                        color = Color.Gray
+                        color = Color.Gray,
                     )
                     Text(
                         text = "${match.wickets}/${match.runsConceded} (${match.ballsBowled / 6}.${match.ballsBowled % 6} overs)",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFFFF5722)
+                        color = Color(0xFFFF5722),
                     )
                 }
             }

@@ -2,14 +2,14 @@ package com.oreki.stumpd
 
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,9 +17,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import android.widget.Toast
 import com.google.gson.Gson
 import com.oreki.stumpd.ui.theme.StumpdTheme
 
@@ -34,7 +34,7 @@ class TeamSetupActivity : ComponentActivity() {
             StumpdTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = MaterialTheme.colorScheme.background,
                 ) {
                     TeamSetupScreen(matchSettingsJson = matchSettingsJson)
                 }
@@ -51,17 +51,18 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
     val settingsManager = remember { MatchSettingsManager(context) }
 
     // Parse match settings or use defaults
-    val matchSettings = remember {
-        try {
-            if (matchSettingsJson.isNotEmpty()) {
-                gson.fromJson(matchSettingsJson, MatchSettings::class.java)
-            } else {
-                settingsManager.getDefaultMatchSettings()
+    val matchSettings =
+        remember {
+            try {
+                if (matchSettingsJson.isNotEmpty()) {
+                    gson.fromJson(matchSettingsJson, MatchSettings::class.java)
+                } else {
+                    settingsManager.getDefaultMatchSettings()
+                }
+            } catch (e: Exception) {
+                MatchSettings()
             }
-        } catch (e: Exception) {
-            MatchSettings()
         }
-    }
 
     // Team states - Initialize with MutableList
     var team1 by remember { mutableStateOf(Team("Team A", mutableListOf())) }
@@ -75,26 +76,27 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
     var showMatchSettingsDialog by remember { mutableStateOf(false) }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(16.dp),
     ) {
         // Enhanced Header with settings access
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(
                 onClick = {
                     val intent = Intent(context, MainActivity::class.java)
                     context.startActivity(intent)
                     (context as androidx.activity.ComponentActivity).finish()
-                }
+                },
             ) {
                 Icon(
                     Icons.Default.ArrowBack,
                     contentDescription = "Back to Home",
-                    tint = Color(0xFF2E7D32)
+                    tint = Color(0xFF2E7D32),
                 )
             }
 
@@ -103,23 +105,23 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
                     text = "⚡ Quick Match Setup",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32)
+                    color = Color(0xFF2E7D32),
                 )
                 Text(
                     text = "${matchSettings.matchFormat.displayName} • ${matchSettings.totalOvers} overs",
                     fontSize = 14.sp,
-                    color = Color.Gray
+                    color = Color.Gray,
                 )
             }
 
             // Match Settings Button
             IconButton(
-                onClick = { showMatchSettingsDialog = true }
+                onClick = { showMatchSettingsDialog = true },
             ) {
                 Icon(
                     Icons.Default.Settings,
                     contentDescription = "Match Settings",
-                    tint = Color(0xFF2E7D32)
+                    tint = Color(0xFF2E7D32),
                 )
             }
         }
@@ -129,40 +131,41 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
         // Match Settings Summary Card
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F8FF))
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F8FF)),
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column {
                     Text(
                         text = "Match Configuration",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32)
+                        color = Color(0xFF2E7D32),
                     )
                     Text(
                         text = "${matchSettings.totalOvers} overs • Max ${matchSettings.maxPlayersPerTeam} players",
                         fontSize = 12.sp,
-                        color = Color.Gray
+                        color = Color.Gray,
                     )
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "Extras: W+${matchSettings.legSideWideRuns + matchSettings.offSideWideRuns}, NB+${matchSettings.noballRuns}, ",
+                        text = "Extras: W+${matchSettings.legSideWideRuns}, NB+${matchSettings.noballRuns}, ",
                         fontSize = 10.sp,
-                        color = Color.Gray
+                        color = Color.Gray,
                     )
                     if (matchSettings.allowSingleSideBatting) {
                         Text(
                             text = "Single side batting: ON",
                             fontSize = 10.sp,
-                            color = Color(0xFF4CAF50)
+                            color = Color(0xFF4CAF50),
                         )
                     }
                 }
@@ -174,14 +177,14 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
         // Team Name Setup
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             OutlinedTextField(
                 value = team1.name,
                 onValueChange = { team1 = team1.copy(name = it) },
                 label = { Text("Team 1 Name") },
                 modifier = Modifier.weight(1f),
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
             )
 
             OutlinedTextField(
@@ -189,7 +192,7 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
                 onValueChange = { team2 = team2.copy(name = it) },
                 label = { Text("Team 2 Name") },
                 modifier = Modifier.weight(1f),
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
             )
         }
 
@@ -198,7 +201,7 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
         // Enhanced Team Cards
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // Team 1 Card
             EnhancedTeamCard(
@@ -209,7 +212,12 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
                     if (team1.players.size < matchSettings.maxPlayersPerTeam) {
                         showTeam1Dialog = true
                     } else {
-                        Toast.makeText(context, "Maximum ${matchSettings.maxPlayersPerTeam} players allowed per team", Toast.LENGTH_SHORT).show()
+                        Toast
+                            .makeText(
+                                context,
+                                "Maximum ${matchSettings.maxPlayersPerTeam} players allowed per team",
+                                Toast.LENGTH_SHORT,
+                            ).show()
                     }
                 },
                 onRemovePlayer = { player ->
@@ -218,7 +226,7 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
                     newPlayers.remove(player)
                     team1 = team1.copy(players = newPlayers)
                 },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
             )
 
             // Team 2 Card
@@ -230,7 +238,12 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
                     if (team2.players.size < matchSettings.maxPlayersPerTeam) {
                         showTeam2Dialog = true
                     } else {
-                        Toast.makeText(context, "Maximum ${matchSettings.maxPlayersPerTeam} players allowed per team", Toast.LENGTH_SHORT).show()
+                        Toast
+                            .makeText(
+                                context,
+                                "Maximum ${matchSettings.maxPlayersPerTeam} players allowed per team",
+                                Toast.LENGTH_SHORT,
+                            ).show()
                     }
                 },
                 onRemovePlayer = { player ->
@@ -239,7 +252,7 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
                     newPlayers.remove(player)
                     team2 = team2.copy(players = newPlayers)
                 },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
             )
         }
 
@@ -248,36 +261,38 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
         // Enhanced Joker Player Section
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
         ) {
             Column(
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier.padding(16.dp),
             ) {
                 Text(
                     text = "🃏 Joker Player (Optional)",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFFFF9800)
+                    color = Color(0xFFFF9800),
                 )
                 Text(
-                    text = if (matchSettings.jokerCanBatAndBowl) {
-                        "A player who can bat and bowl for both teams (max ${matchSettings.jokerMaxOvers} overs)"
-                    } else {
-                        "Joker player is disabled in match settings"
-                    },
+                    text =
+                        if (matchSettings.jokerCanBatAndBowl) {
+                            "A player who can bat and bowl for both teams (max ${matchSettings.jokerMaxOvers} overs)"
+                        } else {
+                            "Joker player is disabled in match settings"
+                        },
                     fontSize = 12.sp,
                     color = Color(0xFFFF9800),
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    modifier = Modifier.padding(bottom = 8.dp),
                 )
 
                 if (matchSettings.jokerCanBatAndBowl) {
                     if (jokerPlayer == null) {
                         Button(
                             onClick = { showJokerDialog = true },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFFF9800)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
+                            colors =
+                                ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFFF9800),
+                                ),
+                            modifier = Modifier.fillMaxWidth(),
                         ) {
                             Icon(Icons.Default.Add, contentDescription = "Add Joker")
                             Spacer(modifier = Modifier.width(8.dp))
@@ -287,23 +302,23 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
                                 text = "🃏 ${jokerPlayer!!.name}",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFFF9800)
+                                color = Color(0xFFFF9800),
                             )
 
                             Row {
                                 TextButton(
-                                    onClick = { showJokerDialog = true }
+                                    onClick = { showJokerDialog = true },
                                 ) {
                                     Text("Change")
                                 }
                                 TextButton(
-                                    onClick = { jokerPlayer = null }
+                                    onClick = { jokerPlayer = null },
                                 ) {
                                     Text("Remove")
                                 }
@@ -343,20 +358,22 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
                     Toast.makeText(context, "Each team needs at least $minPlayersPerTeam player!", Toast.LENGTH_SHORT).show()
                 }
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF4CAF50)
-            ),
-            enabled = team1.players.isNotEmpty() && team2.players.isNotEmpty()
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+            colors =
+                ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4CAF50),
+                ),
+            enabled = team1.players.isNotEmpty() && team2.players.isNotEmpty(),
         ) {
             Icon(Icons.Default.PlayArrow, contentDescription = "Start Match")
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = "Start ${matchSettings.matchFormat.displayName} (${team1.players.size}v${team2.players.size})",
                 fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
             )
         }
     }
@@ -374,7 +391,7 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
                         intent.putExtra("per_match", true)
                         context.startActivity(intent)
                         (context as androidx.activity.ComponentActivity).finish()
-                    }
+                    },
                 ) {
                     Text("Configure")
                 }
@@ -383,7 +400,7 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
                 TextButton(onClick = { showMatchSettingsDialog = false }) {
                     Text("Cancel")
                 }
-            }
+            },
         )
     }
 
@@ -391,8 +408,10 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
     if (showTeam1Dialog) {
         PlayerSuggestionDialog(
             title = "Add Player to ${team1.name}",
-            selectedPlayers = (team1.players + team2.players).map { it.name } +
-                    listOfNotNull(jokerPlayer?.name), // Include joker player
+            selectedPlayers =
+                (team1.players + team2.players).map { it.name } +
+                    listOfNotNull(jokerPlayer?.name),
+            // Include joker player
             currentTeamName = team1.name,
             onPlayerSelected = { playerName ->
                 // Create new MutableList with added player
@@ -401,15 +420,17 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
                 team1 = team1.copy(players = newPlayers)
                 showTeam1Dialog = false
             },
-            onDismiss = { showTeam1Dialog = false }
+            onDismiss = { showTeam1Dialog = false },
         )
     }
 
     if (showTeam2Dialog) {
         PlayerSuggestionDialog(
             title = "Add Player to ${team2.name}",
-            selectedPlayers = (team1.players + team2.players).map { it.name } +
-                    listOfNotNull(jokerPlayer?.name), // Include joker player
+            selectedPlayers =
+                (team1.players + team2.players).map { it.name } +
+                    listOfNotNull(jokerPlayer?.name),
+            // Include joker player
             currentTeamName = team2.name,
             onPlayerSelected = { playerName ->
                 // Create new MutableList with added player
@@ -418,7 +439,7 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
                 team2 = team2.copy(players = newPlayers)
                 showTeam2Dialog = false
             },
-            onDismiss = { showTeam2Dialog = false }
+            onDismiss = { showTeam2Dialog = false },
         )
     }
 
@@ -431,7 +452,7 @@ fun TeamSetupScreen(matchSettingsJson: String = "") {
                 jokerPlayer = Player(playerName, isJoker = true)
                 showJokerDialog = false
             },
-            onDismiss = { showJokerDialog = false }
+            onDismiss = { showJokerDialog = false },
         )
     }
 }
@@ -444,41 +465,41 @@ fun EnhancedTeamCard(
     maxPlayers: Int,
     onAddPlayer: () -> Unit,
     onRemovePlayer: (Player) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(16.dp),
         ) {
             // Team Header with player count and limit
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = team.name,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32)
+                    color = Color(0xFF2E7D32),
                 )
 
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = "${team.players.size}/$maxPlayers players",
                         fontSize = 14.sp,
-                        color = if (team.players.size >= maxPlayers) Color(0xFFFF5722) else Color.Gray
+                        color = if (team.players.size >= maxPlayers) Color(0xFFFF5722) else Color.Gray,
                     )
                     if (team.players.size >= maxPlayers) {
                         Text(
                             text = "Team Full",
                             fontSize = 10.sp,
                             color = Color(0xFFFF5722),
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
                         )
                     }
                 }
@@ -492,40 +513,41 @@ fun EnhancedTeamCard(
                     text = "Players:",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(bottom = 6.dp)
+                    modifier = Modifier.padding(bottom = 6.dp),
                 )
 
                 team.players.forEach { player ->
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 2.dp),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 Icons.Default.Person,
                                 contentDescription = "Player",
                                 tint = Color(0xFF2E7D32),
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(16.dp),
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = player.name,
-                                fontSize = 14.sp
+                                fontSize = 14.sp,
                             )
                         }
 
                         IconButton(
                             onClick = { onRemovePlayer(player) },
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(24.dp),
                         ) {
                             Icon(
                                 Icons.Default.Delete,
                                 contentDescription = "Remove Player",
                                 tint = Color(0xFFF44336),
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(18.dp),
                             )
                         }
                     }
@@ -538,10 +560,11 @@ fun EnhancedTeamCard(
             Button(
                 onClick = onAddPlayer,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (team.players.size < maxPlayers) Color(0xFF4CAF50) else Color.Gray
-                ),
-                enabled = team.players.size < maxPlayers
+                colors =
+                    ButtonDefaults.buttonColors(
+                        containerColor = if (team.players.size < maxPlayers) Color(0xFF4CAF50) else Color.Gray,
+                    ),
+                enabled = team.players.size < maxPlayers,
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Add Player")
                 Spacer(modifier = Modifier.width(8.dp))
@@ -553,24 +576,25 @@ fun EnhancedTeamCard(
                 Spacer(modifier = Modifier.height(8.dp))
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             text = "🃏",
-                            fontSize = 16.sp
+                            fontSize = 16.sp,
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "Joker: ${joker.name}",
                             fontSize = 12.sp,
                             color = Color(0xFFFF9800),
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
                         )
                     }
                 }
