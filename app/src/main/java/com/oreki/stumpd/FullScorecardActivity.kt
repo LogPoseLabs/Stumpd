@@ -1,5 +1,3 @@
-@file:Suppress("ktlint:standard:no-wildcard-imports")
-
 package com.oreki.stumpd
 
 import android.content.Intent
@@ -8,9 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBox
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
@@ -44,7 +40,6 @@ class FullScorecardActivity : ComponentActivity() {
     }
 }
 
-@Suppress("ktlint:standard:function-naming")
 @Composable
 fun FullScorecardScreen(matchId: String) {
     val context = LocalContext.current
@@ -74,11 +69,31 @@ fun FullScorecardScreen(matchId: String) {
         return
     }
 
+    // Extract match settings and team information
+    val matchSettings = match.matchSettings ?: MatchSettings() // Use default if null
+    val totalOvers = matchSettings.totalOvers
+
+    // Calculate team sizes from actual player data
+    val team1Size = maxOf(
+        match.firstInningsBatting.size,
+        match.secondInningsBowling.size,
+        match.team1Players.size
+    ).takeIf { it > 0 } ?: matchSettings.maxPlayersPerTeam
+
+    val team2Size = maxOf(
+        match.secondInningsBatting.size,
+        match.firstInningsBowling.size,
+        match.team2Players.size
+    ).takeIf { it > 0 } ?: matchSettings.maxPlayersPerTeam
+
+    // Calculate overs from balls (assuming 6 balls per over)
+    val firstInningsOvers = calculateOversFromStats(match.firstInningsBowling)
+    val secondInningsOvers = calculateOversFromStats(match.secondInningsBowling)
+
     LazyColumn(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .padding(16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
     ) {
         item {
             // Enhanced Header with navigation options
@@ -111,6 +126,12 @@ fun FullScorecardScreen(matchId: String) {
                     Text(
                         text = "${match.team1Name} vs ${match.team2Name}",
                         fontSize = 16.sp,
+                        color = Color.Gray,
+                    )
+                    // Show match format and overs
+                    Text(
+                        text = "$totalOvers overs Match",
+                        fontSize = 12.sp,
                         color = Color.Gray,
                     )
                 }
@@ -156,13 +177,19 @@ fun FullScorecardScreen(matchId: String) {
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F8FF)),
             ) {
-                Text(
-                    text = "🏏 FIRST INNINGS",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32),
-                    modifier = Modifier.padding(16.dp),
-                )
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "🏏 FIRST INNINGS",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF2E7D32),
+                    )
+                    Text(
+                        text = "${"%.1f".format(firstInningsOvers)}/$totalOvers overs",
+                        fontSize = 12.sp,
+                        color = Color.Gray,
+                    )
+                }
             }
         }
 
@@ -181,19 +208,17 @@ fun FullScorecardScreen(matchId: String) {
         item { Spacer(modifier = Modifier.height(8.dp)) }
 
         item {
-            val battingPlayers =
-                if (match.firstInningsBatting.isNotEmpty()) {
-                    match.firstInningsBatting
-                } else {
-                    generateSampleBattingData(match.team1Name, match.firstInningsRuns, match.firstInningsWickets, 1)
-                }
+            val battingPlayers = if (match.firstInningsBatting.isNotEmpty()) {
+                match.firstInningsBatting
+            } else {
+                generateSampleBattingData(match.team1Name, match.firstInningsRuns, match.firstInningsWickets, 1)
+            }
 
             // Get all team players for "did not bat" calculation
-            val allTeam1Players = (match.firstInningsBatting + match.secondInningsBowling).distinctBy { it.name }
-            val team1DidNotBat =
-                allTeam1Players.filter { player ->
-                    !battingPlayers.any { it.name == player.name }
-                }
+            val allTeam1Players = (match.team1Players).distinctBy { it.name }
+            val team1DidNotBat = allTeam1Players.filter { player ->
+                !battingPlayers.any { it.name == player.name }
+            }
 
             EnhancedBattingScorecardCard(
                 players = battingPlayers,
@@ -217,19 +242,17 @@ fun FullScorecardScreen(matchId: String) {
         item { Spacer(modifier = Modifier.height(8.dp)) }
 
         item {
-            val bowlingPlayers =
-                if (match.firstInningsBowling.isNotEmpty()) {
-                    match.firstInningsBowling
-                } else {
-                    generateSampleBowlingData(match.team2Name, match.firstInningsWickets, 1)
-                }
+            val bowlingPlayers = if (match.firstInningsBowling.isNotEmpty()) {
+                match.firstInningsBowling
+            } else {
+                generateSampleBowlingData(match.team2Name, match.firstInningsWickets, 1)
+            }
 
             // Get all team players for "did not bowl" calculation
-            val allTeam2Players = (match.firstInningsBowling + match.secondInningsBatting).distinctBy { it.name }
-            val team2DidNotBowl =
-                allTeam2Players.filter { player ->
-                    !bowlingPlayers.any { it.name == player.name }
-                }
+            val allTeam2Players = (match.team2Players).distinctBy { it.name }
+            val team2DidNotBowl = allTeam2Players.filter { player ->
+                !bowlingPlayers.any { it.name == player.name }
+            }
 
             EnhancedBowlingScorecardCard(
                 players = bowlingPlayers,
@@ -245,13 +268,19 @@ fun FullScorecardScreen(matchId: String) {
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
             ) {
-                Text(
-                    text = "🏏 SECOND INNINGS",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32),
-                    modifier = Modifier.padding(16.dp),
-                )
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "🏏 SECOND INNINGS",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF2E7D32),
+                    )
+                    Text(
+                        text = "${"%.1f".format(secondInningsOvers)}/$totalOvers overs",
+                        fontSize = 12.sp,
+                        color = Color.Gray,
+                    )
+                }
             }
         }
 
@@ -286,22 +315,24 @@ fun FullScorecardScreen(matchId: String) {
         item { Spacer(modifier = Modifier.height(8.dp)) }
 
         item {
-            val battingPlayers =
-                if (match.secondInningsBatting.isNotEmpty()) {
-                    match.secondInningsBatting
-                } else {
-                    generateSampleBattingData(match.team2Name, match.secondInningsRuns, match.secondInningsWickets, 2)
-                }
+            val battingPlayers = if (match.secondInningsBatting.isNotEmpty()) {
+                match.secondInningsBatting
+            } else {
+                generateSampleBattingData(match.team2Name, match.secondInningsRuns, match.secondInningsWickets, 2)
+            }
 
             // Get all team players for "did not bat" calculation
-            val allTeam2Players = (match.secondInningsBatting + match.firstInningsBowling).distinctBy { it.name }
-            val team2DidNotBat =
-                allTeam2Players.filter { player ->
-                    !battingPlayers.any { it.name == player.name }
-                }
+            val allTeam2Players = (match.team2Players).distinctBy { it.name }
+            val team2DidNotBat = allTeam2Players.filter { player ->
+                !battingPlayers.any { it.name == player.name }
+            }
 
-            // Check if second innings is complete
-            val isSecondInningsComplete = match.secondInningsWickets >= 10 || match.secondInningsRuns > match.firstInningsRuns
+            // CORRECTED: Check if second innings is complete with proper logic
+            val maxWicketsTeam2 = team2Size - 1 // Maximum wickets = team size - 1
+            val isSecondInningsComplete =
+                match.secondInningsWickets >= maxWicketsTeam2 || // All out
+                        match.secondInningsRuns > match.firstInningsRuns || // Target achieved
+                        secondInningsOvers >= totalOvers // Overs completed
 
             EnhancedBattingScorecardCard(
                 players = battingPlayers,
@@ -325,19 +356,17 @@ fun FullScorecardScreen(matchId: String) {
         item { Spacer(modifier = Modifier.height(8.dp)) }
 
         item {
-            val bowlingPlayers =
-                if (match.secondInningsBowling.isNotEmpty()) {
-                    match.secondInningsBowling
-                } else {
-                    generateSampleBowlingData(match.team1Name, match.secondInningsWickets, 2)
-                }
+            val bowlingPlayers = if (match.secondInningsBowling.isNotEmpty()) {
+                match.secondInningsBowling
+            } else {
+                generateSampleBowlingData(match.team1Name, match.secondInningsWickets, 2)
+            }
 
             // Get all team players for "did not bowl" calculation
-            val allTeam1Players = (match.secondInningsBowling + match.firstInningsBatting).distinctBy { it.name }
-            val team1DidNotBowl =
-                allTeam1Players.filter { player ->
-                    !bowlingPlayers.any { it.name == player.name }
-                }
+            val allTeam1Players = (match.team1Players).distinctBy { it.name }
+            val team1DidNotBowl = allTeam1Players.filter { player ->
+                !bowlingPlayers.any { it.name == player.name }
+            }
 
             EnhancedBowlingScorecardCard(
                 players = bowlingPlayers,
@@ -347,12 +376,86 @@ fun FullScorecardScreen(matchId: String) {
 
         item { Spacer(modifier = Modifier.height(24.dp)) }
 
-        // Match Summary
+        // Enhanced Match Summary
         item {
-            MatchSummaryCard(match)
+            EnhancedMatchSummaryCard(
+                match = match,
+                matchSettings = matchSettings,
+                firstInningsOvers = firstInningsOvers,
+                secondInningsOvers = secondInningsOvers
+            )
         }
     }
 }
+
+// Helper function to calculate overs from bowling stats
+fun calculateOversFromStats(bowlingPlayers: List<PlayerMatchStats>): Double {
+    return bowlingPlayers.sumOf { it.oversBowled }
+}
+
+// Enhanced Match Summary Card with settings info
+@Composable
+fun EnhancedMatchSummaryCard(
+    match: MatchHistory,
+    matchSettings: MatchSettings,
+    firstInningsOvers: Double,
+    secondInningsOvers: Double
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E8))
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = "🏆 Match Result",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF2E7D32)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "${match.winnerTeam} won by ${match.winningMargin}",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF2E7D32)
+            )
+
+            Spacer(modifier = Modifier.height(11.dp))
+
+            // Show top performers if available
+            match.topBatsman?.let { topBat ->
+                Text(
+                    text = "🏏 Top Batsman: ${topBat.name} - ${topBat.runs} runs",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            match.topBowler?.let { topBowl ->
+                Text(
+                    text = "⚾ Top Bowler: ${topBowl.name} - ${topBowl.wickets} wickets",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            match.jokerPlayerName?.let { joker ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "🃏 Joker Player: $joker",
+                    fontSize = 12.sp,
+                    color = Color(0xFFFF9800),
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
 
 @Composable
 fun EnhancedBattingScorecardCard(

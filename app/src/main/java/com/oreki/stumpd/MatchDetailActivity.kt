@@ -6,7 +6,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
@@ -211,7 +210,7 @@ fun MatchDetailScreen(matchId: String) {
                 title = "${match.team1Name} - 1st Innings",
                 runs = match.firstInningsRuns,
                 wickets = match.firstInningsWickets,
-                runRate = if (match.firstInningsRuns > 0) match.firstInningsRuns / 20.0 else 0.0,
+                runRate = if (match.firstInningsRuns > 0) match.firstInningsRuns / (match.matchSettings?.totalOvers?.toDouble()!!) else 5.0,
                 match = match,
                 isFirstInnings = true
             )
@@ -225,7 +224,7 @@ fun MatchDetailScreen(matchId: String) {
                 title = "${match.team2Name} - 2nd Innings",
                 runs = match.secondInningsRuns,
                 wickets = match.secondInningsWickets,
-                runRate = if (match.secondInningsRuns > 0) match.secondInningsRuns / 20.0 else 0.0,
+                runRate = if (match.secondInningsRuns > 0) match.secondInningsRuns / (match.matchSettings?.totalOvers?.toDouble()!!) else 5.0,
                 match = match,
                 isFirstInnings = false
             )

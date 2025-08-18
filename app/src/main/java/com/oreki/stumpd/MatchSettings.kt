@@ -9,13 +9,11 @@ data class MatchSettings(
     val maxPlayersPerTeam: Int = 11,
     val allowSingleSideBatting: Boolean = false, // One batsman continues if others get out
     // Extras settings - runs awarded
-    val wideballRuns: Int = 1,
-    val noballRuns: Int = 1,
-    val byeRuns: Int = 1,
-    val legByeRuns: Int = 1,
-    // Side-specific wide runs
-    val legSideWideRuns: Int = 1,
-    val offSideWideRuns: Int = 1,
+    val noballRuns: Int = 0,
+    val byeRuns: Int = 0,
+    val legByeRuns: Int = 0,
+    val legSideWideRuns: Int = 0,
+    val offSideWideRuns: Int = 0,
     // Advanced rules
     val powerplayOvers: Int = 6, // First 6 overs are powerplay
     val maxOversPerBowler: Int = 4,

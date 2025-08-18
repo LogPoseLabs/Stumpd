@@ -78,12 +78,12 @@ data class Ball(
     val timestamp: Long = System.currentTimeMillis(),
 )
 
-enum class ExtraType {
-    OFF_SIDE_WIDE,
-    NO_BALL,
-    BYE,
-    LEG_BYE,
-    LEG_SIDE_WIDE,
+enum class ExtraType(val displayName: String) {
+    NO_BALL("No Ball"),
+    OFF_SIDE_WIDE("Off Side Wide"),
+    LEG_SIDE_WIDE("Leg Side Wide"),
+    BYE("Bye"),
+    LEG_BYE("Leg Bye")
 }
 
 enum class WicketType {
@@ -218,6 +218,7 @@ data class MatchHistory(
     val team2Players: List<PlayerMatchStats> = emptyList(),
     val topBatsman: PlayerMatchStats? = null,
     val topBowler: PlayerMatchStats? = null,
+    val matchSettings: MatchSettings? = null
 )
 
 // Individual player performance in a match
