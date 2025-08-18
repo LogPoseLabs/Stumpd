@@ -566,30 +566,50 @@ fun TeamSetupScreen() {
 
                     Button(
                         onClick = {
-                            val minPlayersPerTeam = 1
-                            if (team1.players.size >= minPlayersPerTeam && team2.players.size >= minPlayersPerTeam) {
-                                val intent = Intent(context, ScoringActivity::class.java)
+                            val minPlayersPerTeam = 2
+                            val team1Size = team1.players.size
+                            val team2Size = team2.players.size
+                            if (team1Size >= minPlayersPerTeam && team2Size >= minPlayersPerTeam) {
+                                if (team1Size == team2Size) {
+                                    val intent = Intent(context, ScoringActivity::class.java)
 
-                                // Pass team data via intent
-                                intent.putExtra("team1_name", team1.name)
-                                intent.putExtra("team2_name", team2.name)
-                                intent.putExtra("joker_name", jokerPlayer?.name ?: "")
+                                    // Pass team data via intent
+                                    intent.putExtra("team1_name", team1.name)
+                                    intent.putExtra("team2_name", team2.name)
+                                    intent.putExtra("joker_name", jokerPlayer?.name ?: "")
 
-                                // Pass player names as string arrays
-                                val team1PlayerNames = team1.players.map { it.name }.toTypedArray()
-                                val team2PlayerNames = team2.players.map { it.name }.toTypedArray()
+                                    // Pass player names as string arrays
+                                    val team1PlayerNames =
+                                        team1.players.map { it.name }.toTypedArray()
+                                    val team2PlayerNames =
+                                        team2.players.map { it.name }.toTypedArray()
 
-                                intent.putExtra("team1_players", team1PlayerNames)
-                                intent.putExtra("team2_players", team2PlayerNames)
+                                    intent.putExtra("team1_players", team1PlayerNames)
+                                    intent.putExtra("team2_players", team2PlayerNames)
 
-                                // Pass match settings with calculated max players
-                                val finalMatchSettings = matchSettings.copy(
-                                    maxPlayersPerTeam = maxOf(team1.players.size, team2.players.size, 11)
-                                )
-                                intent.putExtra("match_settings", gson.toJson(finalMatchSettings))
+                                    // Pass match settings with calculated max players
+                                    val finalMatchSettings = matchSettings.copy(
+                                        maxPlayersPerTeam = maxOf(
+                                            team1.players.size,
+                                            team2.players.size,
+                                            11
+                                        )
+                                    )
+                                    intent.putExtra(
+                                        "match_settings",
+                                        gson.toJson(finalMatchSettings)
+                                    )
 
-                                context.startActivity(intent)
-                            } else {
+                                    context.startActivity(intent)
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "Both team needs to have same number of players",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                            else {
                                 Toast.makeText(context, "Each team needs at least $minPlayersPerTeam player!", Toast.LENGTH_SHORT).show()
                             }
                         },
@@ -604,7 +624,7 @@ fun TeamSetupScreen() {
                         Icon(Icons.Default.PlayArrow, contentDescription = "Start Match")
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Start ${matchSettings.matchFormat.displayName} (${team1.players.size}v${team2.players.size})",
+                            text = "Start ${matchSettings.totalOvers} overs Match",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                         )

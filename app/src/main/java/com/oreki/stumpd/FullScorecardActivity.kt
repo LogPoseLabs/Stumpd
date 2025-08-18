@@ -1,5 +1,3 @@
-@file:Suppress("ktlint:standard:no-wildcard-imports")
-
 package com.oreki.stumpd
 
 import android.content.Intent
@@ -8,9 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBox
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
@@ -134,7 +130,7 @@ fun FullScorecardScreen(matchId: String) {
                     )
                     // Show match format and overs
                     Text(
-                        text = "${matchSettings.matchFormat.displayName} • $totalOvers overs",
+                        text = "$totalOvers overs Match",
                         fontSize = 12.sp,
                         color = Color.Gray,
                     )
@@ -428,41 +424,7 @@ fun EnhancedMatchSummaryCard(
                 color = Color(0xFF2E7D32)
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Match details
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
-                    Text(
-                        text = "Match Format",
-                        fontSize = 12.sp,
-                        color = Color.Gray
-                    )
-                    Text(
-                        text = "${matchSettings.matchFormat.displayName}",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "Overs Bowled",
-                        fontSize = 12.sp,
-                        color = Color.Gray
-                    )
-                    Text(
-                        text = "${"%.1f".format(firstInningsOvers)} & ${"%.1f".format(secondInningsOvers)}",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(11.dp))
 
             // Show top performers if available
             match.topBatsman?.let { topBat ->
