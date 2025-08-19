@@ -391,3 +391,10 @@ class MatchStorageManager(
         return null
     }
 }
+
+data class JokerSideView(
+    val inningsIndex: Int, // 1 or 2
+    val teamName: String, // batting or bowling team
+    val batting: PlayerMatchStats? = null,
+    val bowling: PlayerMatchStats? = null,
+)
