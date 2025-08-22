@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -46,8 +47,8 @@ fun SplashScreen(onSplashComplete: () -> Unit) {
                 Brush.verticalGradient(
                     colors = listOf(
                         Color(0xFF1B5E20),
-                        Color(0xFF2E7D32),
-                        Color(0xFF4CAF50)
+                        MaterialTheme.colorScheme.primary,
+                        MaterialTheme.colorScheme.primary
                     )
                 )
             ),

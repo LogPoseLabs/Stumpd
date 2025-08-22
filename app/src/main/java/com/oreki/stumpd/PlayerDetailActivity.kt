@@ -85,7 +85,7 @@ fun PlayerDetailScreen(playerName: String) {
                 Icon(
                     Icons.Default.ArrowBack,
                     contentDescription = "Back",
-                    tint = Color(0xFF2E7D32),
+                    tint = MaterialTheme.colorScheme.primary,
                 )
             }
 
@@ -94,7 +94,7 @@ fun PlayerDetailScreen(playerName: String) {
                     text = player!!.name,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32),
+                    color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
                     text = "${player!!.totalMatches} matches • Last played ${formatDate(player!!.lastPlayed)}",
@@ -153,7 +153,7 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
                         text = "🏏 Batting Summary",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32),
+                        color = MaterialTheme.colorScheme.primary,
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -191,7 +191,7 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
                         text = "⚾ Bowling Summary",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32),
+                        color = MaterialTheme.colorScheme.primary,
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -240,14 +240,14 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
                         text = "📈 Recent Form (Last 5 Matches)",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32),
+                        color = MaterialTheme.colorScheme.primary,
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -278,7 +278,7 @@ fun PlayerMatchesTab(player: PlayerDetailedStats) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 ) {
                     Column(
                         modifier = Modifier.padding(32.dp),
@@ -309,7 +309,7 @@ fun PlayerStatisticsTab(player: PlayerDetailedStats) {
                 text = "Career Statistics",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32),
+                color = MaterialTheme.colorScheme.primary,
             )
         }
 
@@ -391,7 +391,7 @@ fun StatBox(
             text = value,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF2E7D32),
+            color = MaterialTheme.colorScheme.primary,
         )
         Text(
             text = title,
@@ -461,7 +461,7 @@ fun RecentMatchCard(match: MatchPerformance) {
         Icon(
             imageVector = if (match.isWinner) Icons.Default.CheckCircle else Icons.Default.Close,
             contentDescription = if (match.isWinner) "Won" else "Lost",
-            tint = if (match.isWinner) Color(0xFF4CAF50) else Color(0xFFF44336),
+            tint = if (match.isWinner) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
             modifier = Modifier.size(16.dp),
         )
     }
@@ -509,7 +509,7 @@ fun MatchPerformanceCard(match: MatchPerformance) {
                     Icon(
                         imageVector = if (match.isWinner) Icons.Default.CheckCircle else Icons.Default.Close,
                         contentDescription = if (match.isWinner) "Won" else "Lost",
-                        tint = if (match.isWinner) Color(0xFF4CAF50) else Color(0xFFF44336),
+                        tint = if (match.isWinner) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(20.dp),
                     )
                 }

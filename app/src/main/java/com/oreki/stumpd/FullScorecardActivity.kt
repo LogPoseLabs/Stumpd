@@ -112,7 +112,7 @@ fun FullScorecardScreen(matchId: String) {
                     Icon(
                         Icons.Default.ArrowBack,
                         contentDescription = "Back to Match Details",
-                        tint = Color(0xFF2E7D32),
+                        tint = MaterialTheme.colorScheme.primary,
                     )
                 }
 
@@ -121,7 +121,7 @@ fun FullScorecardScreen(matchId: String) {
                         text = "Full Scorecard",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32),
+                        color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
                         text = "${match.team1Name} vs ${match.team2Name}",
@@ -148,7 +148,7 @@ fun FullScorecardScreen(matchId: String) {
                         Icon(
                             Icons.Default.List,
                             contentDescription = "Match History",
-                            tint = Color(0xFF2E7D32),
+                            tint = MaterialTheme.colorScheme.primary,
                         )
                     }
 
@@ -162,7 +162,7 @@ fun FullScorecardScreen(matchId: String) {
                         Icon(
                             Icons.Default.Home,
                             contentDescription = "Home",
-                            tint = Color(0xFF2E7D32),
+                            tint = MaterialTheme.colorScheme.primary,
                         )
                     }
                 }
@@ -182,7 +182,7 @@ fun FullScorecardScreen(matchId: String) {
                         text = "🏏 FIRST INNINGS",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32),
+                        color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
                         text = "${"%.1f".format(firstInningsOvers)}/$totalOvers overs",
@@ -201,7 +201,7 @@ fun FullScorecardScreen(matchId: String) {
                 text = "${match.team1Name} Batting - ${match.firstInningsRuns}/${match.firstInningsWickets}",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32),
+                color = MaterialTheme.colorScheme.primary,
             )
         }
 
@@ -235,7 +235,7 @@ fun FullScorecardScreen(matchId: String) {
                 text = "${match.team2Name} Bowling",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32),
+                color = MaterialTheme.colorScheme.primary,
             )
         }
 
@@ -273,7 +273,7 @@ fun FullScorecardScreen(matchId: String) {
                         text = "🏏 SECOND INNINGS",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32),
+                        color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
                         text = "${"%.1f".format(secondInningsOvers)}/$totalOvers overs",
@@ -297,7 +297,7 @@ fun FullScorecardScreen(matchId: String) {
                     text = "${match.team2Name} Batting - ${match.secondInningsRuns}/${match.secondInningsWickets}",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32),
+                    color = MaterialTheme.colorScheme.primary,
                 )
 
                 // Target information
@@ -306,7 +306,7 @@ fun FullScorecardScreen(matchId: String) {
                 Text(
                     text = if (required > 0) "Target: $target" else "Target achieved!",
                     fontSize = 12.sp,
-                    color = if (required > 0) Color(0xFFFF5722) else Color(0xFF4CAF50),
+                    color = if (required > 0) Color(0xFFFF5722) else MaterialTheme.colorScheme.primary,
                     fontStyle = FontStyle.Italic,
                 )
             }
@@ -349,7 +349,7 @@ fun FullScorecardScreen(matchId: String) {
                 text = "${match.team1Name} Bowling",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32),
+                color = MaterialTheme.colorScheme.primary,
             )
         }
 
@@ -412,7 +412,7 @@ fun EnhancedMatchSummaryCard(
                 text = "🏆 Match Result",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
+                color = MaterialTheme.colorScheme.primary
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -421,7 +421,7 @@ fun EnhancedMatchSummaryCard(
                 text = "${match.winnerTeam} won by ${match.winningMargin}",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
+                color = MaterialTheme.colorScheme.primary
             )
 
             Spacer(modifier = Modifier.height(11.dp))
@@ -448,7 +448,7 @@ fun EnhancedMatchSummaryCard(
                 Text(
                     text = "🃏 Joker Player: $joker",
                     fontSize = 12.sp,
-                    color = Color(0xFFFF9800),
+                    color = MaterialTheme.colorScheme.secondary,
                     fontWeight = FontWeight.Medium
                 )
             }
@@ -499,7 +499,7 @@ fun EnhancedBattingScorecardCard(
                         text = if (player.isJoker) "🃏 ${player.name}" else player.name,
                         fontSize = 14.sp,
                         modifier = Modifier.weight(2f),
-                        color = if (player.isJoker) Color(0xFFFF9800) else Color.Black,
+                        color = if (player.isJoker) MaterialTheme.colorScheme.secondary else Color.Black,
                     )
                     Text("${player.runs}${if (player.isOut) "" else "*"}", fontSize = 14.sp, modifier = Modifier.weight(1f))
                     Text("${player.ballsFaced}", fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -574,7 +574,7 @@ fun EnhancedBowlingScorecardCard(
                         text = if (player.isJoker) "🃏 ${player.name}" else player.name,
                         fontSize = 14.sp,
                         modifier = Modifier.weight(2f),
-                        color = if (player.isJoker) Color(0xFFFF9800) else Color.Black,
+                        color = if (player.isJoker) MaterialTheme.colorScheme.secondary else Color.Black,
                     )
                     Text("${"%.1f".format(player.oversBowled)}", fontSize = 14.sp, modifier = Modifier.weight(1f))
                     Text("${player.runsConceded}", fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -614,7 +614,7 @@ fun MatchSummaryCard(match: MatchHistory) {
                 text = "🏆 Match Result",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32),
+                color = MaterialTheme.colorScheme.primary,
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -623,7 +623,7 @@ fun MatchSummaryCard(match: MatchHistory) {
                 text = "${match.winnerTeam} won by ${match.winningMargin}",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32),
+                color = MaterialTheme.colorScheme.primary,
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -650,7 +650,7 @@ fun MatchSummaryCard(match: MatchHistory) {
                 Text(
                     text = "🃏 Joker Player: $joker",
                     fontSize = 12.sp,
-                    color = Color(0xFFFF9800),
+                    color = MaterialTheme.colorScheme.secondary,
                     fontWeight = FontWeight.Medium,
                 )
             }

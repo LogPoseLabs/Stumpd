@@ -78,7 +78,7 @@ fun PlayerSuggestionDialog(
                     Text(
                         text = "${selectedPlayers.size} player(s) already selected",
                         fontSize = 10.sp,
-                        color = Color(0xFFFF9800),
+                        color = MaterialTheme.colorScheme.secondary,
                     )
                 }
             }
@@ -120,14 +120,14 @@ fun PlayerSuggestionDialog(
                             Icon(
                                 Icons.Default.Warning,
                                 contentDescription = "Warning",
-                                tint = Color(0xFFF44336),
+                                tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(16.dp),
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "'${searchQuery.trim()}' is already selected",
                                 fontSize = 12.sp,
-                                color = Color(0xFFF44336),
+                                color = MaterialTheme.colorScheme.error,
                             )
                         }
                     }
@@ -145,7 +145,7 @@ fun PlayerSuggestionDialog(
                             onPlayerSelected(searchQuery.trim())
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     ) {
                         Icon(Icons.Default.Add, contentDescription = "Add")
                         Spacer(modifier = Modifier.width(8.dp))
@@ -167,7 +167,7 @@ fun PlayerSuggestionDialog(
                                     text = "Recent Players (Available)",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF2E7D32),
+                                    color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(vertical = 4.dp),
                                 )
                             }
@@ -182,7 +182,7 @@ fun PlayerSuggestionDialog(
                             item {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                                 ) {
                                     Text(
                                         text =
@@ -207,7 +207,7 @@ fun PlayerSuggestionDialog(
                                     text = "Available Players",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF2E7D32),
+                                    color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(vertical = 4.dp),
                                 )
                             }
@@ -224,7 +224,7 @@ fun PlayerSuggestionDialog(
                             item {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                                 ) {
                                     Text(
                                         text = "No available players found matching '$searchQuery'.\nAll matching players may already be selected.",
@@ -287,7 +287,7 @@ fun PlayerSuggestionCard(
                 .fillMaxWidth()
                 .padding(vertical = 2.dp)
                 .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Row(
             modifier =
@@ -299,7 +299,7 @@ fun PlayerSuggestionCard(
             Icon(
                 Icons.Default.Person,
                 contentDescription = "Player",
-                tint = Color(0xFF2E7D32),
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp),
             )
 
@@ -323,7 +323,7 @@ fun PlayerSuggestionCard(
                             text = player.name.substring(startIndex, endIndex),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2E7D32),
+                            color = MaterialTheme.colorScheme.primary,
                         )
                         if (endIndex < player.name.length) {
                             Text(
@@ -351,7 +351,7 @@ fun PlayerSuggestionCard(
                     Text(
                         text = "New player",
                         fontSize = 10.sp,
-                        color = Color(0xFF4CAF50),
+                        color = MaterialTheme.colorScheme.primary,
                         fontStyle = FontStyle.Italic,
                     )
                 }
@@ -362,14 +362,14 @@ fun PlayerSuggestionCard(
                 Text(
                     text = "${player.matchesPlayed}",
                     fontSize = 12.sp,
-                    color = Color(0xFF2E7D32),
+                    color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
                 )
             } else {
                 Icon(
                     Icons.Default.Add,
                     contentDescription = "New Player",
-                    tint = Color(0xFF4CAF50),
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(16.dp),
                 )
             }

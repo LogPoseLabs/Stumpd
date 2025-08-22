@@ -91,7 +91,7 @@ fun AddPlayerScreen() {
                 Icon(
                     Icons.Default.ArrowBack,
                     contentDescription = "Back to Home",
-                    tint = Color(0xFF2E7D32)
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
 
@@ -100,7 +100,7 @@ fun AddPlayerScreen() {
                     text = "Player Management",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32)
+                    color = MaterialTheme.colorScheme.primary
                 )
                 Text(
                     text = "${allPlayers.size} players in database",
@@ -119,13 +119,13 @@ fun AddPlayerScreen() {
                 Icon(
                     Icons.Default.Refresh,
                     contentDescription = "Refresh",
-                    tint = Color(0xFF2196F3)
+                    tint = MaterialTheme.colorScheme.tertiary
                 )
             }
 
             FloatingActionButton(
                 onClick = { showAddDialog = true },
-                containerColor = Color(0xFF4CAF50),
+                containerColor = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(48.dp)
             ) {
                 Icon(
@@ -146,7 +146,7 @@ fun AddPlayerScreen() {
                 Text(
                     text = successMessage,
                     modifier = Modifier.padding(12.dp),
-                    color = Color(0xFF2E7D32),
+                    color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Medium
                 )
             }
@@ -214,7 +214,7 @@ fun AddPlayerScreen() {
             if (allPlayers.isEmpty()) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Column(
                         modifier = Modifier.padding(32.dp),
@@ -236,7 +236,7 @@ fun AddPlayerScreen() {
 
                         Button(
                             onClick = { showAddDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                         ) {
                             Icon(Icons.Default.Add, contentDescription = "Add")
                             Spacer(modifier = Modifier.width(8.dp))
@@ -247,7 +247,7 @@ fun AddPlayerScreen() {
             } else {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Column(
                         modifier = Modifier.padding(24.dp),
@@ -357,7 +357,7 @@ fun StatCard(
 ) {
     Card(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -366,7 +366,7 @@ fun StatCard(
             Icon(
                 icon,
                 contentDescription = title,
-                tint = Color(0xFF2E7D32),
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp)
             )
 
@@ -376,7 +376,7 @@ fun StatCard(
                 text = value,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
+                color = MaterialTheme.colorScheme.primary
             )
 
             Text(
@@ -406,7 +406,7 @@ fun PlayerManagementCard(
             .fillMaxWidth()
             .clickable { onViewDetails() },
         colors = CardDefaults.cardColors(
-            containerColor = if (player.matchesPlayed > 0) Color.White else Color(0xFFF8F9FA)
+            containerColor = if (player.matchesPlayed > 0) Color.White else MaterialTheme.colorScheme.surfaceVariant
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -419,7 +419,7 @@ fun PlayerManagementCard(
             Icon(
                 Icons.Default.Person,
                 contentDescription = "Player",
-                tint = if (player.matchesPlayed > 0) Color(0xFF2E7D32) else Color.Gray,
+                tint = if (player.matchesPlayed > 0) MaterialTheme.colorScheme.primary else Color.Gray,
                 modifier = Modifier.size(24.dp)
             )
 
@@ -442,7 +442,7 @@ fun PlayerManagementCard(
                     Text(
                         text = "Last played: ${formatDate(player.lastPlayed)}",
                         fontSize = 10.sp,
-                        color = Color(0xFF4CAF50)
+                        color = MaterialTheme.colorScheme.primary
                     )
                 } else {
                     Text(
@@ -461,7 +461,7 @@ fun PlayerManagementCard(
                     Icon(
                         Icons.Default.Edit,
                         contentDescription = "Edit Player",
-                        tint = Color(0xFF2196F3),
+                        tint = MaterialTheme.colorScheme.tertiary,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -474,7 +474,7 @@ fun PlayerManagementCard(
                         Icon(
                             Icons.Default.Delete,
                             contentDescription = "Delete Player",
-                            tint = Color(0xFFF44336),
+                            tint = MaterialTheme.colorScheme.error,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -522,7 +522,7 @@ fun AddPlayerDialog(
                     Text(
                         text = "Note: This will update the player's name in all records",
                         fontSize = 12.sp,
-                        color = Color(0xFFFF9800)
+                        color = MaterialTheme.colorScheme.secondary
                     )
                 }
             }
@@ -535,7 +535,7 @@ fun AddPlayerDialog(
                     }
                 },
                 enabled = playerName.trim().isNotBlank() && playerName.trim() != initialName,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
                 Text(if (initialName.isBlank()) "Add Player" else "Update Player")
             }
@@ -563,7 +563,7 @@ fun DeletePlayerDialog(
         confirmButton = {
             Button(
                 onClick = onConfirm,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336))
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
             ) {
                 Text("Delete")
             }

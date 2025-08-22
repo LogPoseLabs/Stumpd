@@ -73,7 +73,7 @@ fun StatsScreen() {
                 Icon(
                     Icons.Default.ArrowBack,
                     contentDescription = "Back to Home",
-                    tint = Color(0xFF2E7D32)
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
 
@@ -82,7 +82,7 @@ fun StatsScreen() {
                     text = "Statistics",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32)
+                    color = MaterialTheme.colorScheme.primary
                 )
                 Text(
                     text = "${players.size} players • ${matches.size} matches",
@@ -93,7 +93,7 @@ fun StatsScreen() {
 
             Button(
                 onClick = { showFilterDialog = true },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
             ) {
                 Icon(Icons.Default.List, contentDescription = "Filter")
                 Spacer(modifier = Modifier.width(4.dp))
@@ -106,7 +106,7 @@ fun StatsScreen() {
         if (players.isEmpty()) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(
                     modifier = Modifier.padding(32.dp),
@@ -124,7 +124,7 @@ fun StatsScreen() {
                         text = "🏏 Top Batsmen",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32)
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
 
@@ -149,7 +149,7 @@ fun StatsScreen() {
                         text = "⚾ Top Bowlers",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32)
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
 
@@ -174,7 +174,7 @@ fun StatsScreen() {
                         text = "🏆 Match Winners",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32)
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
 
@@ -270,7 +270,7 @@ fun PlayerStatsCard(
             Icon(
                 Icons.Default.Person,
                 contentDescription = "Player",
-                tint = Color(0xFF2E7D32),
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(24.dp)
             )
 
@@ -293,7 +293,7 @@ fun PlayerStatsCard(
                 text = primaryStat,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
+                color = MaterialTheme.colorScheme.primary
             )
         }
     }

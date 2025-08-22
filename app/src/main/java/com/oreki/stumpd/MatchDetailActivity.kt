@@ -90,7 +90,7 @@ fun MatchDetailScreen(matchId: String) {
                     Icon(
                         Icons.Default.ArrowBack,
                         contentDescription = "Back to History",
-                        tint = Color(0xFF2E7D32)
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
 
@@ -99,7 +99,7 @@ fun MatchDetailScreen(matchId: String) {
                         text = "Match Scorecard",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32)
+                        color = MaterialTheme.colorScheme.primary
                     )
                     Text(
                         text = "${match.team1Name} vs ${match.team2Name}",
@@ -121,7 +121,7 @@ fun MatchDetailScreen(matchId: String) {
                     Icon(
                         Icons.Default.Home,
                         contentDescription = "Home",
-                        tint = Color(0xFF2E7D32)
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -133,7 +133,7 @@ fun MatchDetailScreen(matchId: String) {
             // Match Info
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp)
@@ -155,7 +155,7 @@ fun MatchDetailScreen(matchId: String) {
                         Text(
                             text = "🃏 Joker: $it",
                             fontSize = 14.sp,
-                            color = Color(0xFFFF9800),
+                            color = MaterialTheme.colorScheme.secondary,
                             fontWeight = FontWeight.Medium
                         )
                     }
@@ -179,12 +179,12 @@ fun MatchDetailScreen(matchId: String) {
                         text = "🏆 ${match.winnerTeam}",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32)
+                        color = MaterialTheme.colorScheme.primary
                     )
                     Text(
                         text = "won by ${match.winningMargin}",
                         fontSize = 16.sp,
-                        color = Color(0xFF2E7D32)
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -198,7 +198,7 @@ fun MatchDetailScreen(matchId: String) {
                 text = "Innings Summary",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
+                color = MaterialTheme.colorScheme.primary
             )
         }
 
@@ -242,7 +242,7 @@ fun MatchDetailScreen(matchId: String) {
                 },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF4CAF50)
+                    containerColor = MaterialTheme.colorScheme.primary
                 )
             ) {
                 Text(
@@ -261,7 +261,7 @@ fun MatchDetailScreen(matchId: String) {
                 text = "Match Statistics",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
+                color = MaterialTheme.colorScheme.primary
             )
         }
 
@@ -337,7 +337,7 @@ fun EnhancedInningsSummaryCard(
                     text = "$runs/$wickets",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32)
+                    color = MaterialTheme.colorScheme.primary
                 )
 
                 Column(horizontalAlignment = Alignment.End) {
@@ -363,7 +363,7 @@ fun EnhancedInningsSummaryCard(
                     text = if (required > 0) "Target: $target (needed $required more)"
                     else "Target achieved!",
                     fontSize = 12.sp,
-                    color = if (required > 0) Color(0xFFFF5722) else Color(0xFF4CAF50),
+                    color = if (required > 0) Color(0xFFFF5722) else MaterialTheme.colorScheme.primary,
                     fontStyle = FontStyle.Italic
                 )
             }
@@ -376,7 +376,7 @@ fun EnhancedInningsSummaryCard(
                     text = "🌟 Top Performers",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32)
+                    color = MaterialTheme.colorScheme.primary
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -398,7 +398,7 @@ fun EnhancedInningsSummaryCard(
                                 text = if (batsman.isJoker) "🃏 ${batsman.name}" else batsman.name,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = if (batsman.isJoker) Color(0xFFFF9800) else Color.Black
+                                color = if (batsman.isJoker) MaterialTheme.colorScheme.secondary else Color.Black
                             )
                         }
 
@@ -429,7 +429,7 @@ fun EnhancedInningsSummaryCard(
                                 text = if (bowler.isJoker) "🃏 ${bowler.name}" else bowler.name,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = if (bowler.isJoker) Color(0xFFFF9800) else Color.Black
+                                color = if (bowler.isJoker) MaterialTheme.colorScheme.secondary else Color.Black
                             )
                         }
 
@@ -482,7 +482,7 @@ fun MatchStatsCard(match: MatchHistory) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)

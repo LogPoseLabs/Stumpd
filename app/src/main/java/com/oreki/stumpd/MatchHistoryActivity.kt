@@ -73,7 +73,7 @@ fun MatchHistoryScreen() {
                     text = "Match History",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32)
+                    color = MaterialTheme.colorScheme.primary
                 )
                 Text(
                     text = "${matches.size} matches found",
@@ -88,7 +88,7 @@ fun MatchHistoryScreen() {
         if (matches.isEmpty()) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(
                     modifier = Modifier.padding(32.dp),
@@ -133,7 +133,7 @@ fun MatchHistoryScreen() {
                     }
                 },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
                 Text("Export Backup")
             }
@@ -163,7 +163,7 @@ fun MatchHistoryScreen() {
                     }
                 },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
             ) {
                 Text("Import Backup")
             }
@@ -216,7 +216,7 @@ fun MatchHistoryCard(
                     Icon(
                         Icons.Default.Delete,
                         contentDescription = "Delete Match",
-                        tint = Color(0xFFF44336),
+                        tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -276,7 +276,7 @@ fun MatchHistoryCard(
                     text = "🏆 ${match.winnerTeam} won by ${match.winningMargin}",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32),
+                    color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(12.dp)
                 )
             }
@@ -287,7 +287,7 @@ fun MatchHistoryCard(
                 Text(
                     text = "🃏 Joker: $jokerName",
                     fontSize = 12.sp,
-                    color = Color(0xFFFF9800),
+                    color = MaterialTheme.colorScheme.secondary,
                     fontWeight = FontWeight.Medium
                 )
             }

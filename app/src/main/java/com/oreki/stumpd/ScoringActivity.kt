@@ -961,7 +961,7 @@ fun ScoringScreen(
                         context.startActivity(intent)
                         (context as androidx.activity.ComponentActivity).finish()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                 ) {
                     Text("Exit")
                 }
@@ -990,7 +990,7 @@ fun ScoreHeaderCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF2E7D32)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -1346,7 +1346,7 @@ fun ScoringButtons(
             Button(
                 onClick = onShowWicket,
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
             ) {
                 Text("Wicket", fontSize = 12.sp)
             }
@@ -1383,7 +1383,7 @@ fun ScoringButtons(
                 Text(
                     text = "⚠️ Please select players to start scoring",
                     fontSize = 16.sp,
-                    color = Color(0xFFFF9800),
+                    color = MaterialTheme.colorScheme.secondary,
                     textAlign = TextAlign.Center,
                 )
                 if (matchSettings.allowSingleSideBatting) {
@@ -1521,7 +1521,7 @@ fun LiveScorecardDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 item {
-                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF2E7D32))) {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)) {
                         Column(
                             modifier = Modifier.padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -1557,7 +1557,7 @@ fun LiveScorecardDialog(
                             text = "First Innings Summary",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2E7D32),
+                            color = MaterialTheme.colorScheme.primary,
                         )
                     }
                     item {
@@ -1606,7 +1606,7 @@ fun LiveScorecardDialog(
                         text = "Current Innings - Batting",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2196F3),
+                        color = MaterialTheme.colorScheme.tertiary,
                     )
                 }
 
@@ -1689,28 +1689,28 @@ fun LiveScorecardDialog(
                                     text = "🃏 Joker Player: $jokerPlayerName",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFFF9800),
+                                    color = MaterialTheme.colorScheme.secondary,
                                 )
                                 when {
                                     jokerInBatting != null -> {
                                         Text(
                                             text = "Currently batting: ${jokerInBatting.runs} runs (${jokerInBatting.ballsFaced} balls)",
                                             fontSize = 10.sp,
-                                            color = Color(0xFFFF9800),
+                                            color = MaterialTheme.colorScheme.secondary,
                                         )
                                     }
                                     jokerInBowling != null -> {
                                         Text(
                                             text = "Currently bowling: ${jokerInBowling.wickets}/${jokerInBowling.runsConceded} (${"%.1f".format(jokerInBowling.oversBowled)} overs)",
                                             fontSize = 10.sp,
-                                            color = Color(0xFFFF9800),
+                                            color = MaterialTheme.colorScheme.secondary,
                                         )
                                     }
                                     else -> {
                                         Text(
                                             text = "Available for both teams",
                                             fontSize = 10.sp,
-                                            color = Color(0xFFFF9800),
+                                            color = MaterialTheme.colorScheme.secondary,
                                         )
                                     }
                                 }
@@ -1745,7 +1745,7 @@ fun LivePlayerStatCard(
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.weight(1f),
-            color = if (player.isJoker) Color(0xFFFF9800) else Color.Black,
+            color = if (player.isJoker) MaterialTheme.colorScheme.secondary else Color.Black,
         )
         when (type) {
             "batting" -> {
@@ -1811,7 +1811,7 @@ fun EnhancedInningsBreakDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 item {
-                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF2E7D32))) {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)) {
                         Column(
                             modifier = Modifier.padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -1836,7 +1836,7 @@ fun EnhancedInningsBreakDialog(
                         text = "Batting Performance",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2196F3),
+                        color = MaterialTheme.colorScheme.tertiary,
                     )
                 }
                 items(battingPlayers.sortedByDescending { it.runs }.take(5)) { player ->
@@ -1881,7 +1881,7 @@ fun EnhancedInningsBreakDialog(
         confirmButton = {
             Button(
                 onClick = onStartSecondInnings,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             ) {
                 Text("Start 2nd Innings")
             }
@@ -1916,7 +1916,7 @@ fun ExtrasDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 2.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                         ) {
                             Text("${extraType.displayName} (base +$baseRuns)")
                         }
@@ -1944,9 +1944,9 @@ fun ExtrasDialog(
                                     .padding(vertical = 2.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = when(additionalRuns) {
-                                        0 -> Color(0xFFFF9800)
-                                        4 -> Color(0xFF4CAF50)
-                                        6 -> Color(0xFF2196F3)
+                                        0 -> MaterialTheme.colorScheme.secondary
+                                        4 -> MaterialTheme.colorScheme.primary
+                                        6 -> MaterialTheme.colorScheme.tertiary
                                         else -> Color(0xFF9E9E9E)
                                     }
                                 )
@@ -2115,7 +2115,7 @@ fun EnhancedMatchCompleteDialog(
                                 text = if (isTie) "Match Tied" else "${winner} won by ${margin}",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isTie) Color(0xFF6A1B9A) else Color(0xFF2E7D32),
+                                color = if (isTie) Color(0xFF6A1B9A) else MaterialTheme.colorScheme.primary,
                             )
                             // Optional super-over CTA
                             if (isTie && (matchSettings as? MatchSettings)?.let { it::class.members.any { m -> m.name == "enableSuperOver" } } == true) {
@@ -2145,7 +2145,7 @@ fun EnhancedMatchCompleteDialog(
                         text = "Batting",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFF2196F3),
+                        color = MaterialTheme.colorScheme.tertiary,
                     )
                 }
                 items(firstInningsBattingPlayers.sortedByDescending { it.runs }) { player ->
@@ -2178,7 +2178,7 @@ fun EnhancedMatchCompleteDialog(
                         text = "Batting",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFF2196F3),
+                        color = MaterialTheme.colorScheme.tertiary,
                     )
                 }
                 items(secondInningsBattingPlayers.sortedByDescending { it.runs }) { player ->
@@ -2215,14 +2215,14 @@ fun EnhancedMatchCompleteDialog(
                                         text = "🃏 Joker Performance: $jokerName",
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFFF9800),
+                                        color = MaterialTheme.colorScheme.secondary,
                                     )
                                     val totalRuns = (jokerFirstInningsBat?.runs ?: 0) + (jokerSecondInningsBat?.runs ?: 0)
                                     val totalWickets = (jokerFirstInningsBowl?.wickets ?: 0) + (jokerSecondInningsBowl?.wickets ?: 0)
                                     Text(
                                         text = "Total: $totalRuns runs, $totalWickets wickets",
                                         fontSize = 12.sp,
-                                        color = Color(0xFFFF9800),
+                                        color = MaterialTheme.colorScheme.secondary,
                                     )
                                 }
                             }
@@ -2234,7 +2234,7 @@ fun EnhancedMatchCompleteDialog(
         confirmButton = {
             Button(
                 onClick = onNewMatch,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             ) { Text("New Match") }
         },
         dismissButton = {

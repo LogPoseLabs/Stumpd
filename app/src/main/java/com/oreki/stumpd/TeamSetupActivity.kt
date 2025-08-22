@@ -114,7 +114,7 @@ fun TeamSetupScreen() {
                     Icon(
                         Icons.Default.ArrowBack,
                         contentDescription = "Back to Home",
-                        tint = Color(0xFF2E7D32),
+                        tint = MaterialTheme.colorScheme.primary,
                     )
                 }
 
@@ -123,7 +123,7 @@ fun TeamSetupScreen() {
                         text = "⚡ Quick Match Setup",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32),
+                        color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
                         text = "Configure match settings and teams",
@@ -340,14 +340,14 @@ fun TeamSetupScreen() {
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
                         text = "👥 Team Names",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32),
+                        color = MaterialTheme.colorScheme.primary,
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -424,12 +424,12 @@ fun TeamSetupScreen() {
                             text = "🃏 Joker Player (Optional)",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFFF9800),
+                            color = MaterialTheme.colorScheme.secondary,
                         )
                         Text(
                             text = "A player who can bat and bowl for both teams (max ${matchSettings.jokerMaxOvers} overs)",
                             fontSize = 12.sp,
-                            color = Color(0xFFFF9800),
+                            color = MaterialTheme.colorScheme.secondary,
                             modifier = Modifier.padding(bottom = 8.dp),
                         )
 
@@ -437,7 +437,7 @@ fun TeamSetupScreen() {
                             Button(
                                 onClick = { showJokerDialog = true },
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFFF9800),
+                                    containerColor = MaterialTheme.colorScheme.secondary,
                                 ),
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
@@ -455,7 +455,7 @@ fun TeamSetupScreen() {
                                     text = "🃏 ${jokerPlayer!!.name}",
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFFF9800),
+                                    color = MaterialTheme.colorScheme.secondary,
                                 )
 
                                 Row {
@@ -486,7 +486,7 @@ fun TeamSetupScreen() {
                         text = "📊 Match Summary",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32),
+                        color = MaterialTheme.colorScheme.primary,
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -505,7 +505,7 @@ fun TeamSetupScreen() {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text("Joker:", fontSize = 12.sp, color = Color.Gray)
-                            Text("${jokerPlayer!!.name}", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFFFF9800))
+                            Text("${jokerPlayer!!.name}", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.secondary)
                         }
                     }
 
@@ -581,7 +581,7 @@ fun TeamSetupScreen() {
                             .fillMaxWidth()
                             .height(56.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF4CAF50),
+                            containerColor = MaterialTheme.colorScheme.primary,
                         ),
                         enabled = team1.players.isNotEmpty() && team2.players.isNotEmpty(),
                     ) {
@@ -669,13 +669,13 @@ fun SettingsSection(
                     text = title,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32),
+                    color = MaterialTheme.colorScheme.primary,
                 )
 
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.ArrowDropDown else Icons.Default.PlayArrow,
                     contentDescription = if (isExpanded) "Collapse" else "Expand",
-                    tint = Color(0xFF2E7D32)
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
 
@@ -780,7 +780,7 @@ fun EnhancedTeamCard(
                     text = team.name,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32),
+                    color = MaterialTheme.colorScheme.primary,
                 )
 
                 Text(
@@ -813,7 +813,7 @@ fun EnhancedTeamCard(
                             Icon(
                                 Icons.Default.Person,
                                 contentDescription = "Player",
-                                tint = Color(0xFF2E7D32),
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(16.dp),
                             )
                             Spacer(modifier = Modifier.width(4.dp))
@@ -830,7 +830,7 @@ fun EnhancedTeamCard(
                             Icon(
                                 Icons.Default.Delete,
                                 contentDescription = "Remove Player",
-                                tint = Color(0xFFF44336),
+                                tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(18.dp),
                             )
                         }
@@ -844,7 +844,7 @@ fun EnhancedTeamCard(
             Button(
                 onClick = onAddPlayer,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Add Player")
                 Spacer(modifier = Modifier.width(8.dp))
@@ -872,7 +872,7 @@ fun EnhancedTeamCard(
                         Text(
                             text = "Joker: ${joker.name}",
                             fontSize = 12.sp,
-                            color = Color(0xFFFF9800),
+                            color = MaterialTheme.colorScheme.secondary,
                             fontWeight = FontWeight.Medium,
                         )
                     }

@@ -65,7 +65,7 @@ fun MainScreen() {
             text = "Stump'd",
             fontSize = 40.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF2E7D32)
+            color = MaterialTheme.colorScheme.primary
         )
 
         Text(
@@ -80,7 +80,7 @@ fun MainScreen() {
             Text(
                 text = "$matchCount matches played",
                 fontSize = 14.sp,
-                color = Color(0xFF4CAF50),
+                color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.padding(bottom = 32.dp)
             )
@@ -99,7 +99,7 @@ fun MainScreen() {
                 .height(60.dp)
                 .padding(bottom = 16.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF4CAF50)
+                containerColor = MaterialTheme.colorScheme.primary
             ),
             shape = RoundedCornerShape(12.dp)
         ) {
@@ -131,7 +131,7 @@ fun MainScreen() {
                 .height(60.dp)
                 .padding(bottom = 16.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF2196F3)
+                containerColor = MaterialTheme.colorScheme.tertiary
             ),
             shape = RoundedCornerShape(12.dp)
         ) {
@@ -153,7 +153,7 @@ fun MainScreen() {
                     Spacer(modifier = Modifier.width(8.dp))
                     Badge(
                         containerColor = Color.White,
-                        contentColor = Color(0xFF2196F3)
+                        contentColor = MaterialTheme.colorScheme.tertiary
                     ) {
                         Text(
                             text = matchCount.toString(),

@@ -58,7 +58,7 @@ fun AboutScreen() {
                 Icon(
                     Icons.Default.ArrowBack,
                     contentDescription = "Back to Home",
-                    tint = Color(0xFF2E7D32)
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
 
@@ -66,7 +66,7 @@ fun AboutScreen() {
                 text = "About Stump'd",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
+                color = MaterialTheme.colorScheme.primary
             )
         }
 
@@ -88,7 +88,7 @@ fun AboutScreen() {
                 text = "Stump'd",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
+                color = MaterialTheme.colorScheme.primary
             )
 
             Text(
@@ -102,13 +102,13 @@ fun AboutScreen() {
             Text(
                 text = "Version 1.0.0",
                 fontSize = 14.sp,
-                color = Color(0xFF4CAF50),
+                color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Medium
             )
             Text(
                 text = "by LogPoseLabs",
                 fontSize = 14.sp,
-                color = Color(0xFF4CAF50),
+                color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Medium
             )
         }
@@ -118,7 +118,7 @@ fun AboutScreen() {
         // Features
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Column(
                 modifier = Modifier.padding(16.dp)
@@ -127,7 +127,7 @@ fun AboutScreen() {
                     text = "Features",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32)
+                    color = MaterialTheme.colorScheme.primary
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
