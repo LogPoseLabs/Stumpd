@@ -105,6 +105,12 @@ fun AboutScreen() {
                 color = Color(0xFF4CAF50),
                 fontWeight = FontWeight.Medium
             )
+            Text(
+                text = "by LogPoseLabs",
+                fontSize = 14.sp,
+                color = Color(0xFF4CAF50),
+                fontWeight = FontWeight.Medium
+            )
         }
 
         Spacer(modifier = Modifier.height(32.dp))

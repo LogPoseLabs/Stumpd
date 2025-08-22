@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Stumpd" parent="android:ThemeOverlay.Material.Dark.ActionBar"> </style>
+<!--    <style name="Theme.Stumpd.Splash" parent="Theme.SplashScreen">-->
+<!--        <item name="windowSplashScreenBackground">#121212</item>-->
+<!--        <item name="windowSplashScreenAnimatedIcon">@drawable/dark</item>-->
+<!--        <item name="windowSplashScreenIconBackgroundColor">@null</item>-->
+<!--        <item name="postSplashScreenTheme">@style/Theme.Stumpd</item>-->
+<!--    </style>-->
+</resources>

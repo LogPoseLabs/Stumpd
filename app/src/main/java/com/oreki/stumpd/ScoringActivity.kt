@@ -132,10 +132,91 @@ fun ScoringScreen(
     var completedBattersInnings1 by remember { mutableStateOf(mutableListOf<Player>()) }
     var completedBattersInnings2 by remember { mutableStateOf(mutableListOf<Player>()) }
 
+    var completedBowlersInnings1 by remember { mutableStateOf(mutableListOf<Player>()) }
+    var completedBowlersInnings2 by remember { mutableStateOf(mutableListOf<Player>()) }
+
     var jokerOutInCurrentInnings by remember { mutableStateOf(false) }
     // Joker per-innings ball counters and helpers (ADD)
     var jokerBallsBowledInnings1 by remember { mutableStateOf(0) }
     var jokerBallsBowledInnings2 by remember { mutableStateOf(0) }
+    val midOverReplacementDueToJoker = remember { mutableStateOf(false) }
+
+    val deliveryHistory = remember { mutableStateListOf<DeliverySnapshot>() }
+
+    fun pushSnapshot() {
+        deliveryHistory.add(
+            DeliverySnapshot(
+                strikerIndex = strikerIndex,
+                nonStrikerIndex = nonStrikerIndex,
+                bowlerIndex = bowlerIndex,
+                battingTeamPlayers = battingTeamPlayers.map { it.copy() },
+                bowlingTeamPlayers = bowlingTeamPlayers.map { it.copy() },
+                totalWickets = totalWickets,
+                currentOver = currentOver,
+                ballsInOver = ballsInOver,
+                totalExtras = totalExtras,
+                calculatedTotalRuns = calculatedTotalRuns,
+                previousBowlerName = previousBowlerName,
+                midOverReplacementDueToJoker = midOverReplacementDueToJoker.value,
+                jokerBallsBowledInnings1 = jokerBallsBowledInnings1,
+                jokerBallsBowledInnings2 = jokerBallsBowledInnings2,
+                completedBattersInnings1 = completedBattersInnings1.map { it.copy() },
+                completedBattersInnings2 = completedBattersInnings2.map { it.copy() },
+                completedBowlersInnings1 = completedBowlersInnings1.map { it.copy() },
+                completedBowlersInnings2 = completedBowlersInnings2.map { it.copy() },
+            )
+        )
+    }
+
+    fun undoLastDelivery() {
+        if (deliveryHistory.isEmpty()) {
+            Toast.makeText(context, "Nothing to undo", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val snap = deliveryHistory.removeAt(deliveryHistory.lastIndex)
+        strikerIndex = snap.strikerIndex
+        nonStrikerIndex = snap.nonStrikerIndex
+        bowlerIndex = snap.bowlerIndex
+        battingTeamPlayers = snap.battingTeamPlayers.toMutableList()
+        bowlingTeamPlayers = snap.bowlingTeamPlayers.toMutableList()
+        totalWickets = snap.totalWickets
+        currentOver = snap.currentOver
+        ballsInOver = snap.ballsInOver
+        totalExtras = snap.totalExtras
+        previousBowlerName = snap.previousBowlerName
+        midOverReplacementDueToJoker.value = snap.midOverReplacementDueToJoker
+        jokerBallsBowledInnings1 = snap.jokerBallsBowledInnings1
+        jokerBallsBowledInnings2 = snap.jokerBallsBowledInnings2
+        completedBattersInnings1 = snap.completedBattersInnings1.toMutableList()
+        completedBattersInnings2 = snap.completedBattersInnings2.toMutableList()
+        completedBowlersInnings1 = snap.completedBowlersInnings1.toMutableList()
+        completedBowlersInnings2 = snap.completedBowlersInnings2.toMutableList()
+        showBowlerDialog = false
+        showBatsmanDialog = false
+        showExtrasDialog = false
+        showWicketDialog = false
+        Toast.makeText(context, "Last delivery undone", Toast.LENGTH_SHORT).show()
+    }
+
+    fun recordCurrentBowlerIfAny() {
+        val idx = bowlerIndex
+        if (idx != null) {
+            val p = bowlingTeamPlayers.getOrNull(idx)
+            if (p != null && (p.ballsBowled > 0 || p.wickets > 0 || p.runsConceded > 0)) {
+                if (currentInnings == 1) {
+                    val exists = completedBowlersInnings1.indexOfFirst { it.name.equals(p.name, true) }
+                    completedBowlersInnings1 =
+                        if (exists == -1) (completedBowlersInnings1 + p.copy()).toMutableList()
+                        else completedBowlersInnings1.mapIndexed { i, old -> if (i == exists) p.copy() else old }.toMutableList()
+                } else {
+                    val exists = completedBowlersInnings2.indexOfFirst { it.name.equals(p.name, true) }
+                    completedBowlersInnings2 =
+                        if (exists == -1) (completedBowlersInnings2 + p.copy()).toMutableList()
+                        else completedBowlersInnings2.mapIndexed { i, old -> if (i == exists) p.copy() else old }.toMutableList()
+                }
+            }
+        }
+    }
 
     fun jokerBallsBowledThisInningsRaw(): Int =
         if (currentInnings == 1) jokerBallsBowledInnings1 else jokerBallsBowledInnings2
@@ -177,10 +258,24 @@ fun ScoringScreen(
         }
     }
 
+    fun ensureJokerStatsAppliedOnAdd() {
+        if (jokerPlayer == null) return
+        val exists = bowlingTeamPlayers.indexOfFirst { it.isJoker }
+        if (exists == -1) return
+        val balls = if (currentInnings == 1) jokerBallsBowledInnings1 else jokerBallsBowledInnings2
+        if (balls <= 0) return
+        val overs = (balls / 6) + (balls % 6) * 0.1
+        val list = bowlingTeamPlayers.toMutableList()
+        val j = list[exists]
+        // Only update balls/overs; runsConceded/wickets remain whatever they were before removal if you tracked them elsewhere.
+        list[exists] = j.copy(ballsBowled = balls)
+        bowlingTeamPlayers = list
+    }
+
     // At the top level - replace existing calculation
     val jokerAvailableForBatting = jokerPlayer != null &&
             !battingTeamPlayers.any { it.isJoker } &&
-            !jokerPlayer.isOut
+            !jokerOutInCurrentInnings
 
     val availableBatsmen = battingTeamPlayers.count { !it.isOut } +
             if (jokerAvailableForBatting) 1 else 0
@@ -197,19 +292,26 @@ fun ScoringScreen(
             if (currentInnings == 1) {
                 firstInningsRuns = calculatedTotalRuns
                 firstInningsWickets = totalWickets
-                firstInningsOvers = currentOver
+                firstInningsOvers = currentOver + 1
                 firstInningsBalls = ballsInOver
                 firstInningsBattingPlayersList =
                     (battingTeamPlayers.filter { it.ballsFaced > 0 || it.runs > 0 } + completedBattersInnings1)
                         .distinctBy { it.name }
-                firstInningsBowlingPlayersList = bowlingTeamPlayers.filter { it.ballsBowled > 0 || it.wickets > 0 || it.runsConceded > 0 }
+                firstInningsBowlingPlayersList =
+                    (bowlingTeamPlayers.filter { it.ballsBowled > 0 || it.wickets > 0 || it.runsConceded > 0 } +
+                            completedBowlersInnings1)
+                        .distinctBy { it.name }
+                previousBowlerName = null
                 showInningsBreakDialog = true
             } else {
                 val secondInningsBattingPlayersList =
                     (battingTeamPlayers.filter { it.ballsFaced > 0 || it.runs > 0 } + completedBattersInnings2)
                         .distinctBy { it.name }
                 secondInningsBattingPlayers = secondInningsBattingPlayersList
-                val secondInningsBowlingPlayersList = bowlingTeamPlayers.filter { it.ballsBowled > 0 || it.wickets > 0 || it.runsConceded > 0 }
+                val secondInningsBowlingPlayersList =
+                    (bowlingTeamPlayers.filter { it.ballsBowled > 0 || it.wickets > 0 || it.runsConceded > 0 } +
+                            completedBowlersInnings2)
+                        .distinctBy { it.name }
                 secondInningsBattingPlayers = secondInningsBattingPlayersList
                 secondInningsBowlingPlayers = secondInningsBowlingPlayersList
                 showMatchCompleteDialog = true
@@ -283,6 +385,7 @@ fun ScoringScreen(
             availableBatsmen = availableBatsmen,
             calculatedTotalRuns = calculatedTotalRuns,
             onScoreRuns = { runs ->
+                pushSnapshot()
                 updateStrikerAndTotals { player ->
                     player.copy(
                         runs = player.runs + runs,
@@ -306,20 +409,25 @@ fun ScoringScreen(
                 if (ballsInOver == 6) {
                     currentOver += 1
                     ballsInOver = 0
+                    // snapshot current bowler’s final over
+                    recordCurrentBowlerIfAny()
                     previousBowlerName = bowler?.name
                     bowlerIndex = null
-                    bowlerIndex = null
                     currentBowlerSpell = 0
+                    midOverReplacementDueToJoker.value = false
                     if (!showSingleSideLayout) {
                         swapStrike()
                     }
                     showBowlerDialog = true
                     Toast.makeText(context, "Over complete! Select new bowler", Toast.LENGTH_LONG).show()
                 }
-                Toast.makeText(context, "$runs run(s) scored by ${striker?.name}! Total: $calculatedTotalRuns", Toast.LENGTH_SHORT).show()
+                val nameAfter = strikerIndex?.let { battingTeamPlayers.getOrNull(it)?.name } ?: "Batsman"
+                val totalAfter = battingTeamPlayers.sumOf { it.runs } + totalExtras
+                Toast.makeText(context, "$runs run(s) by $nameAfter. Total: $totalAfter", Toast.LENGTH_SHORT).show()
             },
             onShowExtras = { showExtrasDialog = true },
-            onShowWicket = { showWicketDialog = true }
+            onShowWicket = { showWicketDialog = true },
+            onUndo = { undoLastDelivery() }
         )
     }
 
@@ -348,6 +456,7 @@ fun ScoringScreen(
         ExtrasDialog(
             matchSettings = matchSettings,
             onExtraSelected = { extraType, totalRuns ->
+                pushSnapshot()
                 when (extraType) {
                     ExtraType.OFF_SIDE_WIDE, ExtraType.LEG_SIDE_WIDE -> {
                         updateBowlerStats { player ->
@@ -388,9 +497,11 @@ fun ScoringScreen(
                         if (ballsInOver == 6) {
                             currentOver += 1
                             ballsInOver = 0
+                            recordCurrentBowlerIfAny()
                             previousBowlerName = bowler?.name
                             bowlerIndex = null
                             currentBowlerSpell = 0
+                            midOverReplacementDueToJoker.value = false
                             if (!showSingleSideLayout) {
                                 swapStrike()
                             }
@@ -406,6 +517,8 @@ fun ScoringScreen(
                         Toast.makeText(context, "${extraType.displayName}! +$totalRuns runs", Toast.LENGTH_SHORT).show()
                     }
                 }
+                val totalAfter = battingTeamPlayers.sumOf { it.runs } + totalExtras
+                Toast.makeText(context, "${extraType.displayName}: +$totalRuns. Total: $totalAfter", Toast.LENGTH_SHORT).show()
                 showExtrasDialog = false
             },
             onDismiss = { showExtrasDialog = false }
@@ -440,32 +553,31 @@ fun ScoringScreen(
                 battingTeamPlayers = battingTeamPlayers,
                 bowlingTeamPlayers = bowlingTeamPlayers,
                 jokerOversThisInnings = jokerOversBowledThisInnings(),
-                jokerOutInCurrentInnings = jokerOutInCurrentInnings,
                 onPlayerSelected = { player ->
                     if (selectingBatsman == 1) {
                         if (player.isJoker) {
                             // Remove joker from bowling team if they were bowling
                             val jokerBowlingIndex = bowlingTeamPlayers.indexOfFirst { it.isJoker }
                             if (jokerBowlingIndex != -1) {
-                                val newBowlingList = bowlingTeamPlayers.toMutableList()
-                                newBowlingList.removeAt(jokerBowlingIndex)
-                                bowlingTeamPlayers = newBowlingList
-
                                 // Reset bowler if joker was bowling
                                 if (bowlerIndex == jokerBowlingIndex) {
+                                    recordCurrentBowlerIfAny()
                                     bowlerIndex = null
                                     currentBowlerSpell = 0
                                     if (ballsInOver > 0) {
+                                        midOverReplacementDueToJoker.value = true
                                         Toast.makeText(context, "🃏 Joker switched to bat. Select a new bowler to complete the over.", Toast.LENGTH_LONG).show()
                                         showBowlerDialog = true
                                     }
                                 }
 
+                                val newBowlingList = bowlingTeamPlayers.toMutableList()
+                                newBowlingList.removeAt(jokerBowlingIndex)
+                                bowlingTeamPlayers = newBowlingList
+
                                 // Update previous bowler index
                                 if (previousBowlerName == jokerName) {
                                     previousBowlerName = null
-                                } else if (previousBowlerIndex != null && previousBowlerIndex!! > jokerBowlingIndex) {
-                                    previousBowlerIndex = previousBowlerIndex!! - 1
                                 }
                             }
 
@@ -480,7 +592,7 @@ fun ScoringScreen(
                             }
                             jokerOutInCurrentInnings = false
                         } else {
-                            strikerIndex = battingTeamPlayers.indexOfFirst { it.name == player.name }
+                            strikerIndex = battingTeamPlayers.indexOfFirst { it.name.trim().equals(player.name.trim(), ignoreCase = true) }
                         }
 
                         if (!matchSettings.allowSingleSideBatting && (availableBatsmenCount + if (jokerAvailableForBattingInsideBatsmanDialog) 1 else 0) > 1) {
@@ -492,24 +604,27 @@ fun ScoringScreen(
                     } else {
                         // Second batsman selection - same logic for joker
                         if (player.isJoker) {
-                            // Same joker logic as above
+                            // Remove joker from bowling team if they were bowling
                             val jokerBowlingIndex = bowlingTeamPlayers.indexOfFirst { it.isJoker }
                             if (jokerBowlingIndex != -1) {
+                                // Reset bowler if joker was bowling
+                                if (bowlerIndex == jokerBowlingIndex) {
+                                    recordCurrentBowlerIfAny()
+                                    bowlerIndex = null
+                                    currentBowlerSpell = 0
+                                    if (ballsInOver > 0) {
+                                        midOverReplacementDueToJoker.value = true
+                                        Toast.makeText(context, "🃏 Joker switched to bat. Select a new bowler to complete the over.", Toast.LENGTH_LONG).show()
+                                        showBowlerDialog = true
+                                    }
+                                }
                                 val newBowlingList = bowlingTeamPlayers.toMutableList()
                                 newBowlingList.removeAt(jokerBowlingIndex)
                                 bowlingTeamPlayers = newBowlingList
 
-                                if (bowlerIndex == jokerBowlingIndex) {
-                                    bowlerIndex = null
-                                    if (ballsInOver > 0) {
-                                        Toast.makeText(context, "🃏 Joker left bowling to bat! Select new bowler", Toast.LENGTH_LONG).show()
-                                    }
-                                }
-
-                                if (previousBowlerIndex == jokerBowlingIndex) {
-                                    previousBowlerIndex = null
-                                } else if (previousBowlerIndex != null && previousBowlerIndex!! > jokerBowlingIndex) {
-                                    previousBowlerIndex = previousBowlerIndex!! - 1
+                                // Update previous bowler index
+                                if (previousBowlerName == jokerName) {
+                                    previousBowlerName = null
                                 }
                             }
 
@@ -522,12 +637,13 @@ fun ScoringScreen(
                                 nonStrikerIndex = battingTeamPlayers.indexOfFirst { it.isJoker }
                             }
                         } else {
-                            nonStrikerIndex = battingTeamPlayers.indexOfFirst { it.name == player.name }
+                            nonStrikerIndex = battingTeamPlayers.indexOfFirst { it.name.trim().equals(player.name.trim(), ignoreCase = true) }
                         }
                         jokerOutInCurrentInnings = false
                         showBatsmanDialog = false
                     }
                 },
+                jokerOutInCurrentInnings = jokerOutInCurrentInnings,
                 onDismiss = { showBatsmanDialog = false },
                 matchSettings = matchSettings
             )
@@ -536,11 +652,15 @@ fun ScoringScreen(
 
 
     if (showBowlerDialog) {
-        val bowlerPool = bowlingTeamPlayers
-            .filter { it.name != previousBowlerName }
+        val bowlerPool = if (ballsInOver == 0) {
+            val prev = previousBowlerName?.trim()
+            bowlingTeamPlayers.filter { !it.name.trim().equals(prev, ignoreCase = true) }
+        } else {
+            bowlingTeamPlayers
+        }
         EnhancedPlayerSelectionDialog(
             title = when {
-                previousBowlerIndex != null -> "Select New Bowler (Same bowler cannot bowl consecutive overs)"
+                ballsInOver == 0 && previousBowlerName != null -> "Select New Bowler (Same bowler cannot bowl consecutive overs)"
                 bowlerIndex == null && ballsInOver > 0 -> "Select Bowler to Complete Over"
                 else -> "Select Bowler"
             },
@@ -553,31 +673,76 @@ fun ScoringScreen(
             jokerOversThisInnings = jokerOversBowledThisInnings(),
             jokerOutInCurrentInnings = jokerOutInCurrentInnings,
             onPlayerSelected = { player ->
-                if (player.isJoker) {
-                    val jokerOvers = jokerOversBowledThisInnings()
-                    if (jokerOvers >= matchSettings.jokerMaxOvers) {
-                        Toast.makeText(context, "🃏 Joker has reached his max overs this innings!", Toast.LENGTH_LONG).show()
+                // Normalize lookup for current stats
+                fun norm(s: String): String = s.trim().replace(Regex("\\s+"), " ")
+                val ballsSoFar = if (player.isJoker) {
+                    // Always trust the innings ledger for Joker
+                    jokerBallsBowledThisInningsRaw()
+                } else {
+                    val idxInBowling = bowlingTeamPlayers.indexOfFirst {
+                        norm(it.name).equals(norm(player.name), ignoreCase = true)
+                    }
+                    bowlingTeamPlayers.getOrNull(idxInBowling)?.ballsBowled ?: 0
+                }
+
+                // Determine per-player cap and remaining legal balls
+                val capOvers = if (player.isJoker) matchSettings.jokerMaxOvers else matchSettings.maxOversPerBowler
+                val capBalls = capOvers * 6
+                val remainingBalls = (capBalls - ballsSoFar).coerceAtLeast(0)
+
+// 1) Absolute hard cap
+                if (remainingBalls <= 0) {
+                    val who = player.name
+                    Toast.makeText(context, "$who has reached the max overs for this innings!", Toast.LENGTH_LONG).show()
+                    return@EnhancedPlayerSelectionDialog
+                }
+
+// 2) New-over requires 6 legal balls
+                if (ballsInOver == 0 && remainingBalls < 6) {
+                    val who = if (player.isJoker) "Joker" else player.name
+                    Toast.makeText(context, "$who cannot start a new over (only $remainingBalls legal ball${if (remainingBalls != 1) "s" else ""} remaining; needs 6).", Toast.LENGTH_LONG).show()
+                    return@EnhancedPlayerSelectionDialog
+                }
+
+// 3) Mid-over replacement (only allowed after Joker left mid-over)
+                if (ballsInOver > 0) {
+                    if (!midOverReplacementDueToJoker.value) {
+                        Toast.makeText(context, "Mid-over bowler change is only allowed when replacing the Joker.", Toast.LENGTH_LONG).show()
                         return@EnhancedPlayerSelectionDialog
                     }
-                    if (!bowlingTeamPlayers.any { it.isJoker }) {
-                        val newList = bowlingTeamPlayers.toMutableList()
-                        newList.add(jokerPlayer!!.copy())
-                        bowlingTeamPlayers = newList
-                        bowlerIndex = bowlingTeamPlayers.size - 1
-                    } else {
-                        bowlerIndex = bowlingTeamPlayers.indexOfFirst { it.isJoker }
+                    val need = 6 - ballsInOver
+                    if (remainingBalls < need) {
+                        val who = if (player.isJoker) "Joker" else player.name
+                        Toast.makeText(context, "$who cannot replace mid-over (needs $need balls, only $remainingBalls remaining).", Toast.LENGTH_LONG).show()
+                        return@EnhancedPlayerSelectionDialog
                     }
-                } else {
-                    bowlerIndex = bowlingTeamPlayers.indexOfFirst { it.name == player.name }
                 }
+
+// Proceed with selection
+                if (player.isJoker) {
+                    if (!bowlingTeamPlayers.any { it.isJoker } && jokerPlayer != null) {
+                        val newList = bowlingTeamPlayers.toMutableList()
+                        newList.add(jokerPlayer.copy())
+                        bowlingTeamPlayers = newList
+                    }
+// Apply the innings-ledger balls to the live Joker entry
+                    ensureJokerStatsAppliedOnAdd()
+                    bowlerIndex = bowlingTeamPlayers.indexOfFirst { it.isJoker }
+                } else {
+                    bowlerIndex = bowlingTeamPlayers.indexOfFirst { norm(it.name).equals(norm(player.name), ignoreCase = true) }
+                }
+
                 currentBowlerSpell = 1
                 showBowlerDialog = false
+                midOverReplacementDueToJoker.value = false
             },
             onDismiss = {
-                if (previousBowlerIndex != null || ballsInOver > 0) {
+                if (ballsInOver > 0) {
                     Toast.makeText(context, "Please select a bowler to continue", Toast.LENGTH_SHORT).show()
                 } else {
                     showBowlerDialog = false
+                    // Defensive: ensure flag is not stuck
+                    midOverReplacementDueToJoker.value = false
                 }
             },
             matchSettings = matchSettings,
@@ -587,19 +752,29 @@ fun ScoringScreen(
     if (showWicketDialog) {
         WicketTypeDialog(
             onWicketSelected = { wicketType ->
+                pushSnapshot()
                 totalWickets += 1
                 updateStrikerAndTotals { player ->
                     player.copy(isOut = true, ballsFaced = player.ballsFaced + 1)
                 }
-                val outPlayer = striker
-                if (outPlayer != null && (outPlayer.ballsFaced > 0 || outPlayer.runs > 0)) {
+                val outSnapshot = striker?.copy()
+                // Add to completed ledger immediately (per innings)
+                if (outSnapshot != null && (outSnapshot.ballsFaced > 0 || outSnapshot.runs > 0)) {
                     if (currentInnings == 1) {
-                        if (completedBattersInnings1.none { it.name == outPlayer.name }) {
-                            completedBattersInnings1 = (completedBattersInnings1 + outPlayer.copy()).toMutableList()
+                        if (completedBattersInnings1.none { it.name.equals(outSnapshot.name, true) }) {
+                            completedBattersInnings1 = (completedBattersInnings1 + outSnapshot).toMutableList()
+                        } else {
+                            completedBattersInnings1 = completedBattersInnings1
+                                .map { if (it.name.equals(outSnapshot.name, true)) outSnapshot else it }
+                                .toMutableList()
                         }
                     } else {
-                        if (completedBattersInnings2.none { it.name == outPlayer.name }) {
-                            completedBattersInnings2 = (completedBattersInnings2 + outPlayer.copy()).toMutableList()
+                        if (completedBattersInnings2.none { it.name.equals(outSnapshot.name, true) }) {
+                            completedBattersInnings2 = (completedBattersInnings2 + outSnapshot).toMutableList()
+                        } else {
+                            completedBattersInnings2 = completedBattersInnings2
+                                .map { if (it.name.equals(outSnapshot.name, true)) outSnapshot else it }
+                                .toMutableList()
                         }
                     }
                 }
@@ -607,6 +782,7 @@ fun ScoringScreen(
                     player.copy(wickets = player.wickets + 1, ballsBowled = player.ballsBowled + 1)
                 }
                 ballsInOver += 1
+                incJokerBallIfBowledThisDelivery()
 
                 val jokerWasBowling = bowler?.isJoker == true
                 val jokerWasOut = striker?.isJoker == true
@@ -614,9 +790,11 @@ fun ScoringScreen(
                 if (ballsInOver == 6) {
                     currentOver += 1
                     ballsInOver = 0
+                    recordCurrentBowlerIfAny()
                     previousBowlerName = bowler?.name
                     bowlerIndex = null
                     currentBowlerSpell = 0
+                    midOverReplacementDueToJoker.value = false
                     showBowlerDialog = true
                 }
 
@@ -645,7 +823,7 @@ fun ScoringScreen(
                 val availableBatsmenAfterWicket = battingTeamPlayers.count { !it.isOut }
                 val jokerAvailableForBatting = jokerPlayer != null &&
                         !battingTeamPlayers.any { it.isJoker } &&
-                        !jokerPlayer.isOut
+                        !jokerOutInCurrentInnings
 
                 val totalAvailableBatsmen = availableBatsmenAfterWicket + if (jokerAvailableForBatting) 1 else 0
 
@@ -687,6 +865,10 @@ fun ScoringScreen(
                     }
                 }
                 showWicketDialog = false
+                val bowlerName = bowler?.name ?: "Bowler"
+                val outName = outSnapshot?.name ?: "Batsman"
+                val totalAfter = battingTeamPlayers.sumOf { it.runs } + totalExtras
+                Toast.makeText(context, "Wicket! $outName ${wicketType.name.lowercase().replace('_',' ')}. Total: $totalAfter. $bowlerName to continue.", Toast.LENGTH_LONG).show()
             },
             onDismiss = { showWicketDialog = false },
         )
@@ -716,13 +898,22 @@ fun ScoringScreen(
                     player.copy(runs = 0, ballsFaced = 0, fours = 0, sixes = 0, isOut = false)
                 }.toMutableList()
                 bowlingTeamPlayers = bowlingTeamPlayers.map { player ->
-                    player.copy(wickets = 0, runsConceded = 0, ballsBowled = 0)
+                    player.copy(wickets = 0, runsConceded = 0, ballsBowled = 0, isOut = false)
                 }.toMutableList()
+                // Make sure Joker is not already in either side at innings start
+                battingTeamPlayers = battingTeamPlayers.filter { !it.isJoker }.toMutableList()
+                bowlingTeamPlayers = bowlingTeamPlayers.filter { !it.isJoker }.toMutableList()
+                // Joker flags/ball counters reset for new innings context
+                jokerOutInCurrentInnings = false
+                jokerBallsBowledInnings1 = jokerBallsBowledInnings1 // unchanged
+                jokerBallsBowledInnings2 = jokerBallsBowledInnings2 // unchanged
+
                 totalWickets = 0
                 currentOver = 0
                 ballsInOver = 0
                 totalExtras = 0
                 previousBowlerName = null
+                completedBowlersInnings2 = mutableListOf()
                 currentBowlerSpell = 0
                 strikerIndex = null
                 nonStrikerIndex = null
@@ -1109,7 +1300,8 @@ fun ScoringButtons(
     calculatedTotalRuns: Int,
     onScoreRuns: (Int) -> Unit,
     onShowExtras: () -> Unit,
-    onShowWicket: () -> Unit
+    onShowWicket: () -> Unit,
+    onUndo: () -> Unit
 ) {
     // FIXED: Correct scoring condition
     val canStartScoring = striker != null && bowler != null &&
@@ -1130,13 +1322,7 @@ fun ScoringButtons(
                 Button(
                     onClick = { onScoreRuns(i) },
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = when (i) {
-                            4 -> Color(0xFF4CAF50)
-                            6 -> Color(0xFF2196F3)
-                            else -> Color(0xFF9E9E9E)
-                        },
-                    ),
+                    colors = ButtonDefaults.buttonColors()
                 ) {
                     Text(i.toString(), fontWeight = FontWeight.Bold)
                 }
@@ -1152,10 +1338,11 @@ fun ScoringButtons(
             Button(
                 onClick = onShowExtras,
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800)),
+                colors = ButtonDefaults.filledTonalButtonColors()
             ) {
                 Text("Extras", fontSize = 12.sp)
             }
+
             Button(
                 onClick = onShowWicket,
                 modifier = Modifier.weight(1f),
@@ -1163,6 +1350,12 @@ fun ScoringButtons(
             ) {
                 Text("Wicket", fontSize = 12.sp)
             }
+
+            Button(
+                onClick = onUndo,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.filledTonalButtonColors()
+            ) { Text("Undo", fontSize = 12.sp) }
         }
     } else if (isInningsComplete) {
         Card(
@@ -1840,23 +2033,45 @@ fun EnhancedMatchCompleteDialog(
     matchSettings: MatchSettings
 ) {
     val context = LocalContext.current
-    val winner = if (secondInningsRuns > firstInningsRuns) team2Name else team1Name
-    val margin = if (secondInningsRuns > firstInningsRuns) {
-        "${calculateWicketMargin(secondInningsWickets)} wickets"
-    } else {
-        "${firstInningsRuns - secondInningsRuns} runs"
+
+    // Result computation (tie-safe)
+    val isTie = secondInningsRuns == firstInningsRuns
+    val chasingWon = secondInningsRuns > firstInningsRuns
+    val winner: String? = when {
+        isTie -> null
+        chasingWon -> team2Name
+        else -> team1Name
+    }
+    val margin: String? = when {
+        isTie -> null
+        chasingWon -> "${calculateWicketMargin(secondInningsWickets)} wickets"
+        else -> "${firstInningsRuns - secondInningsRuns} runs"
     }
 
-    val firstInningsBattingStats = firstInningsBattingPlayers.map { it.toMatchStats(team1Name) }
-    val firstInningsBowlingStats = firstInningsBowlingPlayers.map { it.toMatchStats(team2Name) }
-    val secondInningsBattingStats = secondInningsBattingPlayers.map { it.toMatchStats(team2Name) }
-    val secondInningsBowlingStats = secondInningsBowlingPlayers.map { it.toMatchStats(team1Name) }
+    // Build stats once
+    val firstInningsBattingStats = remember(firstInningsBattingPlayers) {
+        firstInningsBattingPlayers.map { it.toMatchStats(team1Name) }
+    }
+    val firstInningsBowlingStats = remember(firstInningsBowlingPlayers) {
+        firstInningsBowlingPlayers.map { it.toMatchStats(team2Name) }
+    }
+    val secondInningsBattingStats = remember(secondInningsBattingPlayers) {
+        secondInningsBattingPlayers.map { it.toMatchStats(team2Name) }
+    }
+    val secondInningsBowlingStats = remember(secondInningsBowlingPlayers) {
+        secondInningsBowlingPlayers.map { it.toMatchStats(team1Name) }
+    }
 
-    val allBattingStats = firstInningsBattingStats + secondInningsBattingStats
-    val allBowlingStats = firstInningsBowlingStats + secondInningsBowlingStats
-    val topBatsman = allBattingStats.maxByOrNull { it.runs }
-    val topBowler = allBowlingStats.maxByOrNull { it.wickets }
+    val allBattingStats = remember(firstInningsBattingStats, secondInningsBattingStats) {
+        firstInningsBattingStats + secondInningsBattingStats
+    }
+    val allBowlingStats = remember(firstInningsBowlingStats, secondInningsBowlingStats) {
+        firstInningsBowlingStats + secondInningsBowlingStats
+    }
+    val topBatsman = remember(allBattingStats) { allBattingStats.maxByOrNull { it.runs } }
+    val topBowler = remember(allBowlingStats) { allBowlingStats.maxByOrNull { it.wickets } }
 
+    // Save history (tie-friendly placeholders)
     LaunchedEffect(Unit) {
         saveMatchToHistory(
             team1Name = team1Name,
@@ -1866,8 +2081,8 @@ fun EnhancedMatchCompleteDialog(
             firstInningsWickets = firstInningsWickets,
             secondInningsRuns = secondInningsRuns,
             secondInningsWickets = secondInningsWickets,
-            winnerTeam = winner,
-            winningMargin = margin,
+            winnerTeam = winner ?: "TIE",
+            winningMargin = margin ?: "Scores level",
             firstInningsBattingStats = firstInningsBattingStats,
             firstInningsBowlingStats = firstInningsBowlingStats,
             secondInningsBattingStats = secondInningsBattingStats,
@@ -1889,6 +2104,7 @@ fun EnhancedMatchCompleteDialog(
         },
         text = {
             LazyColumn {
+                // Result banner
                 item {
                     Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E8))) {
                         Column(
@@ -1896,14 +2112,27 @@ fun EnhancedMatchCompleteDialog(
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Text(
-                                text = "$winner won by $margin",
+                                text = if (isTie) "Match Tied" else "${winner} won by ${margin}",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF2E7D32),
+                                color = if (isTie) Color(0xFF6A1B9A) else Color(0xFF2E7D32),
                             )
+                            // Optional super-over CTA
+                            if (isTie && (matchSettings as? MatchSettings)?.let { it::class.members.any { m -> m.name == "enableSuperOver" } } == true) {
+                                Spacer(Modifier.height(8.dp))
+                                // Replace with your actual flag, above reflection check is defensive
+                                Button(
+                                    onClick = { /* trigger super over flow */ },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0))
+                                ) {
+                                    Text("Start Super Over")
+                                }
+                            }
                         }
                     }
                 }
+
+                // Team 1 summary
                 item {
                     Text(
                         text = "$team1Name - 1st Innings: $firstInningsRuns/$firstInningsWickets",
@@ -1934,8 +2163,10 @@ fun EnhancedMatchCompleteDialog(
                 items(firstInningsBowlingPlayers.sortedByDescending { it.wickets }) { player ->
                     PlayerStatCard(player, "bowling")
                 }
+
+                // Team 2 summary
+                item { Spacer(modifier = Modifier.height(16.dp)) }
                 item {
-                    Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = "$team2Name - 2nd Innings: $secondInningsRuns/$secondInningsWickets",
                         fontSize = 16.sp,
@@ -1965,13 +2196,17 @@ fun EnhancedMatchCompleteDialog(
                 items(secondInningsBowlingPlayers.sortedByDescending { it.wickets }) { player ->
                     PlayerStatCard(player, "bowling")
                 }
+
+                // Joker performance (if present)
                 jokerPlayerName?.let { jokerName ->
                     val jokerFirstInningsBat = firstInningsBattingPlayers.find { it.name == jokerName }
                     val jokerFirstInningsBowl = firstInningsBowlingPlayers.find { it.name == jokerName }
                     val jokerSecondInningsBat = secondInningsBattingPlayers.find { it.name == jokerName }
                     val jokerSecondInningsBowl = secondInningsBowlingPlayers.find { it.name == jokerName }
+
                     if (jokerFirstInningsBat != null || jokerFirstInningsBowl != null ||
-                        jokerSecondInningsBat != null || jokerSecondInningsBowl != null) {
+                        jokerSecondInningsBat != null || jokerSecondInningsBowl != null
+                    ) {
                         item {
                             Spacer(modifier = Modifier.height(16.dp))
                             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))) {
@@ -2000,14 +2235,10 @@ fun EnhancedMatchCompleteDialog(
             Button(
                 onClick = onNewMatch,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
-            ) {
-                Text("New Match")
-            }
+            ) { Text("New Match") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("View Details")
-            }
+            TextButton(onClick = onDismiss) { Text("View Details") }
         },
     )
 }

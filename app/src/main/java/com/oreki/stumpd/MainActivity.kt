@@ -252,6 +252,11 @@ fun MainScreen() {
             fontSize = 12.sp,
             color = Color.Gray
         )
+        Text(
+            text = "by LogPoseLabs",
+            fontSize = 12.sp,
+            color = Color.Gray
+        )
     }
 }
 

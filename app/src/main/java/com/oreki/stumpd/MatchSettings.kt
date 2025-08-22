@@ -5,23 +5,23 @@ import com.google.gson.Gson
 
 data class MatchSettings(
     // Basic match settings
-    val totalOvers: Int = 2,
+    val totalOvers: Int = 5,
     val maxPlayersPerTeam: Int = 11,
-    val allowSingleSideBatting: Boolean = false, // One batsman continues if others get out
+    val allowSingleSideBatting: Boolean = true, // One batsman continues if others get out
     // Extras settings - runs awarded
     val noballRuns: Int = 0,
     val byeRuns: Int = 0,
     val legByeRuns: Int = 0,
-    val legSideWideRuns: Int = 0,
+    val legSideWideRuns: Int = 1,
     val offSideWideRuns: Int = 0,
     // Advanced rules
-    val powerplayOvers: Int = 6, // First 6 overs are powerplay
-    val maxOversPerBowler: Int = 4,
+    val powerplayOvers: Int = 0, // First 6 overs are powerplay
+    val maxOversPerBowler: Int = 2,
     val enforceFollowOn: Boolean = false,
     val duckworthLewisMethod: Boolean = false,
     // Joker player rules
     val jokerCanBatAndBowl: Boolean = true,
-    val jokerMaxOvers: Int = 2,
+    val jokerMaxOvers: Int = 1,
     val jokerCountsForBothTeams: Boolean = true,
     // Match format
     val matchFormat: MatchFormat = MatchFormat.T20,

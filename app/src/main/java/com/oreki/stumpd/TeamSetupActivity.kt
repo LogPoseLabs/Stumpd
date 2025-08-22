@@ -141,34 +141,6 @@ fun TeamSetupScreen() {
                 isExpanded = expandedSections.contains("basic"),
                 onToggle = { toggleSection("basic") }
             ) {
-                // Match Format Selection
-                Text(
-                    text = "Match Format:",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    MatchFormat.values().forEach { format ->
-                        FilterChip(
-                            onClick = {
-                                matchSettings = matchSettings.copy(
-                                    matchFormat = format,
-                                    totalOvers = if (format != MatchFormat.CUSTOM) format.defaultOvers else matchSettings.totalOvers
-                                )
-                            },
-                            label = { Text(format.name, fontSize = 11.sp) },
-                            selected = matchSettings.matchFormat == format,
-                            modifier = Modifier.height(32.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
                 // Total Overs
                 SettingRow(
                     label = "Total Overs",
@@ -518,14 +490,6 @@ fun TeamSetupScreen() {
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Format:", fontSize = 12.sp, color = Color.Gray)
-                        Text("${matchSettings.matchFormat.displayName}", fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
