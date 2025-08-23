@@ -1,6 +1,7 @@
 package com.oreki.stumpd
 
 import android.content.Intent
+import android.content.res.Resources
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -99,7 +100,7 @@ fun MainScreen() {
                 .height(60.dp)
                 .padding(bottom = 16.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary
+                containerColor = Color(0xFF4CAF50)
             ),
             shape = RoundedCornerShape(12.dp)
         ) {
@@ -109,7 +110,7 @@ fun MainScreen() {
                 Icon(
                     Icons.Default.PlayArrow,
                     contentDescription = "Start Match",
-                    tint = Color.White
+                    tint = MaterialTheme.colorScheme.surface
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -141,7 +142,7 @@ fun MainScreen() {
                 Icon(
                     Icons.Default.Star,
                     contentDescription = "Match History",
-                    tint = Color.White
+                    tint = MaterialTheme.colorScheme.surface
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -152,7 +153,7 @@ fun MainScreen() {
                 if (matchCount > 0) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Badge(
-                        containerColor = Color.White,
+                        containerColor = MaterialTheme.colorScheme.surface,
                         contentColor = MaterialTheme.colorScheme.tertiary
                     ) {
                         Text(
@@ -190,7 +191,7 @@ fun MainScreen() {
                 Icon(
                     Icons.Default.KeyboardArrowUp,
                     contentDescription = "Statistics",
-                    tint = Color.White
+                    tint = MaterialTheme.colorScheme.surface
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -221,7 +222,7 @@ fun MainScreen() {
                 Icon(
                     Icons.Default.Info,
                     contentDescription = "About",
-                    tint = Color.White
+                    tint = MaterialTheme.colorScheme.surface
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(

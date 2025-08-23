@@ -26,6 +26,7 @@ data class MatchSettings(
     // Match format
     val matchFormat: MatchFormat = MatchFormat.T20,
     val tossWinnerChoice: TossChoice = TossChoice.BAT_FIRST,
+    val enableSuperOver: Boolean = false
 )
 
 enum class MatchFormat(

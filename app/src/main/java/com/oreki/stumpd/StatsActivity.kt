@@ -19,7 +19,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.oreki.stumpd.ui.theme.SectionTitle
 import com.oreki.stumpd.ui.theme.StumpdTheme
+import com.oreki.stumpd.ui.theme.StumpdTopBar
+import com.oreki.stumpd.ui.theme.sectionContainer
 
 class StatsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,198 +57,178 @@ fun StatsScreen() {
         matches = matchStorage.getAllMatches()
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = {
+    Scaffold(
+        topBar = {
+            StumpdTopBar(
+                title = "Statistics",
+                subtitle = "${players.size} players - ${matches.size} matches",
+                onBack = {
                     val intent = Intent(context, MainActivity::class.java)
                     context.startActivity(intent)
                     (context as ComponentActivity).finish()
+                },
+                actions = {
+                    // Compact tonal Filter action (similar size to Import/Export you added)
+                    FilledTonalButton(
+                        onClick = { showFilterDialog = true },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(IntrinsicSize.Min)
+                    ) {
+                        Icon(
+                            Icons.Default.List,
+                            contentDescription = "Filter",
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(selectedFilter, fontSize = 12.sp)
+                    }
                 }
-            ) {
-                Icon(
-                    Icons.Default.ArrowBack,
-                    contentDescription = "Back to Home",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Statistics",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = "${players.size} players • ${matches.size} matches",
-                    fontSize = 14.sp,
-                    color = Color.Gray
-                )
-            }
-
-            Button(
-                onClick = { showFilterDialog = true },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-            ) {
-                Icon(Icons.Default.List, contentDescription = "Filter")
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(selectedFilter, fontSize = 12.sp)
-            }
+            )
         }
+    ) { padding ->
+        Column(Modifier.padding(padding).padding(16.dp)) {
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        if (players.isEmpty()) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(
-                    modifier = Modifier.padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+            if (players.isEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
-                    Text(text = "📊", fontSize = 48.sp)
-                    Text(text = "No statistics available", fontSize = 18.sp, fontWeight = FontWeight.Medium)
-                    Text(text = "Play some matches to see your stats!", fontSize = 14.sp, color = Color.Gray)
-                }
-            }
-        } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                item {
-                    Text(
-                        text = "🏏 Top Batsmen",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-
-                val topBatsmen = players.sortedByDescending { it.totalRuns }.take(5)
-                items(topBatsmen) { player ->
-                    PlayerStatsCard(
-                        player = player,
-                        statType = "Batting",
-                        primaryStat = "${player.totalRuns} runs",
-                        secondaryStat = "Avg: ${"%.1f".format(player.battingAverage)} • SR: ${"%.1f".format(player.strikeRate)}",
-                        onClick = {
-                            val intent = Intent(context, PlayerDetailActivity::class.java)
-                            intent.putExtra("player_name", player.name)
-                            context.startActivity(intent)
-                        }
-                    )
-                }
-
-                item {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "⚾ Top Bowlers",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-
-                val topBowlers = players.filter { it.totalWickets > 0 }.sortedByDescending { it.totalWickets }.take(5)
-                items(topBowlers) { player ->
-                    PlayerStatsCard(
-                        player = player,
-                        statType = "Bowling",
-                        primaryStat = "${player.totalWickets} wickets",
-                        secondaryStat = "Avg: ${"%.1f".format(player.bowlingAverage)} • Eco: ${"%.1f".format(player.economyRate)}",
-                        onClick = {
-                            val intent = Intent(context, PlayerDetailActivity::class.java)
-                            intent.putExtra("player_name", player.name)
-                            context.startActivity(intent)
-                        }
-                    )
-                }
-
-                item {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "🏆 Match Winners",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-
-                val topWinners = players
-                    .filter { it.totalMatches > 0 }
-                    .map { player ->
-                        val wins = player.matchPerformances.count { it.isWinner }
-                        val winPercentage = (wins.toDouble() / player.totalMatches) * 100
-                        player to winPercentage
+                    Column(
+                        modifier = Modifier.padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(text = "📊", fontSize = 48.sp)
+                        Text(
+                            text = "No statistics available",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "Play some matches to see your stats!",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    .sortedByDescending { it.second }
-                    .take(5)
+                }
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    item { SectionTitle("🏏 Top Batsmen"); Spacer(Modifier.height(8.dp)) }
+                    val topBatsmen = players.sortedByDescending { it.totalRuns }.take(5)
+                    items(topBatsmen) { player ->
+                        PlayerStatsCard(
+                            player = player,
+                            statType = "Batting",
+                            primaryStat = "${player.totalRuns} runs",
+                            secondaryStat = "Avg: ${"%.1f".format(player.battingAverage)} • SR: ${
+                                "%.1f".format(
+                                    player.strikeRate
+                                )
+                            }",
+                            onClick = {
+                                val intent = Intent(context, PlayerDetailActivity::class.java)
+                                intent.putExtra("player_name", player.name)
+                                context.startActivity(intent)
+                            }
+                        )
+                    }
+                    item { SectionTitle("⚾ Top Bowlers"); Spacer(Modifier.height(8.dp)) }
 
-                items(topWinners) { (player, winPercentage) ->
-                    val wins = player.matchPerformances.count { it.isWinner }
-                    PlayerStatsCard(
-                        player = player,
-                        statType = "Wins",
-                        primaryStat = "${winPercentage.toInt()}%",
-                        secondaryStat = "$wins wins in ${player.totalMatches} matches",
-                        onClick = {
-                            val intent = Intent(context, PlayerDetailActivity::class.java)
-                            intent.putExtra("player_name", player.name)
-                            context.startActivity(intent)
+                    val topBowlers = players.filter { it.totalWickets > 0 }
+                        .sortedByDescending { it.totalWickets }.take(5)
+                    items(topBowlers) { player ->
+                        PlayerStatsCard(
+                            player = player,
+                            statType = "Bowling",
+                            primaryStat = "${player.totalWickets} wickets",
+                            secondaryStat = "Avg: ${"%.1f".format(player.bowlingAverage)} • Eco: ${
+                                "%.1f".format(
+                                    player.economyRate
+                                )
+                            }",
+                            onClick = {
+                                val intent = Intent(context, PlayerDetailActivity::class.java)
+                                intent.putExtra("player_name", player.name)
+                                context.startActivity(intent)
+                            }
+                        )
+                    }
+
+                    item { SectionTitle("🏆 Match Winners"); Spacer(Modifier.height(8.dp)) }
+                    val topWinners = players
+                        .filter { it.totalMatches > 0 }
+                        .map { player ->
+                            val wins = player.matchPerformances.count { it.isWinner }
+                            val winPercentage = (wins.toDouble() / player.totalMatches) * 100
+                            player to winPercentage
                         }
-                    )
+                        .sortedByDescending { it.second }
+                        .take(5)
+
+                    items(topWinners) { (player, winPercentage) ->
+                        val wins = player.matchPerformances.count { it.isWinner }
+                        PlayerStatsCard(
+                            player = player,
+                            statType = "Wins",
+                            primaryStat = "${winPercentage.toInt()}%",
+                            secondaryStat = "$wins wins in ${player.totalMatches} matches",
+                            onClick = {
+                                val intent = Intent(context, PlayerDetailActivity::class.java)
+                                intent.putExtra("player_name", player.name)
+                                context.startActivity(intent)
+                            }
+                        )
+                    }
                 }
             }
         }
-    }
 
-    if (showFilterDialog) {
-        AlertDialog(
-            onDismissRequest = { showFilterDialog = false },
-            title = { Text("Filter Statistics") },
-            text = {
-                Column {
-                    val filters = listOf("All Time", "Last 30 Days", "Last 3 Months", "This Year", "Per Match Average")
-                    filters.forEach { filter ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    selectedFilter = filter
-                                    showFilterDialog = false
-                                }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = selectedFilter == filter,
-                                onClick = {
-                                    selectedFilter = filter
-                                    showFilterDialog = false
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(filter)
+
+        if (showFilterDialog) {
+            AlertDialog(
+                onDismissRequest = { showFilterDialog = false },
+                title = { Text("Filter Statistics") },
+                text = {
+                    Column {
+                        val filters = listOf(
+                            "All Time",
+                            "Last 30 Days",
+                            "Last 3 Months",
+                            "This Year",
+                            "Per Match Average"
+                        )
+                        filters.forEach { filter ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedFilter = filter
+                                        showFilterDialog = false
+                                    }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = selectedFilter == filter,
+                                    onClick = {
+                                        selectedFilter = filter
+                                        showFilterDialog = false
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(filter)
+                            }
                         }
                     }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showFilterDialog = false }) {
+                        Text("Apply")
+                    }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { showFilterDialog = false }) {
-                    Text("Apply")
-                }
-            }
-        )
+            )
+        }
     }
 }
-
 @Composable
 fun PlayerStatsCard(
     player: PlayerDetailedStats,
@@ -258,7 +241,7 @@ fun PlayerStatsCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = sectionContainer()),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
@@ -285,7 +268,7 @@ fun PlayerStatsCard(
                 Text(
                     text = secondaryStat,
                     fontSize = 12.sp,
-                    color = Color.Gray
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 

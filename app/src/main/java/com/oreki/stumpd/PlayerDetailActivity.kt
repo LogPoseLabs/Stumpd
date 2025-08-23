@@ -473,7 +473,7 @@ fun MatchPerformanceCard(match: MatchPerformance) {
         modifier = Modifier.fillMaxWidth(),
         colors =
             CardDefaults.cardColors(
-                containerColor = if (match.isWinner) Color(0xFFF0F8FF) else Color.White,
+                containerColor = if (match.isWinner) Color(0xFFF0F8FF) else MaterialTheme.colorScheme.surface,
             ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {

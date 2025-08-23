@@ -376,3 +376,210 @@ fun PlayerSuggestionCard(
         }
     }
 }
+
+
+@Composable
+fun PlayerMultiSelectDialog(
+    title: String,
+    occupiedNames: Set<String>,
+    preselected: Set<String> = emptySet(),
+    onConfirm: (List<String>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val playerStorage = remember { PlayerStorageManager(context) }
+
+    var searchQuery by remember { mutableStateOf("") }
+    var suggestions by remember { mutableStateOf(emptyList<StoredPlayer>()) }
+    var recentPlayers by remember { mutableStateOf(emptyList<StoredPlayer>()) }
+    var selected by remember { mutableStateOf(preselected) }
+
+    // Load recent players (excluding occupied)
+    LaunchedEffect(occupiedNames) {
+        recentPlayers = playerStorage
+            .getRecentPlayers()
+            .filter { it.name !in occupiedNames }
+    }
+
+    // Update suggestions as user types (excluding occupied)
+    LaunchedEffect(searchQuery, occupiedNames) {
+        suggestions =
+            if (searchQuery.isBlank()) emptyList()
+            else playerStorage.searchPlayers(searchQuery)
+                .filter { it.name !in occupiedNames }
+    }
+
+    fun toggle(name: String) {
+        selected = if (name in selected) selected - name else selected + name
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+        text = {
+            Column {
+                // Search / add
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Player Name") },
+                    placeholder = { Text("Type to search or add new player") },
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear")
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                // If typing a new unique name: quick add chip
+                val canQuickAdd = searchQuery.isNotBlank()
+                        && suggestions.none { it.name.equals(searchQuery, true) }
+                        && (searchQuery !in occupiedNames)
+                if (canQuickAdd) {
+                    FilledTonalButton(
+                        onClick = {
+                            val cleaned = searchQuery.trim()
+                            playerStorage.addOrUpdatePlayer(cleaned)
+                            toggle(cleaned)
+                            searchQuery = ""
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Add '$searchQuery'")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                // List
+                LazyColumn(Modifier.height(240.dp)) {
+                    if (searchQuery.isBlank()) {
+                        if (recentPlayers.isNotEmpty()) {
+                            item {
+                                Text(
+                                    "Recent Players (Available)",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                            }
+                            items(recentPlayers) { player ->
+                                MultiSelectRow(
+                                    name = player.name,
+                                    checked = player.name in selected,
+                                    onToggle = { toggle(player.name) }
+                                )
+                            }
+                        } else {
+                            item {
+                                InfoCard("No recent players found.\nType a name to add new player.")
+                            }
+                        }
+                    } else {
+                        if (suggestions.isNotEmpty()) {
+                            item {
+                                Text(
+                                    "Available Players",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                            }
+                            items(suggestions) { player ->
+                                MultiSelectRow(
+                                    name = player.name,
+                                    checked = player.name in selected,
+                                    onToggle = { toggle(player.name) },
+                                    highlightQuery = searchQuery
+                                )
+                            }
+                        } else {
+                            item {
+                                InfoCard("No available players matching '$searchQuery'.")
+                            }
+                        }
+                    }
+                }
+
+                if (selected.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("Selected: ${selected.size}") }
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(selected.toList()) },
+                enabled = selected.isNotEmpty()
+            ) { Text("Add (${selected.size})") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+private fun MultiSelectRow(
+    name: String,
+    checked: Boolean,
+    onToggle: () -> Unit,
+    highlightQuery: String = ""
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .clickable { onToggle() }
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(checked = checked, onCheckedChange = { onToggle() })
+            Spacer(Modifier.width(8.dp))
+            // Simple highlighter like your single-select dialog
+            if (highlightQuery.isNotEmpty() && name.contains(highlightQuery, true)) {
+                val start = name.indexOf(highlightQuery, ignoreCase = true)
+                val end = start + highlightQuery.length
+                Row {
+                    if (start > 0) Text(name.substring(0, start))
+                    Text(
+                        name.substring(start, end),
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    if (end < name.length) Text(name.substring(end))
+                }
+            } else {
+                Text(name)
+            }
+        }
+    }
+}
+
+@Composable
+private fun InfoCard(text: String) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(16.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp
+        )
+    }
+}

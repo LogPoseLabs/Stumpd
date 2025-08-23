@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.List
@@ -24,6 +25,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.gson.Gson
 import com.oreki.stumpd.ui.theme.StumpdTheme
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.material3.SmallTopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import com.oreki.stumpd.ui.theme.ScoringTopBar
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
 
 class ScoringActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,6 +90,15 @@ fun ScoringScreen(
             }
         } catch (e: Exception) {
             MatchSettings()
+        }
+    }
+    var topBarVisible by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+    fun revealTopBarTemporarily(timeoutMs: Long = 3500L) {
+        topBarVisible = true
+        scope.launch {
+            delay(timeoutMs)
+            topBarVisible = false
         }
     }
 
@@ -324,6 +346,20 @@ fun ScoringScreen(
             .fillMaxSize()
             .padding(16.dp),
     ) {
+        ScoringTopBar(
+            visible = topBarVisible,
+            title = "Scoring",
+            onBack = {
+                if (calculatedTotalRuns > 0 || currentOver > 0) {
+                    showExitDialog = true
+                } else {
+                    val intent = android.content.Intent(context, MainActivity::class.java)
+                    context.startActivity(intent)
+                    (context as ComponentActivity).finish()
+                }
+            }
+        )
+        Spacer(Modifier.height(8.dp))
         ScoreHeaderCard(
             battingTeamName = battingTeamName,
             currentInnings = currentInnings,
@@ -385,6 +421,7 @@ fun ScoringScreen(
             availableBatsmen = availableBatsmen,
             calculatedTotalRuns = calculatedTotalRuns,
             onScoreRuns = { runs ->
+                revealTopBarTemporarily()
                 pushSnapshot()
                 updateStrikerAndTotals { player ->
                     player.copy(
@@ -658,6 +695,30 @@ fun ScoringScreen(
         } else {
             bowlingTeamPlayers
         }
+        // Allow cap override only at the start of an over if nobody can legally bowl 6 balls
+        val overrideToCompleteOverAllowed = (ballsInOver == 0) && run {
+            val prev = previousBowlerName?.trim()
+            val startOverPool = if (prev != null) {
+                bowlingTeamPlayers.filter { !it.name.trim().equals(prev, ignoreCase = true) }
+            } else {
+                bowlingTeamPlayers
+            }
+
+            val anyoneHasSix = startOverPool.any { p ->
+                val isJoker = p.isJoker
+                val ballsSoFar = if (isJoker) {
+                    // Use the innings-ledger for Joker
+                    jokerBallsBowledThisInningsRaw()
+                } else {
+                    p.ballsBowled
+                }
+                val capOvers = if (isJoker) matchSettings.jokerMaxOvers else matchSettings.maxOversPerBowler
+                val capBalls = capOvers * 6
+                val remainingBalls = (capBalls - ballsSoFar).coerceAtLeast(0)
+                remainingBalls >= 6
+            }
+            !anyoneHasSix
+        }
         EnhancedPlayerSelectionDialog(
             title = when {
                 ballsInOver == 0 && previousBowlerName != null -> "Select New Bowler (Same bowler cannot bowl consecutive overs)"
@@ -690,21 +751,46 @@ fun ScoringScreen(
                 val capBalls = capOvers * 6
                 val remainingBalls = (capBalls - ballsSoFar).coerceAtLeast(0)
 
-// 1) Absolute hard cap
-                if (remainingBalls <= 0) {
-                    val who = player.name
-                    Toast.makeText(context, "$who has reached the max overs for this innings!", Toast.LENGTH_LONG).show()
-                    return@EnhancedPlayerSelectionDialog
+                // If selecting the same bowler mid-over, just close the dialog silently
+                run {
+                    val currentIdx = bowlerIndex
+                    if (ballsInOver > 0 && currentIdx != null) {
+                        val current = bowlingTeamPlayers.getOrNull(currentIdx)
+                        if (current != null) {
+                            fun norm(s: String): String = s.trim().replace(Regex("\\s+"), " ")
+                            val same = (!player.isJoker && norm(current.name).equals(norm(player.name), ignoreCase = true)) ||
+                                    (player.isJoker && current.isJoker)
+                            if (same) {
+                                showBowlerDialog = false
+                                return@EnhancedPlayerSelectionDialog
+                            }
+                        }
+                    }
                 }
 
-// 2) New-over requires 6 legal balls
+// 1) New-over requires 6 legal balls (with one-over override if nobody has 6)
                 if (ballsInOver == 0 && remainingBalls < 6) {
-                    val who = if (player.isJoker) "Joker" else player.name
-                    Toast.makeText(context, "$who cannot start a new over (only $remainingBalls legal ball${if (remainingBalls != 1) "s" else ""} remaining; needs 6).", Toast.LENGTH_LONG).show()
-                    return@EnhancedPlayerSelectionDialog
+                    val canOverrideThisOver =
+                        overrideToCompleteOverAllowed && !player.isJoker
+                    if (!canOverrideThisOver) {
+                        val who = if (player.isJoker) "Joker" else player.name
+                        Toast.makeText(
+                            context,
+                            "$who cannot start a new over (only $remainingBalls legal ball${if (remainingBalls != 1) "s" else ""} remaining; needs 6).",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        return@EnhancedPlayerSelectionDialog
+                    } else {
+                        Toast.makeText(
+                            context,
+                            "${player.name} will exceed max-over cap only to complete this over.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 }
 
-// 3) Mid-over replacement (only allowed after Joker left mid-over)
+
+// 2) Mid-over replacement (only allowed after Joker left mid-over)
                 if (ballsInOver > 0) {
                     if (!midOverReplacementDueToJoker.value) {
                         Toast.makeText(context, "Mid-over bowler change is only allowed when replacing the Joker.", Toast.LENGTH_LONG).show()
@@ -737,7 +823,7 @@ fun ScoringScreen(
                 midOverReplacementDueToJoker.value = false
             },
             onDismiss = {
-                if (ballsInOver > 0) {
+                if (ballsInOver > 0 && bowlerIndex == null) {
                     Toast.makeText(context, "Please select a bowler to continue", Toast.LENGTH_SHORT).show()
                 } else {
                     showBowlerDialog = false
@@ -1000,13 +1086,13 @@ fun ScoreHeaderCard(
                 text = "$battingTeamName - Innings $currentInnings (${matchSettings.totalOvers} overs)",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
             )
             Text(
                 text = "$calculatedTotalRuns/$totalWickets",
                 fontSize = 40.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
             )
             Row(
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -1015,14 +1101,14 @@ fun ScoreHeaderCard(
                 Text(
                     text = "Overs: $currentOver.$ballsInOver/${matchSettings.totalOvers}",
                     fontSize = 14.sp,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                 )
                 val runRate = if (currentOver == 0 && ballsInOver == 0) 0.0
                 else calculatedTotalRuns.toDouble() / ((currentOver * 6 + ballsInOver) / 6.0)
                 Text(
                     text = "RR: ${"%.2f".format(runRate)}",
                     fontSize = 14.sp,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                 )
                 if (totalExtras > 0) {
                     Text(
@@ -1037,7 +1123,7 @@ fun ScoreHeaderCard(
                 Text(
                     text = "($playerRuns runs + $totalExtras extras)",
                     fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.8f),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
                     fontStyle = FontStyle.Italic
                 )
             }
@@ -1303,99 +1389,152 @@ fun ScoringButtons(
     onShowWicket: () -> Unit,
     onUndo: () -> Unit
 ) {
-    // FIXED: Correct scoring condition
     val canStartScoring = striker != null && bowler != null &&
             (nonStriker != null || (matchSettings.allowSingleSideBatting && availableBatsmen == 1))
 
-    if (canStartScoring && !isInningsComplete) {
-        Text(
-            text = "Runs",
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            for (i in 0..6) {
-                Button(
-                    onClick = { onScoreRuns(i) },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors()
-                ) {
-                    Text(i.toString(), fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Button(
-                onClick = onShowExtras,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.filledTonalButtonColors()
-            ) {
-                Text("Extras", fontSize = 12.sp)
-            }
-
-            Button(
-                onClick = onShowWicket,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-            ) {
-                Text("Wicket", fontSize = 12.sp)
-            }
-
-            Button(
-                onClick = onUndo,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.filledTonalButtonColors()
-            ) { Text("Undo", fontSize = 12.sp) }
-        }
-    } else if (isInningsComplete) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5)),
-        ) {
-            Text(
-                text = "Innings Complete! Total: $calculatedTotalRuns runs",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF7B1FA2),
-                modifier = Modifier.padding(16.dp),
-                textAlign = TextAlign.Center,
-            )
-        }
-    } else {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
+    when {
+        canStartScoring && !isInningsComplete -> {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "⚠️ Please select players to start scoring",
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.secondary,
-                    textAlign = TextAlign.Center,
+                    text = "Runs",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
                 )
-                if (matchSettings.allowSingleSideBatting) {
-                    Text(
-                        text = "Single side batting enabled - only one batsman required",
-                        fontSize = 12.sp,
-                        color = Color.Gray,
-                        fontStyle = FontStyle.Italic,
+                Spacer(Modifier.height(8.dp))
+
+                // Option A: Two rows (works without extra deps)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    (0..3).forEach { RunButton(it, onScoreRuns) }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    (4..6).forEach { RunButton(it, onScoreRuns) }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ActionTonalButton(
+                        label = "Extras",
+                        modifier = Modifier.weight(1f),
+                        onClick = onShowExtras
+                    )
+                    // Prominent Wicket
+                    Button(
+                        onClick = onShowWicket,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    ) {
+                        Text("Wicket", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    ActionTonalButton(
+                        label = "Undo",
+                        modifier = Modifier.weight(1f),
+                        onClick = onUndo
                     )
                 }
             }
         }
+
+        isInningsComplete -> {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5)),
+            ) {
+                Text(
+                    text = "Innings Complete! Total: $calculatedTotalRuns runs",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF7B1FA2),
+                    modifier = Modifier.padding(16.dp),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+
+        else -> {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = "⚠️ Please select players to start scoring",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.secondary,
+                        textAlign = TextAlign.Center,
+                    )
+                    if (matchSettings.allowSingleSideBatting) {
+                        Text(
+                            text = "Single side batting enabled - only one batsman required",
+                            fontSize = 12.sp,
+                            color = Color.Gray,
+                            fontStyle = FontStyle.Italic,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RunButton(
+    value: Int,
+    onClick: (Int) -> Unit,
+) {
+    // Square, compact, clearly a button (not a pill/chip)
+    Button(
+        onClick = { onClick(value) },
+        modifier = Modifier
+            .size(56.dp), // square; adjust to taste (52–64.dp)
+        shape = RoundedCornerShape(12.dp),
+        contentPadding = PaddingValues(0.dp),
+        colors = ButtonDefaults.filledTonalButtonColors()
+    ) {
+        Text(
+            text = value.toString(),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun ActionTonalButton(
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(48.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.filledTonalButtonColors()
+    ) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
 
@@ -1464,7 +1603,7 @@ fun saveMatchToHistory(
     val allMatches = storageManager.getAllMatches()
     android.util.Log.d("SaveMatch", "Match saved with detailed stats! Total matches now: ${allMatches.size}")
 
-    android.widget.Toast.makeText(
+    Toast.makeText(
         context,
         "Match with detailed stats saved! Total: ${allMatches.size} matches 🏏📊",
         android.widget.Toast.LENGTH_LONG,
@@ -1530,13 +1669,13 @@ fun LiveScorecardDialog(
                                 text = "$battingTeamName - Innings $currentInnings",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.surface,
                             )
                             Text(
                                 text = "$currentRuns/$currentWickets ($currentOvers.$currentBalls/$totalOvers overs)",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.surface,
                             )
                             if (currentInnings == 2) {
                                 val target = firstInningsRuns + 1
@@ -1820,13 +1959,13 @@ fun EnhancedInningsBreakDialog(
                                 text = battingTeam,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.surface,
                             )
                             Text(
                                 text = "$runs/$wickets ($overs.$balls/$totalOvers overs)",
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.surface,
                             )
                         }
                     }
@@ -2048,17 +2187,16 @@ fun EnhancedMatchCompleteDialog(
         else -> "${firstInningsRuns - secondInningsRuns} runs"
     }
 
-    // Build stats once
-    val firstInningsBattingStats = remember(firstInningsBattingPlayers) {
+    val firstInningsBattingStats = remember(firstInningsBattingPlayers, team1Name) {
         firstInningsBattingPlayers.map { it.toMatchStats(team1Name) }
     }
-    val firstInningsBowlingStats = remember(firstInningsBowlingPlayers) {
+    val firstInningsBowlingStats = remember(firstInningsBowlingPlayers, team2Name) {
         firstInningsBowlingPlayers.map { it.toMatchStats(team2Name) }
     }
-    val secondInningsBattingStats = remember(secondInningsBattingPlayers) {
+    val secondInningsBattingStats = remember(secondInningsBattingPlayers, team2Name) {
         secondInningsBattingPlayers.map { it.toMatchStats(team2Name) }
     }
-    val secondInningsBowlingStats = remember(secondInningsBowlingPlayers) {
+    val secondInningsBowlingStats = remember(secondInningsBowlingPlayers, team1Name) {
         secondInningsBowlingPlayers.map { it.toMatchStats(team1Name) }
     }
 
@@ -2118,7 +2256,7 @@ fun EnhancedMatchCompleteDialog(
                                 color = if (isTie) Color(0xFF6A1B9A) else MaterialTheme.colorScheme.primary,
                             )
                             // Optional super-over CTA
-                            if (isTie && (matchSettings as? MatchSettings)?.let { it::class.members.any { m -> m.name == "enableSuperOver" } } == true) {
+                            if (isTie && matchSettings.enableSuperOver == true) {
                                 Spacer(Modifier.height(8.dp))
                                 // Replace with your actual flag, above reflection check is defensive
                                 Button(

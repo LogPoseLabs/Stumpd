@@ -131,7 +131,7 @@ fun AddPlayerScreen() {
                 Icon(
                     Icons.Default.Add,
                     contentDescription = "Add Player",
-                    tint = Color.White
+                    tint = MaterialTheme.colorScheme.surface
                 )
             }
         }
@@ -406,7 +406,7 @@ fun PlayerManagementCard(
             .fillMaxWidth()
             .clickable { onViewDetails() },
         colors = CardDefaults.cardColors(
-            containerColor = if (player.matchesPlayed > 0) Color.White else MaterialTheme.colorScheme.surfaceVariant
+            containerColor = if (player.matchesPlayed > 0) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {

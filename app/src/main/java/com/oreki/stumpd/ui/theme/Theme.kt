@@ -2,7 +2,9 @@ package com.oreki.stumpd.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -10,6 +12,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 
 // Brand colors (from your icon)
 // Teal plate and navy foreground, plus a Joker accent orange.
@@ -19,11 +22,12 @@ private val StumpdNavy = Color(0xFF0C2B3A) // ink/navy
 private val StumpdNavyLight = Color(0xFF1F475A)
 private val JokerOrange = Color(0xFFFF9800)
 private val ErrorRed = Color(0xFFF44336)
+private val White = Color(0xFFFFFFFF)
 
 // Light scheme tuned for readability on white surfaces
 private val LightColorScheme = lightColorScheme(
     primary = StumpdTeal,
-    onPrimary = Color.White,
+    onPrimary = White,
     primaryContainer = StumpdTeal.copy(alpha = 0.15f),
     onPrimaryContainer = StumpdNavy,
     secondary = JokerOrange,
@@ -32,21 +36,21 @@ private val LightColorScheme = lightColorScheme(
     onSecondaryContainer = StumpdNavy,
 
     tertiary = Color(0xFF2196F3),           // info/action blue
-    onTertiary = Color.White,
+    onTertiary = White,
     tertiaryContainer = Color(0xFFBBDEFB),
     onTertiaryContainer = StumpdNavy,
 
     background = Color(0xFFFAFCFB),
     onBackground = StumpdNavy,
 
-    surface = Color.White,
+    surface = White,
     onSurface = StumpdNavy,
     surfaceVariant = Color(0xFFF2F5F4),
     onSurfaceVariant = StumpdNavyLight,
 
     outline = StumpdNavyLight.copy(alpha = 0.35f),
     error = ErrorRed,
-    onError = Color.White,
+    onError = White,
     errorContainer = ErrorRed.copy(alpha = 0.12f),
     onErrorContainer = ErrorRed
 )
@@ -56,7 +60,7 @@ private val DarkColorScheme = darkColorScheme(
     primary = StumpdTeal,
     onPrimary = Color.Black,
     primaryContainer = StumpdTealDark,
-    onPrimaryContainer = Color.White,
+    onPrimaryContainer = White,
     secondary = JokerOrange,
     onSecondary = Color.Black,
     secondaryContainer = Color(0xFF5A3B00),
@@ -102,5 +106,11 @@ fun StumpdTheme(
         shapes = StumpdShapes,
         content = content
     )
+    val shapes = Shapes(
+        small = MaterialTheme.shapes.small.copy(all = CornerSize(14.dp)),
+        medium = MaterialTheme.shapes.medium.copy(all = CornerSize(14.dp)),
+        large = MaterialTheme.shapes.large.copy(all = CornerSize(14.dp)),
+    )
 }
+
 

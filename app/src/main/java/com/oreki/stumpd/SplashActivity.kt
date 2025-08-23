@@ -69,13 +69,13 @@ fun SplashScreen(onSplashComplete: () -> Unit) {
                 text = "Stump'd",
                 fontSize = 48.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = MaterialTheme.colorScheme.surface
             )
 
             Text(
                 text = "Your Digital Cricket Scorebook",
                 fontSize = 16.sp,
-                color = Color.White.copy(alpha = 0.8f)
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
             )
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -83,7 +83,7 @@ fun SplashScreen(onSplashComplete: () -> Unit) {
             Text(
                 text = "Loading...",
                 fontSize = 14.sp,
-                color = Color.White.copy(alpha = 0.6f)
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
             )
         }
     }
