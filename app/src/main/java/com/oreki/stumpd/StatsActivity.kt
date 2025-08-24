@@ -51,23 +51,45 @@ fun StatsScreen() {
     var selectedFilter by remember { mutableStateOf("All Time") }
     var showFilterDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        playerStorage.syncPlayerStatsFromMatches()
-        players = playerStorage.getAllPlayersDetailed()
-        matches = matchStorage.getAllMatches()
+    val groupStorage = remember { PlayerGroupStorageManager(context) }
+    var selectedGroupId by remember { mutableStateOf<String?>(null) } // null => All Groups
+    var selectedGroupName by remember { mutableStateOf("All Groups") }
+    var showGroupPicker by remember { mutableStateOf(false) }
+
+    LaunchedEffect(selectedGroupId) {
+        // Filter matches by group selection first
+        val all = matchStorage.getAllMatches()
+        val groupFiltered = selectedGroupId?.let { gId -> all.filter { it.groupId == gId } } ?: all
+        matches = groupFiltered
+
+        // Recompute detailed players from groupFiltered only
+        val detailed = EnhancedPlayerStorageManager(context).computeFromMatches(groupFiltered)
+        players = detailed
     }
+
 
     Scaffold(
         topBar = {
             StumpdTopBar(
                 title = "Statistics",
-                subtitle = "${players.size} players - ${matches.size} matches",
+                subtitle = "${players.size} players - ${matches.size} matches • $selectedGroupName",
                 onBack = {
                     val intent = Intent(context, MainActivity::class.java)
                     context.startActivity(intent)
                     (context as ComponentActivity).finish()
                 },
                 actions = {
+                    FilledTonalButton(
+                        onClick = { showGroupPicker = true },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(IntrinsicSize.Min)
+                    ) {
+                        Icon(Icons.Default.Home, contentDescription = "Group", modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(selectedGroupName, fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.width(8.dp))
+
                     // Compact tonal Filter action (similar size to Import/Export you added)
                     FilledTonalButton(
                         onClick = { showFilterDialog = true },
@@ -182,6 +204,43 @@ fun StatsScreen() {
             }
         }
 
+        if (showGroupPicker) {
+            val groups = groupStorage.getAllGroups()
+            AlertDialog(
+                onDismissRequest = { showGroupPicker = false },
+                title = { Text("Filter by Group") },
+                text = {
+                    LazyColumn(Modifier.height(360.dp)) {
+                        item {
+                            ListItem(
+                                headlineContent = { Text("All Groups") },
+                                modifier = Modifier.clickable {
+                                    selectedGroupId = null
+                                    selectedGroupName = "All Groups"
+                                    showGroupPicker = false
+                                }
+                            )
+                        }
+                        items(groups) { g ->
+                            ListItem(
+                                headlineContent = { Text(g.name) },
+                                supportingContent = {
+                                    val count = matches.count { it.groupId == g.id } // current list; optional
+                                    Text("$count matches", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                },
+                                modifier = Modifier.clickable {
+                                    selectedGroupId = g.id
+                                    selectedGroupName = g.name
+                                    showGroupPicker = false
+                                }
+                            )
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = { showGroupPicker = false }) { Text("Close") } }
+            )
+        }
 
         if (showFilterDialog) {
             AlertDialog(

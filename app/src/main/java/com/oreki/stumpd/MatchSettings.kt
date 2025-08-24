@@ -26,7 +26,8 @@ data class MatchSettings(
     // Match format
     val matchFormat: MatchFormat = MatchFormat.T20,
     val tossWinnerChoice: TossChoice = TossChoice.BAT_FIRST,
-    val enableSuperOver: Boolean = false
+    val enableSuperOver: Boolean = false,
+    val shortPitch: Boolean = true
 )
 
 enum class MatchFormat(
@@ -34,6 +35,7 @@ enum class MatchFormat(
     val defaultOvers: Int,
 ) {
     T20("T20 (20 overs)", 20),
+
     T10("T10 (10 overs)", 10),
     ODI("One Day (50 overs)", 50),
     TEST("Test Match (Unlimited)", 0),

@@ -4,8 +4,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,6 +29,9 @@ import androidx.compose.material3.SmallTopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.ui.Alignment
 
 object Spacing {
     val xs = 4.dp
@@ -224,3 +229,26 @@ fun warningContainerAdaptive(): Color =
     else Color(0xFFFFF3D6) // your WarningContainer
 
 
+@Composable
+fun GroupActionsRow(
+    onNewGroup: () -> Unit,
+    onManageGroups: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AssistChip(
+            onClick = onNewGroup,
+            label = { Text("New Group") },
+            leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) }
+        )
+        AssistChip(
+            onClick = onManageGroups,
+            label = { Text("Manage Groups") },
+            leadingIcon = { Icon(Icons.Filled.Settings, contentDescription = null) }
+        )
+    }
+}

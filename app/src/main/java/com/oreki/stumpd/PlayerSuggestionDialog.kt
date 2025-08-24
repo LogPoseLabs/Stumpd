@@ -397,7 +397,7 @@ fun PlayerMultiSelectDialog(
     // Load recent players (excluding occupied)
     LaunchedEffect(occupiedNames) {
         recentPlayers = playerStorage
-            .getRecentPlayers()
+            .getAllPlayers()
             .filter { it.name !in occupiedNames }
     }
 

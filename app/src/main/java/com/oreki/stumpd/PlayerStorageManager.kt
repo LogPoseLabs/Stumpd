@@ -504,6 +504,164 @@ class EnhancedPlayerStorageManager(
         getAllPlayersDetailed().find {
             it.name.equals(playerName, ignoreCase = true)
         }
+    fun computeFromMatches(source: List<MatchHistory>): List<PlayerDetailedStats> {
+        val playersMap = mutableMapOf<String, PlayerDetailedStats>()
+
+        source.forEach { match ->
+            // First innings batting (Team 1)
+            match.firstInningsBatting.forEach { p ->
+                val player = playersMap.getOrPut(p.name) {
+                    PlayerDetailedStats(
+                        playerId = p.name.replace(" ", "_").lowercase(),
+                        name = p.name
+                    )
+                }
+                player.totalRuns += p.runs
+                player.totalBallsFaced += p.ballsFaced
+                player.totalFours += p.fours
+                player.totalSixes += p.sixes
+                if (p.isOut) player.timesOut++ else player.notOuts++
+                val existing = player.matchPerformances.find { it.matchId == match.id }
+                if (existing == null) {
+                    player.totalMatches++
+                    player.matchPerformances.add(
+                        PlayerPerformanceFromBat(match, p, myTeam = match.team1Name, opp = match.team2Name)
+                    )
+                } else {
+                    // merge if same player has multiple entries (safety)
+                    val idx = player.matchPerformances.indexOf(existing)
+                    player.matchPerformances[idx] = existing.copy(
+                        runs = existing.runs + p.runs,
+                        ballsFaced = existing.ballsFaced + p.ballsFaced,
+                        fours = existing.fours + p.fours,
+                        sixes = existing.sixes + p.sixes,
+                        isOut = existing.isOut || p.isOut
+                    )
+                }
+            }
+
+            // First innings bowling (Team 2)
+            match.firstInningsBowling.forEach { p ->
+                val player = playersMap.getOrPut(p.name) {
+                    PlayerDetailedStats(
+                        playerId = p.name.replace(" ", "_").lowercase(),
+                        name = p.name
+                    )
+                }
+                player.totalWickets += p.wickets
+                player.totalRunsConceded += p.runsConceded
+                player.totalBallsBowled += (p.oversBowled * 6).toInt()
+                upsertBowlPerf(player, match, p, myTeam = match.team2Name, opp = match.team1Name)
+            }
+
+            // Second innings batting (Team 2)
+            match.secondInningsBatting.forEach { p ->
+                val player = playersMap.getOrPut(p.name) {
+                    PlayerDetailedStats(
+                        playerId = p.name.replace(" ", "_").lowercase(),
+                        name = p.name
+                    )
+                }
+                player.totalRuns += p.runs
+                player.totalBallsFaced += p.ballsFaced
+                player.totalFours += p.fours
+                player.totalSixes += p.sixes
+                if (p.isOut) player.timesOut++ else player.notOuts++
+                val existing = player.matchPerformances.find { it.matchId == match.id }
+                if (existing == null) {
+                    player.totalMatches++
+                    player.matchPerformances.add(
+                        PlayerPerformanceFromBat(match, p, myTeam = match.team2Name, opp = match.team1Name)
+                    )
+                } else {
+                    val idx = player.matchPerformances.indexOf(existing)
+                    player.matchPerformances[idx] = existing.copy(
+                        runs = existing.runs + p.runs,
+                        ballsFaced = existing.ballsFaced + p.ballsFaced,
+                        fours = existing.fours + p.fours,
+                        sixes = existing.sixes + p.sixes,
+                        isOut = existing.isOut || p.isOut
+                    )
+                }
+            }
+
+            // Second innings bowling (Team 1)
+            match.secondInningsBowling.forEach { p ->
+                val player = playersMap.getOrPut(p.name) {
+                    PlayerDetailedStats(
+                        playerId = p.name.replace(" ", "_").lowercase(),
+                        name = p.name
+                    )
+                }
+                player.totalWickets += p.wickets
+                player.totalRunsConceded += p.runsConceded
+                player.totalBallsBowled += (p.oversBowled * 6).toInt()
+                upsertBowlPerf(player, match, p, myTeam = match.team1Name, opp = match.team2Name)
+            }
+        }
+
+        return playersMap.values.toList()
+    }
+
+    // Helpers inside EnhancedPlayerStorageManager
+    private fun PlayerPerformanceFromBat(
+        match: MatchHistory,
+        p: PlayerMatchStats,
+        myTeam: String,
+        opp: String
+    ): MatchPerformance {
+        return MatchPerformance(
+            matchId = match.id,
+            matchDate = match.matchDate,
+            opposingTeam = opp,
+            myTeam = myTeam,
+            runs = p.runs,
+            ballsFaced = p.ballsFaced,
+            fours = p.fours,
+            sixes = p.sixes,
+            isOut = p.isOut,
+            wickets = 0,
+            runsConceded = 0,
+            ballsBowled = 0,
+            isWinner = match.winnerTeam == myTeam,
+            isJoker = p.isJoker
+        )
+    }
+    private fun upsertBowlPerf(
+        player: PlayerDetailedStats,
+        match: MatchHistory,
+        p: PlayerMatchStats,
+        myTeam: String,
+        opp: String
+    ) {
+        val existing = player.matchPerformances.find { it.matchId == match.id }
+        if (existing != null) {
+            val idx = player.matchPerformances.indexOf(existing)
+            player.matchPerformances[idx] = existing.copy(
+                wickets = existing.wickets + p.wickets,
+                runsConceded = existing.runsConceded + p.runsConceded,
+                ballsBowled = existing.ballsBowled + (p.oversBowled * 6).toInt(),
+                isWinner = match.winnerTeam == myTeam || existing.isWinner,
+                isJoker = existing.isJoker || p.isJoker
+            )
+        } else {
+            player.totalMatches++
+            player.matchPerformances.add(
+                MatchPerformance(
+                    matchId = match.id,
+                    matchDate = match.matchDate,
+                    opposingTeam = opp,
+                    myTeam = myTeam,
+                    wickets = p.wickets,
+                    runsConceded = p.runsConceded,
+                    ballsBowled = (p.oversBowled * 6).toInt(),
+                    isWinner = match.winnerTeam == myTeam,
+                    isJoker = p.isJoker
+                )
+            )
+        }
+    }
+
 }
 
 // Helper function to format date

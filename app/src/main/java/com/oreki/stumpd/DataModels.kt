@@ -93,7 +93,19 @@ enum class WicketType {
     RUN_OUT,
     STUMPED,
     HIT_WICKET,
+    BOUNDARY_OUT
 }
+
+enum class DismissedEnd { STRIKER, NON_STRIKER }
+data class SimpleRunOutInput(val runsCompleted: Int, val dismissed: DismissedEnd)
+
+data class RunOutInput(
+    val runsCompleted: Int,
+    val end: RunOutEnd,
+    val battersCrossed: Boolean
+)
+
+enum class RunOutEnd { STRIKER_END, NON_STRIKER_END }
 
 // Match state tracking
 data class MatchState(
@@ -191,6 +203,13 @@ enum class TossDecision {
     BAT_FIRST,
     BOWL_FIRST,
 }
+data class DeliveryUI(
+    val over: Int,
+    val ballInOver: Int,      // 1..6
+    val outcome: String,      // "0","1","4","W","Wd+1","Nb+2", etc.
+    val highlight: Boolean = false // e.g., boundary/wicket for tint
+)
+
 
 // Enhanced MatchHistory with proper innings separation
 data class MatchHistory(
@@ -218,8 +237,10 @@ data class MatchHistory(
     val team2Players: List<PlayerMatchStats> = emptyList(),
     val topBatsman: PlayerMatchStats? = null,
     val topBowler: PlayerMatchStats? = null,
-    val matchSettings: MatchSettings? = null
-)
+    val matchSettings: MatchSettings? = null,
+    val groupId: String? = null,
+    val groupName: String? = null,
+    )
 
 // Individual player performance in a match
 data class PlayerMatchStats(
@@ -411,4 +432,23 @@ data class DeliverySnapshot(
     val completedBattersInnings2: List<Player>,
     val completedBowlersInnings1: List<Player>,
     val completedBowlersInnings2: List<Player>
+)
+
+data class GroupId(val value: String = java.util.UUID.randomUUID().toString())
+
+data class GroupInfo(
+    val id: String,
+    val name: String
+)
+
+// Optional list-based grouping for quick player picking (can coexist with GroupInfo)
+data class PlayerRef(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String
+)
+
+data class PlayerGroup(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String,
+    val players: List<PlayerRef> = emptyList()
 )

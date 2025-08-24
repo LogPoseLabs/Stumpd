@@ -6,6 +6,15 @@ plugins {
 android {
     namespace = "com.oreki.stumpd"
     compileSdk = 35
+    applicationVariants.all {
+        outputs.all {
+            val variantName = name // e.g., debug, release
+            val appName = "Stumpd" // change to your preferred base name
+            val versionNameSafe = versionName?.replace("[^A-Za-z0-9._-]".toRegex(), "_") ?: "v"
+            val versionCodeSafe = versionCode
+            val newName = "${appName}-${variantName}-${versionNameSafe}(${versionCodeSafe}).apk"
+        }
+    }
 
     defaultConfig {
         applicationId = "com.oreki.stumpd"

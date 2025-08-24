@@ -85,6 +85,10 @@ fun TeamSetupScreen() {
     var powerplayOversText by remember { mutableStateOf(matchSettings.powerplayOvers.toString()) }
     var jokerMaxOversText by remember { mutableStateOf(matchSettings.jokerMaxOvers.toString()) }
 
+    val groupStorage = remember { PlayerGroupStorageManager(context) }
+    var selectedGroup by remember { mutableStateOf<GroupInfo?>(null) }
+    var showGroupPicker by remember { mutableStateOf(false) }
+
     // Expandable sections state
     var expandedSections by remember {
         mutableStateOf(setOf("basic")) // Start with basic expanded
@@ -235,6 +239,14 @@ fun TeamSetupScreen() {
                             matchSettings = matchSettings.copy(allowSingleSideBatting = it)
                         }
                     )
+                    SwitchSettingRow(
+                        label = "Short Pitch",
+                        description = "0-4 runs available. No 6",
+                        checked = matchSettings.shortPitch,
+                        onCheckedChange = {
+                            matchSettings = matchSettings.copy(shortPitch = it)
+                        }
+                    )
 
                     SwitchSettingRow(
                         label = "Enable Joker Player",
@@ -364,6 +376,89 @@ fun TeamSetupScreen() {
                     }
                 }
             }
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            "📂 Group",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = selectedGroup?.name ?: "No group selected",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            FilledTonalButton(onClick = { showGroupPicker = true }) {
+                                Icon(Icons.Default.Home, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(if (selectedGroup == null) "Select Group" else "Change")
+                            }
+                        }
+                    }
+                }
+
+                if (showGroupPicker) {
+                    val groups = groupStorage.getAllGroups()
+                    AlertDialog(
+                        onDismissRequest = { showGroupPicker = false },
+                        title = { Text("Choose Group") },
+                        text = {
+                            if (groups.isEmpty()) {
+                                Column {
+                                    Text("No groups yet.")
+                                    Spacer(Modifier.height(8.dp))
+                                    FilledTonalButton(onClick = {
+                                        // quick-create Saturday and Sunday for convenience (optional)
+                                        groupStorage.createGroup("Saturday")
+                                        groupStorage.createGroup("Sunday")
+                                        showGroupPicker = false
+                                        Toast.makeText(
+                                            context,
+                                            "Created Saturday & Sunday",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }) { Text("Create Saturday & Sunday") }
+                                }
+                            } else {
+                                LazyColumn(Modifier.height(300.dp)) {
+                                    items(groups) { g ->
+                                        ListItem(
+                                            headlineContent = { Text(g.name) },
+                                            supportingContent = {
+                                                Text(
+                                                    "${g.players.size} players",
+                                                    fontSize = 12.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            },
+                                            modifier = Modifier.clickable {
+                                                selectedGroup = GroupInfo(id = g.id, name = g.name)
+                                                showGroupPicker = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {},
+                        dismissButton = {
+                            TextButton(onClick = {
+                                showGroupPicker = false
+                            }) { Text("Close") }
+                        }
+                    )
+                }
+            }
 
             // Team Cards Section
             item {
@@ -375,7 +470,13 @@ fun TeamSetupScreen() {
                     EnhancedTeamCard(
                         team = team1,
                         jokerPlayer = jokerPlayer,
-                        onAddPlayer = { showTeam1Dialog = true },
+                        onAddPlayer = {
+                            if (selectedGroup == null) {
+                                Toast.makeText(context, "Select a group first", Toast.LENGTH_SHORT).show()
+                            } else {
+                                showTeam1Dialog = true
+                            }
+                        },
                         onRemovePlayer = { player ->
                             val newPlayers = team1.players.toMutableList()
                             newPlayers.remove(player)
@@ -388,7 +489,13 @@ fun TeamSetupScreen() {
                     EnhancedTeamCard(
                         team = team2,
                         jokerPlayer = jokerPlayer,
-                        onAddPlayer = { showTeam2Dialog = true },
+                        onAddPlayer = {
+                            if (selectedGroup == null) {
+                                Toast.makeText(context, "Select a group first", Toast.LENGTH_SHORT).show()
+                            } else {
+                                showTeam2Dialog = true
+                            }
+                        },
                         onRemovePlayer = { player ->
                             val newPlayers = team2.players.toMutableList()
                             newPlayers.remove(player)
@@ -425,7 +532,11 @@ fun TeamSetupScreen() {
                             Spacer(Modifier.height(12.dp))
                             if (jokerPlayer == null) {
                                 FilledTonalButton(
-                                    onClick = { showJokerDialog = true },
+                                    onClick = { if (selectedGroup == null) {
+                                        Toast.makeText(context, "Select a group first", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        showJokerDialog = true
+                                    } },
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = "Add Joker")
@@ -512,6 +623,13 @@ fun TeamSetupScreen() {
                                     if (team1Size == team2Size) {
                                         val intent = Intent(context, ScoringActivity::class.java)
 
+                                        if (selectedGroup == null) {
+                                            Toast.makeText(context, "Please select a group (e.g., Saturday or Sunday)", Toast.LENGTH_SHORT).show()
+                                            return@PrimaryCta
+                                        }
+                                        intent.putExtra("group_id", selectedGroup?.id ?: "")
+                                        intent.putExtra("group_name", selectedGroup?.name ?: "")
+
                                         // Pass team data via intent
                                         intent.putExtra("team1_name", team1.name)
                                         intent.putExtra("team2_name", team2.name)
@@ -552,7 +670,7 @@ fun TeamSetupScreen() {
                                     Toast.makeText(context, "Each team needs at least $minPlayersPerTeam player!", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            enabled = team1.players.isNotEmpty() && team2.players.isNotEmpty()
+                            enabled = selectedGroup != null && team1.players.isNotEmpty() && team2.players.isNotEmpty()
                         )
                     }
                 }
@@ -769,34 +887,50 @@ fun EnhancedTeamCard(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Add Player")
             }
+        }
+    }
+}
 
-            // Show joker info if selected
-            jokerPlayer?.let { joker ->
-                Spacer(modifier = Modifier.height(8.dp))
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = WarningContainer),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "🃏",
-                            fontSize = 16.sp,
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Joker: ${joker.name}",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.secondary,
-                            fontWeight = FontWeight.Medium,
-                        )
+@Composable
+private fun PickFromGroupButton(
+    label: String,
+    onGroupPicked: (PlayerGroup) -> Unit
+) {
+    val context = LocalContext.current
+    val storage = remember { PlayerGroupStorageManager(context) }
+    var open by remember { mutableStateOf(false) }
+
+    FilledTonalButton(onClick = { open = true }) {
+        Icon(Icons.Default.Home, contentDescription = null)
+        Spacer(Modifier.width(8.dp))
+        Text(label)
+    }
+
+    if (open) {
+        val groups = storage.getAllGroups()
+        AlertDialog(
+            onDismissRequest = { open = false },
+            title = { Text("Choose Group") },
+            text = {
+                if (groups.isEmpty()) {
+                    Text("No groups yet.")
+                } else {
+                    LazyColumn(Modifier.height(300.dp)) {
+                        items(groups) { g ->
+                            ListItem(
+                                headlineContent = { Text(g.name) },
+                                supportingContent = { Text("${g.players.size} players", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                modifier = Modifier.clickable {
+                                    onGroupPicked(g)
+                                    open = false
+                                }
+                            )
+                        }
                     }
                 }
-            }
-        }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { open = false }) { Text("Close") } }
+        )
     }
 }

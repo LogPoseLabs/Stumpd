@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import android.widget.Toast
+import com.oreki.stumpd.ui.theme.GroupActionsRow
 
 class AddPlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,6 +55,13 @@ fun AddPlayerScreen() {
     var playerToDelete by remember { mutableStateOf<StoredPlayer?>(null) }
     var successMessage by remember { mutableStateOf("") }
     var refreshTrigger by remember { mutableStateOf(0) }
+    val groupStorage = remember { PlayerGroupStorageManager(context) }
+    var showCreateGroup by remember { mutableStateOf(false) }
+    var showManageGroups by remember { mutableStateOf(false) }
+    var showAddToGroup by remember { mutableStateOf(false) }
+    var showChooseGroup by remember { mutableStateOf(false) } // if you still need a separate picker
+    var chooseGroupForMembers by remember { mutableStateOf<PlayerGroup?>(null) }
+    var pendingSinglePlayer by remember { mutableStateOf<StoredPlayer?>(null) }
 
     // Load players with force sync
     LaunchedEffect(refreshTrigger) {
@@ -124,7 +132,15 @@ fun AddPlayerScreen() {
             }
 
             FloatingActionButton(
-                onClick = { showAddDialog = true },
+                onClick = {
+                    val groups = groupStorage.getAllGroups()
+                    if (groups.isEmpty()) {
+                        Toast.makeText(context, "Create a group first", Toast.LENGTH_SHORT).show()
+                        showCreateGroup = true
+                    } else {
+                        showAddDialog = true
+                    }
+                },
                 containerColor = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(48.dp)
             ) {
@@ -135,6 +151,13 @@ fun AddPlayerScreen() {
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        GroupActionsRow(
+            onNewGroup = { showCreateGroup = true },
+            onManageGroups = { showManageGroups = true }
+        )
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -313,20 +336,277 @@ fun AddPlayerScreen() {
         }
     }
 
+    if (showCreateGroup) {
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showCreateGroup = false },
+            title = { Text("Create Group") },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Group name (e.g., Gully Cricket)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (name.isNotBlank()) {
+                        groupStorage.createGroup(name.trim())
+                        Toast.makeText(context, "Created '${name.trim()}'", Toast.LENGTH_SHORT).show()
+                        showCreateGroup = false
+                    }
+                }) { Text("Create") }
+            },
+            dismissButton = { TextButton(onClick = { showCreateGroup = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showManageGroups) {
+        val groups =
+            remember { mutableStateListOf<PlayerGroup>().apply { addAll(groupStorage.getAllGroups()) } }
+        var editing by remember { mutableStateOf<PlayerGroup?>(null) }
+        var renameText by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showManageGroups = false },
+            title = { Text("Manage Groups") },
+            text = {
+                if (groups.isEmpty()) {
+                    Text("No groups yet. Create one first.")
+                } else {
+                    LazyColumn(Modifier.height(360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(groups, key = { it.id }) { g ->
+                            Card {
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(g.name, fontWeight = FontWeight.SemiBold)
+                                        Text("${g.players.size} players", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        TextButton(onClick = {
+                                            editing = g
+                                            renameText = g.name
+                                        }) { Text("Rename") }
+                                        TextButton(onClick = {
+                                            groupStorage.deleteGroup(g.id)
+                                            groups.removeAll { it.id == g.id }
+                                        }) { Text("Delete") }
+                                        FilledTonalButton(onClick = {
+                                            // open member editor directly
+                                            chooseGroupForMembers = g
+                                            showManageGroups = false
+                                        }) { Text("Members") }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showManageGroups = false }) { Text("Close") } }
+        )
+
+// Inline rename dialog
+        if (editing != null) {
+            AlertDialog(
+                onDismissRequest = { editing = null },
+                title = { Text("Rename '${editing!!.name}'") },
+                text = {
+                    OutlinedTextField(
+                        value = renameText,
+                        onValueChange = { renameText = it },
+                        singleLine = true,
+                        label = { Text("New name") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val g = editing!!
+                        if (renameText.isNotBlank()) {
+                            groupStorage.renameGroup(g.id, renameText.trim())
+                            val updated = groups.map { if (it.id == g.id) it.copy(name = renameText.trim()) else it }
+                            groups.clear(); groups.addAll(updated)
+                            editing = null
+                        }
+                    }) { Text("Save") }
+                },
+                dismissButton = { TextButton(onClick = { editing = null }) { Text("Cancel") } }
+            )
+        }
+    }
+    if (chooseGroupForMembers != null) {
+// Load the latest group (by id) and players
+        val allGroups = remember { groupStorage.getAllGroups() }
+        val target = remember(chooseGroupForMembers, allGroups) {
+            val picked = chooseGroupForMembers!!
+            allGroups.find { it.id == picked.id } ?: run {
+// If opened via "Add players to group" without picking a group yet, force choose
+                null
+            }
+        }
+        if (target == null) {
+// Ask to choose a group first
+            val groups = groupStorage.getAllGroups()
+            AlertDialog(
+                onDismissRequest = { chooseGroupForMembers = null },
+                title = { Text("Choose Group") },
+                text = {
+                    if (groups.isEmpty()) {
+                        Text("No groups found.")
+                    } else {
+                        LazyColumn(Modifier.height(360.dp)) {
+                            items(groups) { g ->
+                                ListItem(
+                                    headlineContent = { Text(g.name) },
+                                    supportingContent = { Text("${g.players.size} players", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                    modifier = Modifier.clickable {
+                                        chooseGroupForMembers = g
+                                    }
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = { chooseGroupForMembers = null }) { Text("Close") } }
+            )
+        } else {
+// Members editor
+            val currentMembers =
+                remember(target) { target.players.associateBy { it.name }.toMutableMap() }
+            val all = allPlayers // from your screen state (already loaded)
+            var search by remember { mutableStateOf("") }
+            val list = remember(all, search) {
+                if (search.isBlank()) all else all.filter { it.name.contains(search, true) }
+            }
+            AlertDialog(
+                onDismissRequest = { chooseGroupForMembers = null },
+                title = { Text("Edit '${target.name}' Members") },
+                text = {
+                    Column {
+                        OutlinedTextField(
+                            value = search,
+                            onValueChange = { search = it },
+                            singleLine = true,
+                            label = { Text("Search players") },
+                            leadingIcon = { Icon(Icons.Default.Search, null) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        LazyColumn(Modifier.height(360.dp)) {
+                            items(list) { p ->
+                                val isMember = currentMembers.containsKey(p.name)
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            if (isMember) currentMembers.remove(p.name)
+                                            else currentMembers[p.name] = PlayerRef(name = p.name)
+                                        }
+                                        .padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = isMember,
+                                        onCheckedChange = {
+                                            if (isMember) currentMembers.remove(p.name)
+                                            else currentMembers[p.name] = PlayerRef(name = p.name)
+                                        }
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(p.name)
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text("${currentMembers.size} members selected", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val updated = target.copy(players = currentMembers.values.toList())
+                        groupStorage.addPlayers(target.id, updated.players) // addPlayers merges by id; names-only is OK since we create refs
+                        // To support removals, we overwrite by clearing then adding:
+                        // Implement a replace function or:
+                        groupStorage.deleteGroup(target.id)
+                        // Recreate with same id to preserve references (workaround): better, add a replaceGroup API.
+                        // Simpler: add a replace API below and use it.
+                        groupStorage.replaceMembers(target.id, currentMembers.values.toList())
+                        chooseGroupForMembers = null
+                        Toast.makeText(context, "Saved members of '${target.name}'", Toast.LENGTH_SHORT).show()
+                    }) { Text("Save") }
+                },
+                dismissButton = { TextButton(onClick = { chooseGroupForMembers = null }) { Text("Cancel") } }
+            )
+        }
+    }
     if (showAddDialog) {
         AddPlayerDialog(
             initialName = playerName,
             onPlayerAdded = { name ->
                 val addedPlayer = playerStorage.addOrUpdatePlayer(name)
-                refreshTrigger += 1 // Trigger refresh
+                refreshTrigger += 1
                 playerName = ""
-                successMessage = "✅ Added ${name} to player database"
+                successMessage = "✅ Added $name to player database"
+// NEW: prompt to assign to group
+                val groups = groupStorage.getAllGroups()
+                if (groups.isEmpty()) {
+                    Toast.makeText(context, "Create a group to assign this player", Toast.LENGTH_LONG).show()
+                    showCreateGroup = true
+                } else {
+// open a lightweight dialog to pick a group and add the single player
+// Set some local state to carry the new player reference and open showAddToGroup with a filtered list = listOf(addedPlayer)
+// Easiest: directly add to a chosen group via a quick single-select picker:
+// Implement a small inline dialog here (see snippet below)
+                    pendingSinglePlayer = addedPlayer // add state: var pendingSinglePlayer by remember { mutableStateOf<StoredPlayer?>(null) }
+                    showChooseGroup = true
+                }
                 showAddDialog = false
             },
             onDismiss = {
                 playerName = ""
                 showAddDialog = false
             }
+        )
+    }
+
+    if (showChooseGroup && pendingSinglePlayer != null) {
+        val groups = groupStorage.getAllGroups()
+        AlertDialog(
+            onDismissRequest = { showChooseGroup = false; pendingSinglePlayer = null },
+            title = { Text("Assign to Group") },
+            text = {
+                if (groups.isEmpty()) {
+                    Text("No groups found. Create one first.")
+                } else {
+                    LazyColumn(Modifier.height(300.dp)) {
+                        items(groups) { g ->
+                            ListItem(
+                                headlineContent = { Text(g.name) },
+                                supportingContent = { Text("${g.players.size} players", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                modifier = Modifier.clickable {
+                                    val ref = PlayerRef(name = pendingSinglePlayer!!.name)
+                                    groupStorage.addPlayers(g.id, listOf(ref))
+                                    Toast.makeText(context, "Added ${pendingSinglePlayer!!.name} to '${g.name}'", Toast.LENGTH_SHORT).show()
+                                    showChooseGroup = false
+                                    pendingSinglePlayer = null
+                                }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showChooseGroup = false; pendingSinglePlayer = null }) { Text("Close") } }
         )
     }
 
