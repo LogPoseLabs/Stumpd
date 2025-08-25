@@ -367,19 +367,6 @@ fun ScoringScreen(
             .fillMaxSize()
             .padding(16.dp),
     ) {
-        ScoringTopBar(
-            visible = topBarVisible,
-            title = "Scoring",
-            onBack = {
-                if (calculatedTotalRuns > 0 || currentOver > 0) {
-                    showExitDialog = true
-                } else {
-                    val intent = android.content.Intent(context, MainActivity::class.java)
-                    context.startActivity(intent)
-                    (context as ComponentActivity).finish()
-                }
-            }
-        )
         Spacer(Modifier.height(8.dp))
         ScoreHeaderCard(
             battingTeamName = battingTeamName,
@@ -915,7 +902,6 @@ fun ScoringScreen(
 
                     updateStrikerAndTotals { p ->
                         val updated = p.copy(isOut = true, ballsFaced = p.ballsFaced + 1)
-                        Log.d("TAG", "ScoringScreen: Player details: ${p.name}, Balls faced (new): ${updated.ballsFaced}")
                         updated
                     }
                     val outSnapshot = dismissedIndex?.let { idx ->
@@ -2949,12 +2935,12 @@ fun RunOutDialog(
                     FilterChip(
                         selected = end == RunOutEnd.STRIKER_END,
                         onClick = { end = RunOutEnd.STRIKER_END },
-                        label = { Text("Striker’s end") }
+                        label = { Text("Striker's end") }
                     )
                     FilterChip(
                         selected = end == RunOutEnd.NON_STRIKER_END,
                         onClick = { end = RunOutEnd.NON_STRIKER_END },
-                        label = { Text("Non‑striker’s end") }
+                        label = { Text("Non‑striker's end") }
                     )
                 }
                 Spacer(Modifier.height(12.dp))
@@ -2969,26 +2955,49 @@ fun RunOutDialog(
                 // Preview helper to show which batter would be out
                 if (striker != null || nonStriker != null) {
                     val likelyOutName = remember(runs, end, crossed, striker?.name, nonStriker?.name) {
-                        fun nameOr(label: String?, fallback: String) = label ?: fallback
+                        fun nameOr(player: Player?, fallback: String) = player?.name ?: fallback
 
                         when (end) {
-                            RunOutEnd.STRIKER_END -> nameOr(striker?.name, "Striker")
+                            RunOutEnd.STRIKER_END -> {
+                                // Striker's end dismissal always gets whoever ends up at striker's end
+                                val oddRuns = (runs % 2 == 1)
+                                val strikerMovedToNonStriker = oddRuns
+                                val finalStrikerAtStrikerEnd = if (crossed) !strikerMovedToNonStriker else strikerMovedToNonStriker
+
+                                if (finalStrikerAtStrikerEnd) {
+                                    nameOr(nonStriker, "Non-striker") // non-striker ended up at striker's end
+                                } else {
+                                    nameOr(striker, "Striker") // striker stayed/returned to striker's end
+                                }
+                            }
                             RunOutEnd.NON_STRIKER_END -> {
-                                // Parity logic: completed runs swap ends; crossing flips once more at dismissal
-                                val odd = (runs % 2 == 1)
-                                val outIsStriker = (odd && !crossed) || (!odd && crossed)
-                                if (outIsStriker) nameOr(striker?.name, "Striker")
-                                else nameOr(nonStriker?.name, "Non‑striker")
+                                // Non-striker's end dismissal gets whoever ends up at non-striker's end
+                                val oddRuns = (runs % 2 == 1)
+                                val strikerMovedToNonStriker = oddRuns
+                                val finalStrikerAtNonStrikerEnd = if (crossed) !strikerMovedToNonStriker else strikerMovedToNonStriker
+
+                                if (finalStrikerAtNonStrikerEnd) {
+                                    nameOr(striker, "Striker") // striker ended up at non-striker's end
+                                } else {
+                                    nameOr(nonStriker, "Non-striker") // non-striker stayed/returned to non-striker's end
+                                }
                             }
                         }
                     }
-                    Text(
-                        "Likely out: $likelyOutName",
-                        color = MaterialTheme.colorScheme.secondary,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
 
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                        )
+                    ) {
+                        Text(
+                            "Likely out: $likelyOutName",
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
