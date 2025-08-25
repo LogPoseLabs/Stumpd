@@ -19,10 +19,9 @@ data class MatchSettings(
     val maxOversPerBowler: Int = 2,
     val enforceFollowOn: Boolean = false,
     val duckworthLewisMethod: Boolean = false,
-    // Joker player rules
+    // Joker rules
     val jokerCanBatAndBowl: Boolean = true,
     val jokerMaxOvers: Int = 1,
-    val jokerCountsForBothTeams: Boolean = true,
     // Match format
     val matchFormat: MatchFormat = MatchFormat.T20,
     val tossWinnerChoice: TossChoice = TossChoice.BAT_FIRST,

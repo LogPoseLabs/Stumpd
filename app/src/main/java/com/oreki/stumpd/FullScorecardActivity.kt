@@ -446,7 +446,7 @@ fun EnhancedMatchSummaryCard(
             match.jokerPlayerName?.let { joker ->
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "🃏 Joker Player: $joker",
+                    text = "🃏 Joker: $joker",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.secondary,
                     fontWeight = FontWeight.Medium
@@ -648,7 +648,7 @@ fun MatchSummaryCard(match: MatchHistory) {
             match.jokerPlayerName?.let { joker ->
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "🃏 Joker Player: $joker",
+                    text = "🃏 Joker: $joker",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.secondary,
                     fontWeight = FontWeight.Medium,

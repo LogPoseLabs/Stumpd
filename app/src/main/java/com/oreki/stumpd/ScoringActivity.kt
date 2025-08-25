@@ -2094,7 +2094,7 @@ fun LiveScorecardDialog(
                             val jokerInBowling = bowlingTeamPlayers.find { it.name == jokerPlayerName && it.isJoker }
                             Column(modifier = Modifier.padding(8.dp)) {
                                 Text(
-                                    text = "🃏 Joker Player: $jokerPlayerName",
+                                    text = "🃏 Joker: $jokerPlayerName",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.secondary,

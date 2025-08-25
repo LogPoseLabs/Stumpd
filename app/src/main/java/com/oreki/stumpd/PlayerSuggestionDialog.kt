@@ -39,7 +39,7 @@ fun PlayerSuggestionDialog(
 
     // Load recent players on first show, filtered by selection status
     LaunchedEffect(selectedPlayers) {
-        val allRecentPlayers = playerStorage.getRecentPlayers()
+        val allRecentPlayers = playerStorage.getAllPlayers()
         recentPlayers =
             allRecentPlayers.filter { player ->
                 !selectedPlayers.contains(player.name)
@@ -164,7 +164,7 @@ fun PlayerSuggestionDialog(
                         if (recentPlayers.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = "Recent Players (Available)",
+                                    text = "Players Available",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary,
@@ -187,9 +187,9 @@ fun PlayerSuggestionDialog(
                                     Text(
                                         text =
                                             if (selectedPlayers.isEmpty()) {
-                                                "No recent players found.\nType a name to add new player."
+                                                "No players available for selection.\nType a name to add new player."
                                             } else {
-                                                "All recent players are already selected.\nType a name to add new player."
+                                                "All the players are already part of a team.\nType a name to add new player."
                                             },
                                         modifier = Modifier.padding(16.dp),
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,

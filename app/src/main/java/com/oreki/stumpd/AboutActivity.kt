@@ -136,7 +136,7 @@ fun AboutScreen() {
                     "🏏 Live match scoring",
                     "📊 Real-time statistics",
                     "👥 Team management",
-                    "🃏 Joker player support",
+                    "🃏 Joker support",
                     "📈 Match history",
                     "💾 Data backup/restore",
                     "🏆 Detailed scorecards"

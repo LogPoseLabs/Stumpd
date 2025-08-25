@@ -102,10 +102,6 @@ fun TeamSetupScreen() {
         }
     }
 
-    // Calculate dynamic max players (actual team sizes + joker if applicable)
-    val calculatedMaxPlayers = maxOf(team1.players.size, team2.players.size) +
-            if (jokerPlayer != null && matchSettings.jokerCountsForBothTeams) 1 else 0
-
     Scaffold(
         topBar = {
             StumpdTopBar(
@@ -249,7 +245,7 @@ fun TeamSetupScreen() {
                     )
 
                     SwitchSettingRow(
-                        label = "Enable Joker Player",
+                        label = "Enable Joker",
                         description = "A player who can bat and bowl for both teams",
                         checked = matchSettings.jokerCanBatAndBowl,
                         onCheckedChange = {
@@ -269,15 +265,6 @@ fun TeamSetupScreen() {
                                         matchSettings = matchSettings.copy(jokerMaxOvers = overs)
                                     }
                                 }
-                            }
-                        )
-
-                        SwitchSettingRow(
-                            label = "Joker Counts for Both Teams",
-                            description = "Joker player adds to both team sizes",
-                            checked = matchSettings.jokerCountsForBothTeams,
-                            onCheckedChange = {
-                                matchSettings = matchSettings.copy(jokerCountsForBothTeams = it)
                             }
                         )
                     }
@@ -506,9 +493,9 @@ fun TeamSetupScreen() {
                 }
             }
 
-            // Joker Player Section
+            // Joker Section
             if (matchSettings.jokerCanBatAndBowl) {
-                // Joker Player Section (adaptive container + better contrast)
+                // Joker Section (adaptive container + better contrast)
                 item {
                     val container = com.oreki.stumpd.ui.theme.warningContainerAdaptive()
                     Card(
@@ -520,7 +507,7 @@ fun TeamSetupScreen() {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("🃏", fontSize = 16.sp)
                                 Spacer(Modifier.width(8.dp))
-                                SectionTitle("Joker Player (Optional)")
+                                SectionTitle("Joker (Optional)")
                             }
                             Spacer(Modifier.height(6.dp))
                             Text(
@@ -541,7 +528,7 @@ fun TeamSetupScreen() {
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = "Add Joker")
                                     Spacer(Modifier.width(8.dp))
-                                    Text("Add Joker Player")
+                                    Text("Add Joker")
                                 }
                             } else {
                                 Row(
@@ -716,7 +703,7 @@ fun TeamSetupScreen() {
 
         if (showJokerDialog) {
             PlayerSuggestionDialog(
-                title = "Select Joker Player",
+                title = "Select Joker",
                 selectedPlayers = (team1.players + team2.players).map { it.name },
                 currentTeamName = "Joker (Both Teams)",
                 onPlayerSelected = { playerName ->
