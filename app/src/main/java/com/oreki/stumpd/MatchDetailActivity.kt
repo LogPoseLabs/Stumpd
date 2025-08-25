@@ -382,7 +382,7 @@ fun EnhancedInningsSummaryCard(
                                 text = if (bowler.isJoker) "🃏 ${bowler.name}" else bowler.name,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = if (bowler.isJoker) MaterialTheme.colorScheme.secondary else Color.Black
+                                color = if (bowler.isJoker) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
                             )
                         }
 

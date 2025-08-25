@@ -335,7 +335,7 @@ fun ScoringScreen(
             if (currentInnings == 1) {
                 firstInningsRuns = calculatedTotalRuns
                 firstInningsWickets = totalWickets
-                firstInningsOvers = currentOver + 1
+                firstInningsOvers = currentOver
                 firstInningsBalls = ballsInOver
                 firstInningsBattingPlayersList =
                     (battingTeamPlayers.filter { it.ballsFaced > 0 || it.runs > 0 } + completedBattersInnings1)
@@ -1718,13 +1718,15 @@ fun ScoringButtons(
         isInningsComplete -> {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5)),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                ),
             ) {
                 Text(
                     text = "Innings Complete! Total: $calculatedTotalRuns runs",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF7B1FA2),
+                    color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(16.dp),
                     textAlign = TextAlign.Center,
                 )
@@ -1734,7 +1736,9 @@ fun ScoringButtons(
         else -> {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
+                ),
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -1750,7 +1754,7 @@ fun ScoringButtons(
                         Text(
                             text = "Single side batting enabled - only one batsman required",
                             fontSize = 12.sp,
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontStyle = FontStyle.Italic,
                         )
                     }
@@ -1969,7 +1973,9 @@ fun LiveScorecardDialog(
                         )
                     }
                     item {
-                        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F8FF))) {
+                        Card(colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                        )) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Text(
                                     text = "${if (battingTeamName == "Team A") "Team B" else "Team A"}: $firstInningsRuns/$firstInningsWickets",
@@ -1991,15 +1997,15 @@ fun LiveScorecardDialog(
                                         )
 
                                     topBat?.let {
-                                        Text("🏏 ${it.name}: ${it.runs} runs", fontSize = 11.sp, color = Color.Gray)
+                                        Text("🏏 ${it.name}: ${it.runs} runs", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     topBowl?.let {
                                         if (it.wickets > 0) {
-                                            Text("⚾ ${it.name}: ${it.wickets} wickets", fontSize = 11.sp, color = Color.Gray)
+                                            Text("⚾ ${it.name}: ${it.wickets} wickets", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         } else {
                                             // Show economy when no wickets taken
                                             val economy = if (it.ballsBowled > 0) it.runsConceded.toDouble() / (it.ballsBowled / 6.0) else 0.0
-                                            Text("⚾ ${it.name}: Best economy ${"%.1f".format(economy)}", fontSize = 11.sp, color = Color.Gray)
+                                            Text("⚾ ${it.name}: Best economy ${"%.1f".format(economy)}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     }
                                 }
@@ -2028,7 +2034,7 @@ fun LiveScorecardDialog(
                         Text(
                             text = "No batting data yet",
                             fontSize = 12.sp,
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontStyle = FontStyle.Italic,
                         )
                     }
@@ -2040,7 +2046,7 @@ fun LiveScorecardDialog(
                         Text(
                             text = "Yet to bat: ${yetToBat.joinToString(", ") { it.name }}",
                             fontSize = 11.sp,
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontStyle = FontStyle.Italic,
                             modifier = Modifier.padding(start = 8.dp),
                         )
@@ -2067,7 +2073,7 @@ fun LiveScorecardDialog(
                         Text(
                             text = "No bowling data yet",
                             fontSize = 12.sp,
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontStyle = FontStyle.Italic,
                         )
                     }
@@ -2079,7 +2085,7 @@ fun LiveScorecardDialog(
                         Text(
                             text = "Yet to bowl: ${didNotBowl.joinToString(", ") { it.name }}",
                             fontSize = 11.sp,
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontStyle = FontStyle.Italic,
                             modifier = Modifier.padding(start = 8.dp),
                         )
@@ -2167,7 +2173,7 @@ fun LivePlayerStatCard(
                         Text(
                             text = "4s:${player.fours} 6s:${player.sixes}",
                             fontSize = 10.sp,
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -2183,7 +2189,7 @@ fun LivePlayerStatCard(
                     Text(
                         text = "${"%.1f".format(player.oversBowled)} ov, Eco: ${"%.1f".format(player.economy)}",
                         fontSize = 10.sp,
-                        color = Color.Gray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -2256,7 +2262,7 @@ fun EnhancedInningsBreakDialog(
                         Text(
                             text = "Did not bat: ${didNotBat.joinToString(", ") { it.name }}",
                             fontSize = 12.sp,
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontStyle = FontStyle.Italic,
                         )
                     }
@@ -2279,7 +2285,7 @@ fun EnhancedInningsBreakDialog(
                         Text(
                             text = "Did not bowl: ${didNotBowl.joinToString(", ") { it.name }}",
                             fontSize = 12.sp,
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontStyle = FontStyle.Italic,
                         )
                     }
@@ -2355,7 +2361,7 @@ fun ExtrasDialog(
                                         0 -> MaterialTheme.colorScheme.secondary
                                         4 -> MaterialTheme.colorScheme.primary
                                         6 -> MaterialTheme.colorScheme.tertiary
-                                        else -> Color(0xFF9E9E9E)
+                                        else -> MaterialTheme.colorScheme.surfaceVariant
                                     }
                                 )
                             ) {
@@ -2403,7 +2409,9 @@ fun WicketTypeDialog(
                             .fillMaxWidth()
                             .padding(vertical = 4.dp)
                             .clickable { onWicketSelected(wicketType) },
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                        ),
                     ) {
                         Text(
                             text = wicketType.name.lowercase().replace("_", " ").uppercase(),
@@ -2512,7 +2520,7 @@ fun EnhancedMatchCompleteDialog(
                 text = "🏆 Match Complete!",
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFFFFD700),
+                color = MaterialTheme.colorScheme.primary,
             )
         },
         text = {
@@ -2530,10 +2538,9 @@ fun EnhancedMatchCompleteDialog(
                                 fontWeight = FontWeight.Bold,
                                 color = if (isTie) Color(0xFF6A1B9A) else MaterialTheme.colorScheme.primary,
                             )
-                            // Optional super-over CTA
-                            if (isTie && matchSettings.enableSuperOver == true) {
+
+                            if (isTie && matchSettings.enableSuperOver) {
                                 Spacer(Modifier.height(8.dp))
-                                // Replace with your actual flag, above reflection check is defensive
                                 Button(
                                     onClick = { /* trigger super over flow */ },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0))
@@ -2677,14 +2684,14 @@ fun PlayerStatCard(
                 Text(
                     text = "${player.runs}${if (!player.isOut && player.ballsFaced > 0) "*" else ""} (${player.ballsFaced}) - 4s:${player.fours} 6s:${player.sixes}",
                     fontSize = 12.sp,
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             "bowling" -> {
                 Text(
                     text = "${player.wickets}/${player.runsConceded} (${"%.1f".format(player.oversBowled)} ov) Eco: ${"%.1f".format(player.economy)}",
                     fontSize = 12.sp,
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

@@ -150,7 +150,7 @@ fun StumpdTopBar(
     TopAppBar(
         title = {
             Column {
-                Text(title, style = MaterialTheme.typography.titleLarge)
+                Text(title, style = MaterialTheme.typography.titleMedium)
                 if (subtitle != null) {
                     Label(subtitle)
                 }

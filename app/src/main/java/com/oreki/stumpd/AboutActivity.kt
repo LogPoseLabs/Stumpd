@@ -5,6 +5,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -38,40 +40,42 @@ class AboutActivity : ComponentActivity() {
 fun AboutScreen() {
     val context = LocalContext.current
 
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Header with back button
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = {
-                    val intent = Intent(context, MainActivity::class.java)
-                    context.startActivity(intent)
-                    (context as ComponentActivity).finish()
-                }
+        item {
+            // Header with back button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    Icons.Default.ArrowBack,
-                    contentDescription = "Back to Home",
-                    tint = MaterialTheme.colorScheme.primary
+                IconButton(
+                    onClick = {
+                        val intent = Intent(context, MainActivity::class.java)
+                        context.startActivity(intent)
+                        (context as ComponentActivity).finish()
+                    }
+                ) {
+                    Icon(
+                        Icons.Default.ArrowBack,
+                        contentDescription = "Back to Home",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                Text(
+                    text = "About Stump'd",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
-
-            Text(
-                text = "About Stump'd",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
-
+    item {
         // App Info
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -90,80 +94,160 @@ fun AboutScreen() {
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
-
             Text(
                 text = "Your Digital Cricket Scorebook",
                 fontSize = 16.sp,
-                color = Color.Gray
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Version 1.0.0",
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Medium
-            )
-            Text(
-                text = "by LogPoseLabs",
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Medium
+                color = MaterialTheme.colorScheme.onSurfaceVariant // Fixed
             )
         }
+    }
 
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Features
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+item {
+    // Features Card
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
+            Text(
+                text = "Features",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            val features = listOf(
+                "🏏 Live ball-by-ball match scoring",
+                "📊 Real-time statistics & analytics",
+                "👥 Advanced team & player management",
+                "🃏 Unique joker player system",
+                "📈 Comprehensive match history",
+                "📋 Detailed digital scorecards",
+                "⚡ Swipe navigation between tabs",
+                "🔄 Auto-sync player statistics",
+                "📱 Material 3 adaptive themes",
+                "🎯 Strike rate & economy calculations",
+                "📊 Batting averages & bowling figures",
+                "🏆 Match winner determination",
+                "💾 Persistent data storage",
+                "🔢 Advanced extras tracking (wides, no-balls, byes)",
+                "🏏 Single-side batting support",
+                "📝 Run-out scenario handling",
+                "🎮 Undo last delivery functionality",
+                "👥 Player group management",
+                "📈 Recent form tracking (last 5 matches)",
+                "🏅 Best performance records",
+                "🎪 Wicket type categorization",
+                "⚾ Bowler over limits & caps",
+                "🎯 Target calculations for chasing team",
+                "📊 Live run rate & required run rate",
+                "🏏 Not out (*) indicator for active batsmen",
+                "📱 Responsive Material Design UI"
+            )
+
+            features.forEach { feature ->
                 Text(
-                    text = "Features",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    text = feature,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface, // Fixed
+                    modifier = Modifier.padding(vertical = 2.dp)
                 )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                val features = listOf(
-                    "🏏 Live match scoring",
-                    "📊 Real-time statistics",
-                    "👥 Team management",
-                    "🃏 Joker support",
-                    "📈 Match history",
-                    "💾 Data backup/restore",
-                    "🏆 Detailed scorecards"
+            }
+        }
+    }
+}
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
                 )
-
-                features.forEach { feature ->
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
                     Text(
-                        text = feature,
+                        text = "About LogPoseLabs",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "We're passionate about creating simple, elegant solutions for sports enthusiasts. Stump'd is designed to make cricket scoring accessible and enjoyable for players of all levels.",
                         fontSize = 14.sp,
-                        modifier = Modifier.padding(vertical = 2.dp)
+                        color = MaterialTheme.colorScheme.onSurface,
+                        lineHeight = 20.sp
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+        item {
+            // Add before footer
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = "Support & Feedback",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
 
-        // Footer
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "Built with ❤️ for cricket lovers",
-                fontSize = 12.sp,
-                color = Color.Gray
-            )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "Have suggestions or found a bug? We'd love to hear from you!",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "Email: bshashikumar48@gmail.com",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.secondary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        item {
+            // Enhanced footer
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Built with ❤️ for cricket lovers",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Text(
+                    text = "© 2025 LogPoseLabs. All rights reserved.",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
         }
     }
 }

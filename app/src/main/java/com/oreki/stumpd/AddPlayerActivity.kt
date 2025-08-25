@@ -164,7 +164,7 @@ fun AddPlayerScreen() {
         if (successMessage.isNotEmpty()) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E8))
+                colors = CardDefaults.cardColors()
             ) {
                 Text(
                     text = successMessage,
@@ -338,71 +338,219 @@ fun AddPlayerScreen() {
 
     if (showCreateGroup) {
         var name by remember { mutableStateOf("") }
+        var selectedPlayers by remember { mutableStateOf(setOf<String>()) }
+        var showPlayerSelection by remember { mutableStateOf(false) }
+
         AlertDialog(
             onDismissRequest = { showCreateGroup = false },
             title = { Text("Create Group") },
             text = {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Group name (e.g., Gully Cricket)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Column {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Group name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // Show selected players count
+                    if (selectedPlayers.isNotEmpty()) {
+                        Text(
+                            text = "${selectedPlayers.size} players selected",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    // Button to select players
+                    OutlinedButton(
+                        onClick = { showPlayerSelection = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Person, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Select Players (${selectedPlayers.size})")
+                    }
+
+                    // Player selection dialog
+                    if (showPlayerSelection) {
+                        LazyColumn(
+                            modifier = Modifier.height(200.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(allPlayers) { player ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            selectedPlayers = if (selectedPlayers.contains(player.name)) {
+                                                selectedPlayers - player.name
+                                            } else {
+                                                selectedPlayers + player.name
+                                            }
+                                        }
+                                        .padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = selectedPlayers.contains(player.name),
+                                        onCheckedChange = { checked ->
+                                            selectedPlayers = if (checked) {
+                                                selectedPlayers + player.name
+                                            } else {
+                                                selectedPlayers - player.name
+                                            }
+                                        }
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(player.name)
+                                }
+                            }
+                        }
+                    }
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
                     if (name.isNotBlank()) {
-                        groupStorage.createGroup(name.trim())
-                        Toast.makeText(context, "Created '${name.trim()}'", Toast.LENGTH_SHORT).show()
+                        // Create group
+                        val groupId = groupStorage.createGroup(name.trim())
+
+                        // Add selected players
+                        if (selectedPlayers.isNotEmpty()) {
+                            val playerRefs = selectedPlayers.map { PlayerRef(name = it) }
+                            groupStorage.addPlayers(groupId.toString(), playerRefs)
+                        }
+
+                        Toast.makeText(
+                            context,
+                            "Created '${name.trim()}' with ${selectedPlayers.size} players",
+                            Toast.LENGTH_SHORT
+                        ).show()
                         showCreateGroup = false
                     }
-                }) { Text("Create") }
+                }) {
+                    Text("Create Group")
+                }
             },
-            dismissButton = { TextButton(onClick = { showCreateGroup = false }) { Text("Cancel") } }
+            dismissButton = {
+                TextButton(onClick = { showCreateGroup = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 
+
     if (showManageGroups) {
-        val groups =
-            remember { mutableStateListOf<PlayerGroup>().apply { addAll(groupStorage.getAllGroups()) } }
+        val groups = remember { mutableStateListOf<PlayerGroup>().apply { addAll(groupStorage.getAllGroups()) } }
         var editing by remember { mutableStateOf<PlayerGroup?>(null) }
         var renameText by remember { mutableStateOf("") }
+
         AlertDialog(
             onDismissRequest = { showManageGroups = false },
-            title = { Text("Manage Groups") },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Manage Groups")
+                    Text(
+                        text = "${groups.size} groups",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
             text = {
                 if (groups.isEmpty()) {
-                    Text("No groups yet. Create one first.")
+                    Column(
+                        modifier = Modifier.padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("👥", fontSize = 48.sp)
+                        Text("No groups yet")
+                        Text(
+                            "Create your first group to get started",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 } else {
-                    LazyColumn(Modifier.height(360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(groups, key = { it.id }) { g ->
-                            Card {
-                                Row(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(g.name, fontWeight = FontWeight.SemiBold)
-                                        Text("${g.players.size} players", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LazyColumn(
+                        modifier = Modifier.height(400.dp), // Much taller!
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(groups, key = { it.id }) { group ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = group.name,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 16.sp
+                                            )
+                                            Text(
+                                                text = "${group.players.size} players",
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+
+                                        // Action buttons
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            IconButton(onClick = {
+                                                editing = group
+                                                renameText = group.name
+                                            }) {
+                                                Icon(
+                                                    Icons.Default.Edit,
+                                                    contentDescription = "Rename",
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+
+                                            IconButton(onClick = {
+                                                groupStorage.deleteGroup(group.id)
+                                                groups.removeAll { it.id == group.id }
+                                            }) {
+                                                Icon(
+                                                    Icons.Default.Delete,
+                                                    contentDescription = "Delete",
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
                                     }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        TextButton(onClick = {
-                                            editing = g
-                                            renameText = g.name
-                                        }) { Text("Rename") }
-                                        TextButton(onClick = {
-                                            groupStorage.deleteGroup(g.id)
-                                            groups.removeAll { it.id == g.id }
-                                        }) { Text("Delete") }
-                                        FilledTonalButton(onClick = {
-                                            // open member editor directly
-                                            chooseGroupForMembers = g
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Members button
+                                    OutlinedButton(
+                                        onClick = {
+                                            chooseGroupForMembers = group
                                             showManageGroups = false
-                                        }) { Text("Members") }
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Default.AccountBox, contentDescription = null)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Manage Members")
                                     }
                                 }
                             }
@@ -411,38 +559,14 @@ fun AddPlayerScreen() {
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = { showManageGroups = false }) { Text("Close") } }
+            dismissButton = {
+                TextButton(onClick = { showManageGroups = false }) {
+                    Text("Close")
+                }
+            }
         )
-
-// Inline rename dialog
-        if (editing != null) {
-            AlertDialog(
-                onDismissRequest = { editing = null },
-                title = { Text("Rename '${editing!!.name}'") },
-                text = {
-                    OutlinedTextField(
-                        value = renameText,
-                        onValueChange = { renameText = it },
-                        singleLine = true,
-                        label = { Text("New name") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        val g = editing!!
-                        if (renameText.isNotBlank()) {
-                            groupStorage.renameGroup(g.id, renameText.trim())
-                            val updated = groups.map { if (it.id == g.id) it.copy(name = renameText.trim()) else it }
-                            groups.clear(); groups.addAll(updated)
-                            editing = null
-                        }
-                    }) { Text("Save") }
-                },
-                dismissButton = { TextButton(onClick = { editing = null }) { Text("Cancel") } }
-            )
-        }
     }
+
     if (chooseGroupForMembers != null) {
 // Load the latest group (by id) and players
         val allGroups = remember { groupStorage.getAllGroups() }
@@ -502,6 +626,67 @@ fun AddPlayerScreen() {
                             modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(Modifier.height(8.dp))
+                        if (currentMembers.isNotEmpty()) {
+                            Text(
+                                text = "Current Members (${currentMembers.size})",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+
+                            LazyColumn(Modifier.height(200.dp)) {
+                                items(currentMembers.values.toList()) { member ->
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(member.name)
+
+                                        // Individual remove button
+                                        IconButton(
+                                            onClick = { currentMembers.remove(member.name) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = "Remove ${member.name}",
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
+                        }
+                        Text(
+                            text = "Available Players",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+
+                        LazyColumn(Modifier.height(10.dp)) {
+                            items(list.filter { !currentMembers.containsKey(it.name) }) { player ->
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable { currentMembers[player.name] = PlayerRef(name = player.name) }
+                                        .padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = "Add ${player.name}",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(player.name)
+                                }
+                            }
+                        }
                         LazyColumn(Modifier.height(360.dp)) {
                             items(list) { p ->
                                 val isMember = currentMembers.containsKey(p.name)

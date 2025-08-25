@@ -80,18 +80,18 @@ fun MatchHistoryScreen() {
     Scaffold(
         topBar = {
             StumpdTopBar(
-                title = "Match History",
-                subtitle = "${filteredMatches.size} matches • ${selectedFilter.name}",
+                title = "Archive",
+                subtitle = "${filteredMatches.size} matches",
                 onBack = { (context as ComponentActivity).finish() },
                 actions = {
                     // Group filter button
                     FilledTonalButton(
                         onClick = { showGroupPicker = true },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Icon(Icons.Default.Home, contentDescription = "Group", modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(selectedFilter.name, fontSize = 12.sp)
+                        Text(selectedFilter.name, fontSize = 8.sp)
                     }
                     Spacer(Modifier.width(8.dp))
 

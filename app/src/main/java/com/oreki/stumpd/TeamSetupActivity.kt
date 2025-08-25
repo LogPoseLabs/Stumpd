@@ -589,10 +589,13 @@ fun TeamSetupScreen() {
                                 buildString {
                                     if (matchSettings.allowSingleSideBatting) append("Single Side")
                                     if (matchSettings.jokerCanBatAndBowl && isNotEmpty()) append(", ")
-                                    if (matchSettings.jokerCanBatAndBowl) append("Joker Enabled")
+                                    if (matchSettings.jokerCanBatAndBowl) append("Joker")
+                                    if (matchSettings.shortPitch && isNotEmpty()) append(", ")
+                                    if (matchSettings.shortPitch) append("Short pitch")
                                     if (isEmpty()) append("Standard Rules")
                                 },
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Thin,
+                                fontSize = 10.sp
                             )
                         }
 

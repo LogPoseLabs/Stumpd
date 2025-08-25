@@ -4,22 +4,28 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oreki.stumpd.ui.theme.StumpdTheme
+import kotlinx.coroutines.launch
 
 class PlayerDetailActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -39,12 +45,16 @@ class PlayerDetailActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PlayerDetailScreen(playerName: String) {
     val context = LocalContext.current
     val playerStorage = remember { EnhancedPlayerStorageManager(context) }
     var player by remember { mutableStateOf<PlayerDetailedStats?>(null) }
-    var selectedTab by remember { mutableStateOf(0) }
+
+    // Pager state for swipeable tabs
+    val pagerState = rememberPagerState(pageCount = { 3 })
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(playerName) {
         playerStorage.syncPlayerStatsFromMatches()
@@ -52,90 +62,144 @@ fun PlayerDetailScreen(playerName: String) {
     }
 
     if (player == null) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator()
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Loading player statistics...")
-            }
-        }
+        // Loading state...
         return
     }
 
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-    ) {
-        Row(
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Enhanced Header (your existing code)
+        Card(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            )
         ) {
-            IconButton(
-                onClick = {
-                    val intent = Intent(context, AddPlayerActivity::class.java)
-                    context.startActivity(intent)
-                    (context as ComponentActivity).finish()
-                },
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    Icons.Default.ArrowBack,
-                    contentDescription = "Back",
-                    tint = MaterialTheme.colorScheme.primary,
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = player!!.name,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+
+                    Text(
+                        text = "${player!!.totalMatches} matches",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                // Player avatar or stats summary
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = player!!.totalRuns.toString(),
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Text(
+                            text = "RUNS",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = player!!.totalWickets.toString(),
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Text(
+                            text = "WICKETS",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                }
             }
 
-            Column {
-                Text(
-                    text = player!!.name,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    text = "${player!!.totalMatches} matches • Last played ${formatDate(player!!.lastPlayed)}",
-                    fontSize = 14.sp,
-                    color = Color.Gray,
-                )
-            }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Last played: ${formatDate(player!!.lastPlayed)}",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+    Spacer(modifier = Modifier.height(16.dp))
 
-        TabRow(
-            selectedTabIndex = selectedTab,
-            containerColor = Color.Transparent,
-        ) {
-            Tab(
-                selected = selectedTab == 0,
-                onClick = { selectedTab = 0 },
+            // Swipeable TabRow
+            TabRow(
+                selectedTabIndex = pagerState.currentPage,
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary,
+                indicator = { tabPositions ->
+                    TabRowDefaults.Indicator(
+                        modifier = Modifier.tabIndicatorOffset(tabPositions[pagerState.currentPage]),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             ) {
-                Text("Overview", modifier = Modifier.padding(16.dp))
+                val tabs = listOf("Overview", "Matches", "Statistics")
+                tabs.forEachIndexed { index, title ->
+                    Tab(
+                        selected = pagerState.currentPage == index,
+                        onClick = {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(index)
+                            }
+                        },
+                        text = {
+                            Text(
+                                text = title,
+                                fontWeight = if (pagerState.currentPage == index) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    )
+                }
             }
-            Tab(
-                selected = selectedTab == 1,
-                onClick = { selectedTab = 1 },
-            ) {
-                Text("Matches", modifier = Modifier.padding(16.dp))
-            }
-            Tab(
-                selected = selectedTab == 2,
-                onClick = { selectedTab = 2 },
-            ) {
-                Text("Statistics", modifier = Modifier.padding(16.dp))
-            }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-        when (selectedTab) {
-            0 -> PlayerOverviewTab(player!!)
-            1 -> PlayerMatchesTab(player!!)
-            2 -> PlayerStatisticsTab(player!!)
+            // Swipeable Content
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f)
+            ) { page ->
+                when (page) {
+                    0 -> PlayerOverviewTab(player!!)
+                    1 -> PlayerMatchesTab(player!!)
+                    2 -> PlayerStatisticsTab(player!!)
+                }
+            }
         }
     }
 }
@@ -146,7 +210,9 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F8FF)),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                ),
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
@@ -163,8 +229,8 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         StatBox("Runs", player.totalRuns.toString(), Modifier.weight(1f))
+                        StatBox("Balls Faced", player.totalBallsFaced.toString(), Modifier.weight(1f))
                         StatBox("Average", "%.1f".format(player.battingAverage), Modifier.weight(1f))
-                        StatBox("Strike Rate", "%.1f".format(player.strikeRate), Modifier.weight(1f))
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -173,9 +239,9 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
+                        StatBox("Strike Rate", "%.1f".format(player.strikeRate), Modifier.weight(1f))
                         StatBox("4s", player.totalFours.toString(), Modifier.weight(1f))
                         StatBox("6s", player.totalSixes.toString(), Modifier.weight(1f))
-                        StatBox("Not Outs", player.notOuts.toString(), Modifier.weight(1f))
                     }
                 }
             }
@@ -183,8 +249,9 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
 
         item {
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
+                ),
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
@@ -224,13 +291,12 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
                         ) {
                             StatBox("Overs", "%.1f".format(player.oversBowled), Modifier.weight(1f))
                             StatBox("Runs Given", player.totalRunsConceded.toString(), Modifier.weight(1f))
-                            StatBox("", "", Modifier.weight(1f))
                         }
                     } else {
                         Text(
                             text = "No bowling statistics available",
                             fontSize = 14.sp,
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -258,7 +324,7 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
                             .take(5)
 
                     if (recentMatches.isEmpty()) {
-                        Text("No recent matches", color = Color.Gray, fontSize = 14.sp)
+                        Text("No recent matches", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
                     } else {
                         recentMatches.forEach { match ->
                             RecentMatchCard(match)
@@ -303,13 +369,19 @@ fun PlayerMatchesTab(player: PlayerDetailedStats) {
 
 @Composable
 fun PlayerStatisticsTab(player: PlayerDetailedStats) {
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp), // Add consistent padding
+        verticalArrangement = Arrangement.spacedBy(16.dp) // Better spacing
+    ) {
         item {
             Text(
                 text = "Career Statistics",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(bottom = 8.dp)
             )
         }
 
@@ -339,6 +411,8 @@ fun PlayerStatisticsTab(player: PlayerDetailedStats) {
                         )
                         StatRow("Overs Bowled", "%.1f".format(player.oversBowled))
                         StatRow("Runs Conceded", player.totalRunsConceded.toString())
+                        StatRow("Economy", "%.2f".format(player.economyRate))
+                        StatRow("Average", player.bowlingAverage.toString())
                     }
                 }
             }
@@ -382,24 +456,43 @@ fun StatBox(
     title: String,
     value: String,
     modifier: Modifier = Modifier,
+    isHighlight: Boolean = false
 ) {
-    Column(
+    Card(
         modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
+        colors = CardDefaults.cardColors(
+            containerColor = if (isHighlight)
+                MaterialTheme.colorScheme.primaryContainer
+            else
+                MaterialTheme.colorScheme.surfaceVariant
+        )
     ) {
-        Text(
-            text = value,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Text(
-            text = title,
-            fontSize = 12.sp,
-            color = Color.Gray,
-        )
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = value,
+                fontSize = 24.sp, // Bigger numbers
+                fontWeight = FontWeight.Bold,
+                color = if (isHighlight)
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.onSurface,
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = title,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
+
 
 @Composable
 fun StatRow(
@@ -437,7 +530,7 @@ fun RecentMatchCard(match: MatchPerformance) {
             Text(
                 text = formatDate(match.matchDate),
                 fontSize = 10.sp,
-                color = Color.Gray,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
@@ -453,7 +546,7 @@ fun RecentMatchCard(match: MatchPerformance) {
                 Text(
                     text = "${match.wickets}/${match.runsConceded}",
                     fontSize = 12.sp,
-                    color = Color(0xFFFF5722),
+                    color = MaterialTheme.colorScheme.tertiary,
                 )
             }
         }
@@ -471,85 +564,114 @@ fun RecentMatchCard(match: MatchPerformance) {
 fun MatchPerformanceCard(match: MatchPerformance) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors =
-            CardDefaults.cardColors(
-                containerColor = if (match.isWinner) Color(0xFFF0F8FF) else MaterialTheme.colorScheme.surface,
-            ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (match.isWinner)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            else
+                MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-        ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Header row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column {
-                    Text(
-                        text = "${match.myTeam} vs ${match.opposingTeam}",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (match.isJoker) {
+                            Text("🃏 ", fontSize = 16.sp)
+                        }
+                        Text(
+                            text = "${match.myTeam} vs ${match.opposingTeam}",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+
                     Text(
                         text = formatDate(match.matchDate),
                         fontSize = 12.sp,
-                        color = Color.Gray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (match.isJoker) {
-                        Text(
-                            text = "🃏",
-                            fontSize = 14.sp,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    }
-                    Icon(
-                        imageVector = if (match.isWinner) Icons.Default.CheckCircle else Icons.Default.Close,
-                        contentDescription = if (match.isWinner) "Won" else "Lost",
-                        tint = if (match.isWinner) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(20.dp),
+                // Win/Loss indicator
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (match.isWinner)
+                            MaterialTheme.colorScheme.primaryContainer
+                        else
+                            MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Text(
+                        text = if (match.isWinner) "WON" else "LOST",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (match.isWinner)
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        else
+                            MaterialTheme.colorScheme.onErrorContainer
                     )
                 }
             }
 
+            // Performance stats
             if (match.runs > 0 || match.ballsFaced > 0) {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Batting:",
+                        text = "🏏 Batting",
                         fontSize = 12.sp,
-                        color = Color.Gray,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
                     )
+
                     Text(
-                        text = "${match.runs}${if (!match.isOut) "*" else ""} (${match.ballsFaced}) - 4s: ${match.fours}, 6s: ${match.sixes}",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
+                        text = "${match.runs}${if (!match.isOut) "*" else ""} (${match.ballsFaced})",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+
+                if (match.fours > 0 || match.sixes > 0) {
+                    Text(
+                        text = "4s: ${match.fours} • 6s: ${match.sixes}",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp)
                     )
                 }
             }
 
+            // Bowling stats (if available)
             if (match.wickets > 0 || match.ballsBowled > 0) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Bowling:",
+                        text = "⚾ Bowling",
                         fontSize = 12.sp,
-                        color = Color.Gray,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        fontWeight = FontWeight.Medium
                     )
+
                     Text(
-                        text = "${match.wickets}/${match.runsConceded} (${match.ballsBowled / 6}.${match.ballsBowled % 6} overs)",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFFFF5722),
+                        text = "${match.wickets}/${match.runsConceded} (${match.ballsBowled / 6}.${match.ballsBowled % 6})",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.tertiary,
                     )
                 }
             }
