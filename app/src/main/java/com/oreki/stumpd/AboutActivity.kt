@@ -220,7 +220,7 @@ item {
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
-                        text = "Email: bshashikumar48@gmail.com",
+                        text = "Email: logposelabs@gmail.com",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.secondary,
                         fontWeight = FontWeight.Medium
