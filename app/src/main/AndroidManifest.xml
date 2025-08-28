@@ -59,6 +59,8 @@
         <activity
             android:name=".PlayerDetailActivity"
             android:exported="false" />
+        <activity android:name=".GroupManagementActivity"
+            android:exported="false"/>
 
     </application>
 

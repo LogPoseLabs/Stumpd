@@ -3,15 +3,11 @@ package com.oreki.stumpd
 import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import java.text.SimpleDateFormat
 import java.util.*
 
 // Basic stored player for simple operations
 data class StoredPlayer(
-    val id: String =
-        java.util.UUID
-            .randomUUID()
-            .toString(),
+    val id: String = UUID.randomUUID().toString(),
     val name: String,
     var matchesPlayed: Int = 0,
     var totalRuns: Int = 0,
@@ -205,45 +201,24 @@ class PlayerStorageManager(
         android.util.Log.d("PlayerStorage", "Synced ${existingPlayers.size} basic players from match data")
     }
 
+    fun toPlayer(sp: StoredPlayer): Player =
+        Player(id = PlayerId(sp.id), name = sp.name)
+
     fun addOrUpdatePlayer(playerName: String): StoredPlayer {
         val players = getAllPlayers().toMutableList()
-        val existingPlayer = players.find { it.name.equals(playerName, ignoreCase = true) }
-
-        val updatedPlayer =
-            if (existingPlayer != null) {
-                existingPlayer.copy(lastPlayed = System.currentTimeMillis())
-            } else {
-                StoredPlayer(name = playerName)
-            }
-
-        if (existingPlayer != null) {
-            players.removeAll { it.id == existingPlayer.id }
-        }
-        players.add(updatedPlayer)
-
-        val playersJson = gson.toJson(players)
-        prefs.edit().putString("players_json", playersJson).apply()
-
-        return updatedPlayer
+        val existing = players.find { it.name.equals(playerName, ignoreCase = true) }
+        val updated =
+            if (existing != null) existing.copy(name = playerName.trim(), lastPlayed = System.currentTimeMillis())
+            else StoredPlayer(name = playerName.trim())
+        if (existing != null) players[players.indexOfFirst { it.id == existing.id }] = updated else players.add(updated)
+        prefs.edit().putString("players_json", gson.toJson(players)).apply()
+        return updated
     }
 
     fun searchPlayers(query: String): List<StoredPlayer> =
         getAllPlayers()
             .filter { it.name.contains(query, ignoreCase = true) }
             .sortedByDescending { it.matchesPlayed }
-
-    fun getRecentPlayers(limit: Int = 10): List<StoredPlayer> =
-        getAllPlayers()
-            .sortedByDescending { it.lastPlayed }
-            .take(limit)
-
-    fun updatePlayerStats(
-        playerName: String,
-        runs: Int,
-        wickets: Int,
-    ) {
-        syncBasicPlayersFromMatches()
-    }
 
     fun deletePlayer(playerId: String): Boolean =
         try {
@@ -259,27 +234,6 @@ class PlayerStorageManager(
             removed
         } catch (e: Exception) {
             android.util.Log.e("PlayerStorage", "Error deleting player", e)
-            false
-        }
-
-    fun updatePlayerName(
-        oldName: String,
-        newName: String,
-    ): Boolean =
-        try {
-            val players = getAllPlayers().toMutableList()
-            val playerIndex = players.indexOfFirst { it.name.equals(oldName, ignoreCase = true) }
-
-            if (playerIndex != -1) {
-                players[playerIndex] = players[playerIndex].copy(name = newName)
-                val playersJson = gson.toJson(players)
-                prefs.edit().putString("players_json", playersJson).apply()
-                true
-            } else {
-                false
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("PlayerStorage", "Error updating player name", e)
             false
         }
 
@@ -304,12 +258,12 @@ class EnhancedPlayerStorageManager(
         allMatches.forEach { match ->
             // Process first innings batting (Team 1)
             match.firstInningsBatting.forEach { playerStat ->
-                val playerName = playerStat.name
+                val playerId = playerStat.id
                 val player =
-                    playersMap.getOrPut(playerName) {
+                    playersMap.getOrPut(playerId.toString()) {
                         PlayerDetailedStats(
-                            playerId = playerName.replace(" ", "_").lowercase(),
-                            name = playerName,
+                            playerId = playerId.toString(),
+                            name = playerStat.name,
                         )
                     }
 
@@ -342,12 +296,12 @@ class EnhancedPlayerStorageManager(
 
             // Process first innings bowling (Team 2)
             match.firstInningsBowling.forEach { playerStat ->
-                val playerName = playerStat.name
+                val playerId = playerStat.id
                 val player =
-                    playersMap.getOrPut(playerName) {
+                    playersMap.getOrPut(playerId.toString()) {
                         PlayerDetailedStats(
-                            playerId = playerName.replace(" ", "_").lowercase(),
-                            name = playerName,
+                            playerId = playerId.toString(),
+                            name = playerStat.name,
                         )
                     }
 
@@ -384,12 +338,12 @@ class EnhancedPlayerStorageManager(
 
             // Process second innings batting (Team 2)
             match.secondInningsBatting.forEach { playerStat ->
-                val playerName = playerStat.name
+                val playerId = playerStat.id
                 val player =
-                    playersMap.getOrPut(playerName) {
+                    playersMap.getOrPut(playerId.toString()) {
                         PlayerDetailedStats(
-                            playerId = playerName.replace(" ", "_").lowercase(),
-                            name = playerName,
+                            playerId = playerId.toString(),
+                            name = playerStat.name,
                         )
                     }
 
@@ -432,12 +386,12 @@ class EnhancedPlayerStorageManager(
 
             // Process second innings bowling (Team 1)
             match.secondInningsBowling.forEach { playerStat ->
-                val playerName = playerStat.name
+                val playerId = playerStat.id
                 val player =
-                    playersMap.getOrPut(playerName) {
+                    playersMap.getOrPut(playerId.toString()) {
                         PlayerDetailedStats(
-                            playerId = playerName.replace(" ", "_").lowercase(),
-                            name = playerName,
+                            playerId = playerId.toString(),
+                            name = playerStat.name,
                         )
                     }
 

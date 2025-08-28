@@ -85,9 +85,12 @@ fun TeamSetupScreen() {
     var powerplayOversText by remember { mutableStateOf(matchSettings.powerplayOvers.toString()) }
     var jokerMaxOversText by remember { mutableStateOf(matchSettings.jokerMaxOvers.toString()) }
 
-    val groupStorage = remember { PlayerGroupStorageManager(context) }
-    var selectedGroup by remember { mutableStateOf<GroupInfo?>(null) }
     var showGroupPicker by remember { mutableStateOf(false) }
+    val groupStorage = remember { PlayerGroupStorageManager(context) }
+    val playerStorage = remember { PlayerStorageManager(context) }
+
+    var selectedGroup by remember { mutableStateOf<PlayerGroup?>(null) }
+
 
     // Expandable sections state
     var expandedSections by remember {
@@ -122,7 +125,32 @@ fun TeamSetupScreen() {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            "📂 Group",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = selectedGroup?.name ?: "No group selected", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            FilledTonalButton(onClick = {
+                                showGroupPicker = true
+                            }) {
+                                Icon(Icons.Default.Home, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(if (selectedGroup == null) "Select Group" else "Change")
+                            }
+                        }
+                    }
+                }
+            }
             // Basic Settings Section
             item {
                 SettingsSection(
@@ -363,89 +391,6 @@ fun TeamSetupScreen() {
                     }
                 }
             }
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(
-                            "📂 Group",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = selectedGroup?.name ?: "No group selected",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            FilledTonalButton(onClick = { showGroupPicker = true }) {
-                                Icon(Icons.Default.Home, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(if (selectedGroup == null) "Select Group" else "Change")
-                            }
-                        }
-                    }
-                }
-
-                if (showGroupPicker) {
-                    val groups = groupStorage.getAllGroups()
-                    AlertDialog(
-                        onDismissRequest = { showGroupPicker = false },
-                        title = { Text("Choose Group") },
-                        text = {
-                            if (groups.isEmpty()) {
-                                Column {
-                                    Text("No groups yet.")
-                                    Spacer(Modifier.height(8.dp))
-                                    FilledTonalButton(onClick = {
-                                        // quick-create Saturday and Sunday for convenience (optional)
-                                        groupStorage.createGroup("Saturday")
-                                        groupStorage.createGroup("Sunday")
-                                        showGroupPicker = false
-                                        Toast.makeText(
-                                            context,
-                                            "Created Saturday & Sunday",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }) { Text("Create Saturday & Sunday") }
-                                }
-                            } else {
-                                LazyColumn(Modifier.height(300.dp)) {
-                                    items(groups) { g ->
-                                        ListItem(
-                                            headlineContent = { Text(g.name) },
-                                            supportingContent = {
-                                                Text(
-                                                    "${g.players.size} players",
-                                                    fontSize = 12.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            },
-                                            modifier = Modifier.clickable {
-                                                selectedGroup = GroupInfo(id = g.id, name = g.name)
-                                                showGroupPicker = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        },
-                        confirmButton = {},
-                        dismissButton = {
-                            TextButton(onClick = {
-                                showGroupPicker = false
-                            }) { Text("Close") }
-                        }
-                    )
-                }
-            }
 
             // Team Cards Section
             item {
@@ -633,6 +578,8 @@ fun TeamSetupScreen() {
 
                                         intent.putExtra("team1_players", team1PlayerNames)
                                         intent.putExtra("team2_players", team2PlayerNames)
+                                        intent.putExtra("team1_player_ids", team1.players.map { it.id.value }.toTypedArray())
+                                        intent.putExtra("team2_player_ids", team2.players.map { it.id.value }.toTypedArray())
 
                                         // Pass match settings with calculated max players
                                         val finalMatchSettings = matchSettings.copy(
@@ -666,18 +613,85 @@ fun TeamSetupScreen() {
                 }
             }
         }
+        val allowedIds = selectedGroup?.playerIds?.toSet() ?: emptySet()
 
+        if (showGroupPicker) {
+            val groups = groupStorage.getAllGroups()
+            AlertDialog(
+                onDismissRequest = { showGroupPicker = false },
+                title = { Text("Choose Group") },
+                text = {
+                    if (groups.isEmpty()) {
+                        Column {
+                            Text("No groups yet.")
+                            Spacer(Modifier.height(8.dp))
+                            FilledTonalButton(onClick = {
+                                // quick create with defaults
+                                groupStorage.createGroup("Saturday")
+                                groupStorage.createGroup("Sunday")
+                                showGroupPicker = false
+                                Toast.makeText(context, "Created Saturday & Sunday", Toast.LENGTH_SHORT).show()
+                            }) { Text("Create Saturday & Sunday") }
+                        }
+                    } else {
+                        LazyColumn(Modifier.height(300.dp)) {
+                            items(groups) { g ->
+                                ListItem(
+                                    headlineContent = { Text(g.name) },
+                                    supportingContent = { Text("${g.playerIds.size} players", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                    modifier = Modifier.clickable {
+                                        selectedGroup = g
+                                        // Load defaults
+                                        matchSettings = g.defaults.matchSettings.copy(shortPitch = g.defaults.shortPitch)
+                                        // Optionally set UI fields from matchSettings to keep text inputs in sync
+                                        oversText = matchSettings.totalOvers.toString()
+                                        maxOversPerBowlerText = matchSettings.maxOversPerBowler.toString()
+                                        legSideWideRunsText = matchSettings.legSideWideRuns.toString()
+                                        offSideWideRunsText = matchSettings.offSideWideRuns.toString()
+                                        noballRunsText = matchSettings.noballRuns.toString()
+                                        byeRunsText = matchSettings.byeRuns.toString()
+                                        legByeRunsText = matchSettings.legByeRuns.toString()
+                                        powerplayOversText = matchSettings.powerplayOvers.toString()
+                                        jokerMaxOversText = matchSettings.jokerMaxOvers.toString()
+
+                                        // Reflect pitch toggle
+                                        // matchSettings.shortPitch already set; UI switch bound to matchSettings.shortPitch
+
+                                        // Preload players (optional UX): keep selection empty and let user assign,
+                                        // or suggest from group:
+                                        // Convert ids -> StoredPlayer -> Player
+                                        val allPlayers = playerStorage.getAllPlayers().associateBy { it.id }
+                                        val groupPlayers = g.playerIds.mapNotNull { id -> allPlayers[id]?.let { sp -> Player(id = PlayerId(sp.id), name = sp.name) } }
+                                        // Leave teams as-is, but the add dialogs/suggestions will source from groupPlayers first
+
+                                        showGroupPicker = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = { showGroupPicker = false }) { Text("Close") } }
+            )
+        }
         // Team 1 multi-add
         if (showTeam1Dialog) {
-            val occupied = (team1.players + team2.players).map { it.name }.toSet() +
-                    listOfNotNull(jokerPlayer?.name)
+            val occupied = (team1.players + team2.players).map { it.id.value }.toSet() +
+                    listOfNotNull(jokerPlayer?.id?.value)
             PlayerMultiSelectDialog(
                 title = "Add Players to ${team1.name}",
-                occupiedNames = occupied,
-                onConfirm = { names ->
+                occupiedIds = occupied,
+                allowedPlayerIds = allowedIds,
+                onConfirm = { ids ->
+                    val all = playerStorage.getAllPlayers().associateBy { it.id }
                     val newPlayers = team1.players.toMutableList()
-                    names.forEach { newPlayers.add(Player(it)) }
-                    // Optional: keep sorted
+                    ids.forEach { pid ->
+                        all[pid]?.let { sp ->
+                            newPlayers.add(Player(id = PlayerId(sp.id), name = sp.name))
+                        }
+                    }
+                    // Optional sort
                     newPlayers.sortBy { it.name.lowercase() }
                     team1 = team1.copy(players = newPlayers)
                     showTeam1Dialog = false
@@ -688,14 +702,20 @@ fun TeamSetupScreen() {
 
 // Team 2 multi-add
         if (showTeam2Dialog) {
-            val occupied = (team1.players + team2.players).map { it.name }.toSet() +
-                    listOfNotNull(jokerPlayer?.name)
+            val occupied = (team1.players + team2.players).map { it.id.value }.toSet() +
+                    listOfNotNull(jokerPlayer?.id?.value)
             PlayerMultiSelectDialog(
                 title = "Add Players to ${team2.name}",
-                occupiedNames = occupied,
-                onConfirm = { names ->
+                occupiedIds = occupied,
+                allowedPlayerIds = allowedIds,
+                onConfirm = { ids ->
+                    val all = playerStorage.getAllPlayers().associateBy { it.id }
                     val newPlayers = team2.players.toMutableList()
-                    names.forEach { newPlayers.add(Player(it)) }
+                    ids.forEach { pid ->
+                        all[pid]?.let { sp ->
+                            newPlayers.add(Player(id = PlayerId(sp.id), name = sp.name))
+                        }
+                    }
                     newPlayers.sortBy { it.name.lowercase() }
                     team2 = team2.copy(players = newPlayers)
                     showTeam2Dialog = false
@@ -704,13 +724,15 @@ fun TeamSetupScreen() {
             )
         }
 
+// Joker single-select
         if (showJokerDialog) {
             PlayerSuggestionDialog(
                 title = "Select Joker",
-                selectedPlayers = (team1.players + team2.players).map { it.name },
+                selectedPlayers = (team1.players + team2.players).map { it.id.value },
                 currentTeamName = "Joker (Both Teams)",
-                onPlayerSelected = { playerName ->
-                    jokerPlayer = Player(playerName, isJoker = true)
+                onPlayerSelected = { playerId ->
+                    val sp = playerStorage.getAllPlayers().find { it.id == playerId }
+                    jokerPlayer = Player(id = PlayerId(playerId), name = sp?.name ?: "Joker", isJoker = true)
                     showJokerDialog = false
                 },
                 onDismiss = { showJokerDialog = false },
@@ -909,7 +931,7 @@ private fun PickFromGroupButton(
                         items(groups) { g ->
                             ListItem(
                                 headlineContent = { Text(g.name) },
-                                supportingContent = { Text("${g.players.size} players", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                supportingContent = { Text("${g.playerIds.size} players", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
                                 modifier = Modifier.clickable {
                                     onGroupPicked(g)
                                     open = false

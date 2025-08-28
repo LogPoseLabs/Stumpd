@@ -2,8 +2,11 @@ package com.oreki.stumpd
 
 import com.google.gson.Gson
 
+data class PlayerId(val value: String = java.util.UUID.randomUUID().toString())
+
 data class Player(
-    val name: String,
+    val id: PlayerId = PlayerId(),
+    val name: String = "",
     var runs: Int = 0,
     var ballsFaced: Int = 0,
     var fours: Int = 0,
@@ -14,32 +17,35 @@ data class Player(
     var ballsBowled: Int = 0,
     val isJoker: Boolean = false,
 ) {
-    val strikeRate: Double
-        get() = if (ballsFaced > 0) (runs.toDouble() / ballsFaced) * 100 else 0.0
-
-    // Real-time overs calculation
-    val oversBowled: Double
-        get() = (ballsBowled / 6) + (ballsBowled % 6) * 0.1
-
-    val economy: Double
-        get() = if (ballsBowled > 0) (runsConceded.toDouble() / ballsBowled) * 6 else 0.0
-
-    // Convert to PlayerMatchStats for saving
-    fun toMatchStats(teamName: String): PlayerMatchStats =
-        PlayerMatchStats(
-            name = name,
-            runs = runs,
-            ballsFaced = ballsFaced,
-            fours = fours,
-            sixes = sixes,
-            wickets = wickets,
-            runsConceded = runsConceded,
-            oversBowled = oversBowled,
-            isOut = isOut,
-            isJoker = isJoker,
-            team = teamName,
-        )
+    val strikeRate: Double get() = if (ballsFaced > 0) (runs.toDouble() / ballsFaced) * 100 else 0.0
+    val oversBowled: Double get() = (ballsBowled / 6) + (ballsBowled % 6) * 0.1
+    val economy: Double get() = if (ballsBowled > 0) (runsConceded.toDouble() / ballsBowled) * 6 else 0.0
+    fun toMatchStats(teamName: String): PlayerMatchStats = PlayerMatchStats(
+        id = id.value,
+        name = name, runs = runs, ballsFaced = ballsFaced, fours = fours, sixes = sixes,
+        wickets = wickets, runsConceded = runsConceded, oversBowled = oversBowled,
+        isOut = isOut, isJoker = isJoker, team = teamName
+    )
 }
+
+// White/Red-ball and short/long pitch
+enum class BallFormat { WHITE_BALL, RED_BALL }
+
+data class GroupDefaultSettings(
+    val matchSettings: MatchSettings,
+    val groundName: String = "",
+    val format: BallFormat = BallFormat.WHITE_BALL,
+    // If true -> short pitch; if false -> long pitch
+    val shortPitch: Boolean = false,
+)
+
+data class PlayerGroup(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String,
+    // Store player ids, not copies
+    val playerIds: List<String> = emptyList(),
+    val defaults: GroupDefaultSettings,
+)
 
 // Enhanced Team data class
 data class Team(
@@ -48,21 +54,6 @@ data class Team(
 ) {
     val regularPlayersCount: Int
         get() = players.count { !it.isJoker }
-}
-
-// Match setup with joker support
-data class MatchSetup(
-    val team1: Team,
-    val team2: Team,
-    val jokerPlayer: Player? = null, // Single joker for both teams
-    val matchType: MatchType = MatchType.T20,
-    val overs: Int = 20,
-)
-
-enum class MatchType {
-    T20,
-    ODI,
-    TEST,
 }
 
 // Ball-by-ball tracking
@@ -102,7 +93,7 @@ data class SimpleRunOutInput(val runsCompleted: Int, val dismissed: DismissedEnd
 data class RunOutInput(
     val runsCompleted: Int,
     val end: RunOutEnd,
-    val battersCrossed: Boolean
+    val whoOut: String
 )
 
 enum class RunOutEnd { STRIKER_END, NON_STRIKER_END }
@@ -180,29 +171,7 @@ data class Innings(
             }
 }
 
-// Complete match structure
-data class CricketMatch(
-    val team1: Team,
-    val team2: Team,
-    val jokerPlayer: Player? = null,
-    val matchType: MatchType = MatchType.T20,
-    val maxOvers: Int = 20,
-    var currentInnings: Int = 1, // 1 for first innings, 2 for second
-    var firstInnings: Innings? = null,
-    var secondInnings: Innings? = null,
-    var tossWinner: Team? = null,
-    var tossDecision: TossDecision? = null,
-) {
-    val isMatchCompleted: Boolean
-        get() =
-            secondInnings?.isCompleted == true ||
-                (secondInnings != null && secondInnings!!.totalRuns > (firstInnings?.totalRuns ?: 0))
-}
 
-enum class TossDecision {
-    BAT_FIRST,
-    BOWL_FIRST,
-}
 data class DeliveryUI(
     val over: Int,
     val ballInOver: Int,      // 1..6
@@ -244,6 +213,7 @@ data class MatchHistory(
 
 // Individual player performance in a match
 data class PlayerMatchStats(
+    val id: String? = null,
     val name: String,
     val runs: Int = 0,
     val ballsFaced: Int = 0,
@@ -441,14 +411,3 @@ data class GroupInfo(
     val name: String
 )
 
-// Optional list-based grouping for quick player picking (can coexist with GroupInfo)
-data class PlayerRef(
-    val id: String = java.util.UUID.randomUUID().toString(),
-    val name: String
-)
-
-data class PlayerGroup(
-    val id: String = java.util.UUID.randomUUID().toString(),
-    val name: String,
-    val players: List<PlayerRef> = emptyList()
-)

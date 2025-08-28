@@ -1,7 +1,6 @@
 package com.oreki.stumpd
 
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,7 +25,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.gson.Gson
 import com.oreki.stumpd.ui.theme.StumpdTheme
-import com.oreki.stumpd.ui.theme.ScoringTopBar
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -40,6 +38,8 @@ class ScoringActivity : ComponentActivity() {
         val jokerName = intent.getStringExtra("joker_name") ?: ""
         val team1PlayerNames = intent.getStringArrayExtra("team1_players") ?: arrayOf("Player 1", "Player 2", "Player 3")
         val team2PlayerNames = intent.getStringArrayExtra("team2_players") ?: arrayOf("Player 4", "Player 5", "Player 6")
+        val team1PlayerIds = intent.getStringArrayExtra("team1_player_ids") ?: emptyArray()
+        val team2PlayerIds = intent.getStringArrayExtra("team2_player_ids") ?: emptyArray()
         val matchSettingsJson = intent.getStringExtra("match_settings") ?: ""
         val groupId = intent.getStringExtra("group_id")
         val groupName = intent.getStringExtra("group_name")
@@ -57,6 +57,8 @@ class ScoringActivity : ComponentActivity() {
                         jokerName = jokerName,
                         team1PlayerNames = team1PlayerNames,
                         team2PlayerNames = team2PlayerNames,
+                        team1PlayerIds = team1PlayerIds,
+                        team2PlayerIds = team2PlayerIds,
                         matchSettingsJson = matchSettingsJson,
                         groupId = groupId,
                         groupName = groupName
@@ -74,6 +76,8 @@ fun ScoringScreen(
     jokerName: String = "",
     team1PlayerNames: Array<String> = arrayOf("Player 1", "Player 2", "Player 3"),
     team2PlayerNames: Array<String> = arrayOf("Player 4", "Player 5", "Player 6"),
+    team1PlayerIds: Array<String> = arrayOf("1","2"),
+    team2PlayerIds: Array<String> = arrayOf("1","2"),
     matchSettingsJson: String = "",
     groupId: String?,
     groupName: String?
@@ -101,10 +105,39 @@ fun ScoringScreen(
             topBarVisible = false
         }
     }
+    val playerStorage = PlayerStorageManager(context)
+    val all = remember { playerStorage.getAllPlayers().associateBy { it.id } }
 
-    var team1Players by remember { mutableStateOf(team1PlayerNames.map { Player(it) }.toMutableList()) }
-    var team2Players by remember { mutableStateOf(team2PlayerNames.map { Player(it) }.toMutableList()) }
-    val jokerPlayer = remember { if (jokerName.isNotEmpty()) Player(jokerName, isJoker = true) else null }
+    var team1Players by remember {
+        mutableStateOf(
+            if (team1PlayerIds.isNotEmpty()) {
+                team1PlayerIds.map { id ->
+                    val sp = all[id]
+                    Player(id = PlayerId(id), name = sp?.name ?: id)
+                }.toMutableList()
+            } else {
+                team1PlayerNames.map { Player(name = it) }.toMutableList()
+            }
+        )
+    }
+    var team2Players by remember {
+        mutableStateOf(
+            if (team2PlayerIds.isNotEmpty()) {
+                team2PlayerIds.map { id ->
+                    val sp = all[id]
+                    Player(id = PlayerId(id), name = sp?.name ?: id)
+                }.toMutableList()
+            } else {
+                team2PlayerNames.map { Player(name = it) }.toMutableList()
+            }
+        )
+    }
+
+    val jokerPlayer = remember {
+        if (jokerName.isNotEmpty()) {
+            Player(name = jokerName, isJoker = true)
+        } else null
+    }
 
     var currentInnings by remember { mutableStateOf(1) }
     var battingTeamPlayers by remember { mutableStateOf(team1Players) }
@@ -619,13 +652,7 @@ fun ScoringScreen(
                 !battingTeamPlayers.any { it.isJoker } &&
                 !jokerPlayer.isOut
 
-        // FIXED: Auto-select only when exactly 1 batsman available
-        if (availableBatsmenCount == 1 && selectingBatsman == 1) {
-            val lastAvailableBatsman = battingTeamPlayers.indexOfFirst { !it.isOut }
-            strikerIndex = lastAvailableBatsman
-            nonStrikerIndex = null
-            showBatsmanDialog = false
-        } else {
+
             EnhancedPlayerSelectionDialog(
                 title = when {
                     selectingBatsman == 1 -> "Select Striker"
@@ -736,9 +763,8 @@ fun ScoringScreen(
                 matchSettings = matchSettings,
                 otherEndName = pickerOtherEndName
             )
-        }
-    }
 
+    }
 
     if (showBowlerDialog) {
         val bowlerPool = if (ballsInOver == 0) {
@@ -888,199 +914,6 @@ fun ScoringScreen(
         )
     }
 
-    if (showWicketDialog) {
-        WicketTypeDialog(
-            onWicketSelected = { wicketType ->
-                val dismissedIndex = strikerIndex
-                val jokerWasOut = striker?.isJoker == true
-                if (wicketType == WicketType.RUN_OUT) {
-                    showWicketDialog = false
-                    showRunOutDialog = true
-                } else {
-                    pushSnapshot()
-                    totalWickets += 1
-
-                    updateStrikerAndTotals { p ->
-                        val updated = p.copy(isOut = true, ballsFaced = p.ballsFaced + 1)
-                        updated
-                    }
-                    val outSnapshot = dismissedIndex?.let { idx ->
-                        battingTeamPlayers.getOrNull(idx)?.copy()
-                    }
-                    // Add to completed ledger immediately (per innings)
-                    if (outSnapshot != null && (outSnapshot.ballsFaced > 0 || outSnapshot.runs > 0)) {
-                        if (currentInnings == 1) {
-                            if (completedBattersInnings1.none {
-                                    it.name.equals(
-                                        outSnapshot.name,
-                                        true
-                                    )
-                                }) {
-                                completedBattersInnings1 =
-                                    (completedBattersInnings1 + outSnapshot).toMutableList()
-                            } else {
-                                completedBattersInnings1 = completedBattersInnings1
-                                    .map {
-                                        if (it.name.equals(
-                                                outSnapshot.name,
-                                                true
-                                            )
-                                        ) outSnapshot else it
-                                    }
-                                    .toMutableList()
-                            }
-                        } else {
-                            if (completedBattersInnings2.none {
-                                    it.name.equals(
-                                        outSnapshot.name,
-                                        true
-                                    )
-                                }) {
-                                completedBattersInnings2 =
-                                    (completedBattersInnings2 + outSnapshot).toMutableList()
-                            } else {
-                                completedBattersInnings2 = completedBattersInnings2
-                                    .map {
-                                        if (it.name.equals(
-                                                outSnapshot.name,
-                                                true
-                                            )
-                                        ) outSnapshot else it
-                                    }
-                                    .toMutableList()
-                            }
-                        }
-                    }
-                    updateBowlerStats { player ->
-                        player.copy(
-                            wickets = player.wickets + 1,
-                            ballsBowled = player.ballsBowled + 1
-                        )
-                    }
-                    ballsInOver += 1
-                    incJokerBallIfBowledThisDelivery()
-
-                    val jokerWasBowling = bowler?.isJoker == true
-
-                    if (ballsInOver == 6) {
-                        currentOver += 1
-                        ballsInOver = 0
-                        recordCurrentBowlerIfAny()
-                        previousBowlerName = bowler?.name
-                        bowlerIndex = null
-                        currentBowlerSpell = 0
-                        midOverReplacementDueToJoker.value = false
-                        showBowlerDialog = true
-                    }
-
-                    Toast.makeText(
-                        context,
-                        "Wicket! ${striker?.name} is ${
-                            wicketType.name.lowercase().replace("_", " ")
-                        }",
-                        Toast.LENGTH_LONG
-                    ).show()
-
-                    // FIXED: Handle joker getting out - make available for bowling
-                    if (jokerWasOut) {
-                        jokerOutInCurrentInnings = true
-                        // Remove joker from batting team when they get out
-                        val jokerBattingIndex = battingTeamPlayers.indexOfFirst { it.isJoker }
-                        if (jokerBattingIndex != -1) {
-                            val newBattingList = battingTeamPlayers.toMutableList()
-                            newBattingList.removeAt(jokerBattingIndex)
-                            battingTeamPlayers = newBattingList
-
-                            // Reset striker/non-striker indices
-                            if (strikerIndex == jokerBattingIndex) strikerIndex = null
-                            if (nonStrikerIndex == jokerBattingIndex) nonStrikerIndex = null
-                            else if (nonStrikerIndex != null && nonStrikerIndex!! > jokerBattingIndex) {
-                                nonStrikerIndex = nonStrikerIndex!! - 1
-                            }
-                        }
-                        Toast.makeText(
-                            context,
-                            "🃏 Joker is now available for bowling!",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-
-                    val availableBatsmenAfterWicket = battingTeamPlayers.count { !it.isOut }
-                    val jokerAvailableForBatting = jokerPlayer != null &&
-                            !battingTeamPlayers.any { it.isJoker } &&
-                            !jokerOutInCurrentInnings
-
-                    val totalAvailableBatsmen =
-                        availableBatsmenAfterWicket + if (jokerAvailableForBatting) 1 else 0
-
-                    when {
-                        totalAvailableBatsmen == 0 -> {
-                            strikerIndex = null
-                            nonStrikerIndex = null
-                        }
-
-                        matchSettings.allowSingleSideBatting && totalAvailableBatsmen == 1 -> {
-                            if (jokerAvailableForBatting && availableBatsmenAfterWicket == 0) {
-                                strikerIndex = null
-                                selectingBatsman = 1
-                                showBatsmanDialog = true
-                                Toast.makeText(
-                                    context,
-                                    "🃏 Only joker available to bat!",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            } else {
-                                val lastBatsman = battingTeamPlayers.indexOfFirst { !it.isOut }
-                                strikerIndex = lastBatsman
-                                nonStrikerIndex = null
-                                Toast.makeText(
-                                    context,
-                                    "Single side batting: ${battingTeamPlayers[lastBatsman].name} continues alone",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            }
-                        }
-
-                        !matchSettings.allowSingleSideBatting && totalAvailableBatsmen == 1 -> {
-                            strikerIndex = null
-                            nonStrikerIndex = null
-                        }
-
-                        else -> {
-                            strikerIndex = null
-                            selectingBatsman = 1
-
-                            if (jokerWasBowling && !jokerWasOut) {
-                                Toast.makeText(context, "🃏 Joker can now bat!", Toast.LENGTH_LONG)
-                                    .show()
-                            }
-
-                            if (ballsInOver == 0 && currentOver > 0) {
-                                // Over complete, bowler dialog will show automatically
-                            } else {
-                                showBatsmanDialog = true
-                            }
-                        }
-                    }
-                    showWicketDialog = false
-                    val bowlerName = bowler?.name ?: "Bowler"
-                    val outName = outSnapshot?.name ?: "Batsman"
-                    val totalAfter = battingTeamPlayers.sumOf { it.runs } + totalExtras
-                    addDelivery("W", highlight = true)
-                    Toast.makeText(
-                        context,
-                        "Wicket! $outName ${
-                            wicketType.name.lowercase().replace('_', ' ')
-                        }. Total: $totalAfter. $bowlerName to continue.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            },
-            onDismiss = { showWicketDialog = false },
-        )
-
-    }
-
     if (showInningsBreakDialog) {
         jokerOutInCurrentInnings = false
         EnhancedInningsBreakDialog(
@@ -1112,8 +945,6 @@ fun ScoringScreen(
                 bowlingTeamPlayers = bowlingTeamPlayers.filter { !it.isJoker }.toMutableList()
                 // Joker flags/ball counters reset for new innings context
                 jokerOutInCurrentInnings = false
-                jokerBallsBowledInnings1 = jokerBallsBowledInnings1 // unchanged
-                jokerBallsBowledInnings2 = jokerBallsBowledInnings2 // unchanged
 
                 totalWickets = 0
                 currentOver = 0
@@ -1182,6 +1013,193 @@ fun ScoringScreen(
             },
         )
     }
+
+    if (showWicketDialog) {
+        WicketTypeDialog(
+            onWicketSelected = { wicketType ->
+                val dismissedIndex = strikerIndex
+                val jokerWasOut = striker?.isJoker == true
+
+                if (wicketType == WicketType.RUN_OUT) {
+                    showWicketDialog = false
+                    showRunOutDialog = true
+                    return@WicketTypeDialog
+                }
+
+                // --- begin replacement logic ---
+                pushSnapshot()
+                totalWickets += 1
+
+                // mark striker as out in the striker's record
+                updateStrikerAndTotals { p ->
+                    p.copy(isOut = true, ballsFaced = p.ballsFaced + 1)
+                }
+
+                val outSnapshot = dismissedIndex?.let { idx ->
+                    battingTeamPlayers.getOrNull(idx)?.copy()
+                }
+
+                // ledger update (unchanged)
+                if (outSnapshot != null && (outSnapshot.ballsFaced > 0 || outSnapshot.runs > 0)) {
+                    if (currentInnings == 1) {
+                        if (completedBattersInnings1.none { it.name.equals(outSnapshot.name, true) }) {
+                            completedBattersInnings1 =
+                                (completedBattersInnings1 + outSnapshot).toMutableList()
+                        } else {
+                            completedBattersInnings1 = completedBattersInnings1
+                                .map { if (it.name.equals(outSnapshot.name, true)) outSnapshot else it }
+                                .toMutableList()
+                        }
+                    } else {
+                        if (completedBattersInnings2.none { it.name.equals(outSnapshot.name, true) }) {
+                            completedBattersInnings2 =
+                                (completedBattersInnings2 + outSnapshot).toMutableList()
+                        } else {
+                            completedBattersInnings2 = completedBattersInnings2
+                                .map { if (it.name.equals(outSnapshot.name, true)) outSnapshot else it }
+                                .toMutableList()
+                        }
+                    }
+                }
+
+                // update bowler (unchanged)
+                updateBowlerStats { player ->
+                    player.copy(
+                        wickets = player.wickets + 1,
+                        ballsBowled = player.ballsBowled + 1
+                    )
+                }
+
+                // cache current end names/indexes BEFORE any index changes
+                val curStrikerIndex = strikerIndex
+                val curNonStrikerIndex = nonStrikerIndex
+                val curStrikerName = striker?.name
+                val curNonStrikerName = nonStriker?.name
+
+                val jokerWasBowling = bowler?.isJoker == true
+
+                Toast.makeText(
+                    context,
+                    "Wicket! ${striker?.name} is ${wicketType.name.lowercase().replace("_", " ")}",
+                    Toast.LENGTH_LONG
+                ).show()
+
+                // Handle joker-out removal (unchanged)
+                if (jokerWasOut) {
+                    jokerOutInCurrentInnings = true
+                    val jokerBattingIndex = battingTeamPlayers.indexOfFirst { it.isJoker }
+                    if (jokerBattingIndex != -1) {
+                        val newBattingList = battingTeamPlayers.toMutableList()
+                        newBattingList.removeAt(jokerBattingIndex)
+                        battingTeamPlayers = newBattingList
+
+                        if (strikerIndex == jokerBattingIndex) strikerIndex = null
+                        if (nonStrikerIndex == jokerBattingIndex) nonStrikerIndex = null
+                        else if (nonStrikerIndex != null && nonStrikerIndex!! > jokerBattingIndex) {
+                            nonStrikerIndex = nonStrikerIndex!! - 1
+                        }
+                    }
+                    Toast.makeText(
+                        context,
+                        "🃏 Joker is now available for bowling!",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+
+                // Recompute availability AFTER any joker removal
+                val availableBatsmenAfterWicket = battingTeamPlayers.count { !it.isOut }
+                val jokerAvailableForBattingInWicketDialog = jokerPlayer != null &&
+                        !battingTeamPlayers.any { it.isJoker } &&
+                        !jokerOutInCurrentInnings
+
+                val totalAvailableBatsmen = availableBatsmenAfterWicket + if (jokerAvailableForBattingInWicketDialog) 1 else 0
+
+                when {
+                    totalAvailableBatsmen == 0 -> {
+                        strikerIndex = null
+                        nonStrikerIndex = null
+                    }
+
+                    // single-side batting: be end-aware (place last batter into the end that is empty)
+                    matchSettings.allowSingleSideBatting && totalAvailableBatsmen == 1 -> {
+                        if (jokerAvailableForBattingInWicketDialog && availableBatsmenAfterWicket == 0) {
+                            // Joker is only available — open picker at the end that was just freed
+                            selectingBatsman = if (dismissedIndex == curStrikerIndex) 1 else 2
+                            pickerOtherEndName = if (dismissedIndex == curStrikerIndex) curNonStrikerName else curStrikerName
+                            showBatsmanDialog = true
+                            Toast.makeText(context, "🃏 Only joker available to bat!", Toast.LENGTH_LONG).show()
+                        } else {
+                            // keep the remaining batter in the slot that is NOT dismissed
+                            val lastBatsman = battingTeamPlayers.indexOfFirst { !it.isOut }
+                            if (curStrikerIndex == dismissedIndex) {
+                                // striker was dismissed earlier → place last batsman in striker slot
+                                strikerIndex = lastBatsman
+                            } else {
+                                // non-striker slot was freed earlier → place last batsman in non-striker slot
+                                nonStrikerIndex = lastBatsman
+                            }
+                            Toast.makeText(
+                                context,
+                                "Single side batting: ${battingTeamPlayers[lastBatsman].name} continues alone",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+
+                    !matchSettings.allowSingleSideBatting && totalAvailableBatsmen == 1 -> {
+                        strikerIndex = null
+                        nonStrikerIndex = null
+                    }
+
+                    else -> {
+                        // Normal case: striker wicket (this dialog is for striker) -> ONLY clear striker slot
+                        // Do NOT promote non-striker to striker; keep non-striker untouched.
+                        Toast.makeText(context, "Normal Out flow!", Toast.LENGTH_LONG).show()
+                        strikerIndex = null
+                        selectingBatsman = 1
+                        pickerOtherEndName = curNonStrikerName
+                        showBatsmanDialog = true
+                        Toast.makeText(context, "End of Normal Out flow", Toast.LENGTH_LONG).show()
+                        if (jokerWasBowling && !jokerWasOut) {
+                            Toast.makeText(context, "🃏 Joker can now bat!", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+
+                // --- now handle ball/over progression AFTER replacement decision ---
+                ballsInOver += 1
+                incJokerBallIfBowledThisDelivery()
+
+                if (ballsInOver == 6) {
+                    currentOver += 1
+                    ballsInOver = 0
+                    recordCurrentBowlerIfAny()
+                    previousBowlerName = bowler?.name
+                    bowlerIndex = null
+                    currentBowlerSpell = 0
+                    midOverReplacementDueToJoker.value = false
+
+                    // If a batsman picker is active, prioritize that — postpone bowler picker until after
+                    if (!showBatsmanDialog) {
+                        showBowlerDialog = true
+                    }
+                }
+
+                showWicketDialog = false
+                val bowlerName = bowler?.name ?: "Bowler"
+                val outName = outSnapshot?.name ?: "Batsman"
+                val totalAfter = battingTeamPlayers.sumOf { it.runs } + totalExtras
+                addDelivery("W", highlight = true)
+                Toast.makeText(
+                    context,
+                    "Wicket! $outName ${wicketType.name.lowercase().replace('_', ' ')}. Total: $totalAfter. $bowlerName to continue.",
+                    Toast.LENGTH_LONG
+                ).show()
+            },
+            onDismiss = { showWicketDialog = false },
+        )
+    }
+
     if (showRunOutDialog) {
         RunOutDialog(
             striker = striker,
@@ -1189,16 +1207,19 @@ fun ScoringScreen(
             onConfirm = { input ->
                 pushSnapshot()
 
-                val runsCompleted = input.runsCompleted.coerceIn(0, 6)
+                val runsCompleted = input.runsCompleted
+                val outPlayerName = input.whoOut
+                val outEnd = input.end
 
-                // Snapshot current references to avoid race with later index changes
+                // Snapshot current refs to avoid race with later index changes
                 val curStrikerIndex = strikerIndex
                 val curNonStrikerIndex = nonStrikerIndex
-                val curStriker = striker // may be null
-                val curNonStriker = nonStriker // may be null
-                val hadNonStriker = curNonStriker != null
+                val curStriker = striker
+                val curNonStriker = nonStriker
+                val curStrikerName = curStriker?.name
+                val curNonStrikerName = curNonStriker?.name
 
-                // 1) Score updates for a legal ball
+                // 1) Update striker and bowler stats exactly from scorer input
                 updateStrikerAndTotals { p ->
                     p.copy(
                         runs = p.runs + runsCompleted,
@@ -1214,73 +1235,80 @@ fun ScoringScreen(
                     )
                 }
 
-                // 2) Resolve who is out WITHOUT mutating yet
-                val outIsStriker = (input.end == RunOutEnd.STRIKER_END)
-                val outIndex = if (outIsStriker) curStrikerIndex else curNonStrikerIndex
-
-                // Guard: if we don't have a valid index, bail gracefully
-                if (outIndex == null || outIndex !in battingTeamPlayers.indices) {
-                    Toast.makeText(context, "Could not determine dismissed batter", Toast.LENGTH_LONG).show()
+                // 2) Find the dismissed player by name
+                val outIndex = battingTeamPlayers.indexOfFirst { it.name.equals(outPlayerName, ignoreCase = true) }
+                if (outIndex == -1) {
+                    Toast.makeText(context, "Could not find player \"$outPlayerName\" in batting team", Toast.LENGTH_LONG).show()
                     showRunOutDialog = false
                     return@RunOutDialog
                 }
 
-                val listBeforeOut = battingTeamPlayers.toMutableList()
-                val outPlayer = listBeforeOut[outIndex]
+                // 3) Mark the player out
+                val newBatting = battingTeamPlayers.toMutableList()
+                newBatting[outIndex] = newBatting[outIndex].copy(isOut = true)
+                battingTeamPlayers = newBatting
 
-                // 3) Mark out on the exact index
-                listBeforeOut[outIndex] = outPlayer.copy(isOut = true)
-                battingTeamPlayers = listBeforeOut
-
-                // 4) Ledger update using the out snapshot AFTER we updated list
+                // 4) Record completed batter snapshot
                 val outSnapshot = battingTeamPlayers[outIndex].copy()
                 if (currentInnings == 1) {
-                    if (completedBattersInnings1.none { it.name.equals(outSnapshot.name, true) }) {
-                        completedBattersInnings1 = (completedBattersInnings1 + outSnapshot).toMutableList()
-                    } else {
-                        completedBattersInnings1 = completedBattersInnings1
-                            .map { if (it.name.equals(outSnapshot.name, true)) outSnapshot else it }
-                            .toMutableList()
-                    }
+                    completedBattersInnings1 = completedBattersInnings1
+                        .filterNot { it.name.equals(outSnapshot.name, true) }
+                        .toMutableList()
+                        .apply { add(outSnapshot) }
                 } else {
-                    if (completedBattersInnings2.none { it.name.equals(outSnapshot.name, true) }) {
-                        completedBattersInnings2 = (completedBattersInnings2 + outSnapshot).toMutableList()
-                    } else {
-                        completedBattersInnings2 = completedBattersInnings2
-                            .map { if (it.name.equals(outSnapshot.name, true)) outSnapshot else it }
-                            .toMutableList()
-                    }
+                    completedBattersInnings2 = completedBattersInnings2
+                        .filterNot { it.name.equals(outSnapshot.name, true) }
+                        .toMutableList()
+                        .apply { add(outSnapshot) }
                 }
 
-                // 5) Increment team wickets exactly once
+                // 5) Increment wickets
                 totalWickets += 1
 
-                // 6) Strike logic happens AFTER marking out, using safe flags
-                // First apply run-based strike swap
-                if (runsCompleted % 2 == 1 && hadNonStriker) {
-                    swapStrike()
-                }
-                // Then apply "crossed" swap for an uncompleted additional run
-                if (input.battersCrossed && hadNonStriker) {
-                    swapStrike()
+                // 6) Defensive / helpful warning if scorer input looks inconsistent
+                if ((outIndex == curStrikerIndex && outEnd == RunOutEnd.NON_STRIKER_END) ||
+                    (outIndex == curNonStrikerIndex && outEnd == RunOutEnd.STRIKER_END)
+                ) {
+                    // Inform scorer but continue to honor their input
+                    Toast.makeText(
+                        context,
+                        "Note: $outPlayerName was listed at ${if (outIndex == curStrikerIndex) "striker" else "non-striker"}, " +
+                                "but you selected ${if (outEnd == RunOutEnd.STRIKER_END) "Striker's End" else "Non-Striker's End"}. " +
+                                "Honouring scorer input.",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
 
-                // 7) Clear the correct index and open the correct picker
-                if (outIsStriker) {
-                    // striker dismissed -> pick new striker
+                // 7) Remove the out player from whichever slot they occupied
+                if (strikerIndex == outIndex) strikerIndex = null
+                if (nonStrikerIndex == outIndex) nonStrikerIndex = null
+
+                // 7b) If scorer’s "end" does not match the dismissed player’s slot, adjust indexes
+                if (outIndex == curNonStrikerIndex && outEnd == RunOutEnd.STRIKER_END) {
+                    // Scorer says wicket was at striker end but non-striker is actually out
+                    // → shift striker into non-striker slot
+                    nonStrikerIndex = curStrikerIndex
                     strikerIndex = null
-                    pickerOtherEndName = nonStriker?.name
+                } else if (outIndex == curStrikerIndex && outEnd == RunOutEnd.NON_STRIKER_END) {
+                    // Scorer says wicket was at non-striker end but striker is actually out
+                    // → shift non-striker into striker slot
+                    strikerIndex = curNonStrikerIndex
+                    nonStrikerIndex = null
+                }
+
+                // 8) Replacement goes at the end scorer picked (even if different from whoOut slot)
+                if (outEnd == RunOutEnd.STRIKER_END) {
                     selectingBatsman = 1
+                    pickerOtherEndName = curNonStrikerName // keep other batter as is
                     showBatsmanDialog = true
                 } else {
-                    // non-striker dismissed -> pick new non-striker
-                    nonStrikerIndex = null
-                    pickerOtherEndName = striker?.name
                     selectingBatsman = 2
+                    pickerOtherEndName = curStrikerName
                     showBatsmanDialog = true
                 }
 
-                // 8) Ball + over progression
+
+                // 9) Ball & over progression (as before)
                 ballsInOver += 1
                 incJokerBallIfBowledThisDelivery()
 
@@ -1292,28 +1320,16 @@ fun ScoringScreen(
                     bowlerIndex = null
                     currentBowlerSpell = 0
                     midOverReplacementDueToJoker.value = false
-                    if (!matchSettings.allowSingleSideBatting) {
-                        // Only swap at over-end if NOT in single-side mode (consistent with your code)
-                        swapStrike()
-                    }
                     showBowlerDialog = true
-                    Toast.makeText(context, "Over complete! Select new bowler", Toast.LENGTH_LONG).show()
                 }
 
-                // 9) Delivery log
-                val label = buildString {
-                    append("${runsCompleted} + RO")
-                    when (input.end) {
-                        RunOutEnd.STRIKER_END -> append(" (S)")
-                        RunOutEnd.NON_STRIKER_END -> append(" (NS)")
-                    }
-                    if (input.battersCrossed) append(" x")
-                }
+                // 10) Delivery log + feedback
+                val label = "${runsCompleted} + RO (${outPlayerName} @ ${if (outEnd == RunOutEnd.STRIKER_END) "S" else "NS"})"
                 addDelivery(label, highlight = true)
 
                 Toast.makeText(
                     context,
-                    "Run out at ${if (outIsStriker) "striker" else "non‑striker"}’s end. $runsCompleted run(s) completed.",
+                    "Run out! $outPlayerName dismissed. $runsCompleted run(s) recorded.",
                     Toast.LENGTH_LONG
                 ).show()
 
@@ -1555,7 +1571,7 @@ fun BatsmanColumn(
         horizontalAlignment = if (center) Alignment.CenterHorizontally else if (isStriker) Alignment.Start else Alignment.End
     ) {
         Text(
-            text = "🏏 ${player?.name ?: if (isStriker) "Select Batsman" else "Select Batsman 2"}",
+            text = "🏏 ${player?.name ?: if (isStriker) "Select Striker" else "Select Non-Striker"}",
             fontWeight = if (isStriker) FontWeight.Bold else FontWeight.Normal,
             color = if (player == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
         )
@@ -2915,105 +2931,96 @@ fun RunOutDialog(
     onConfirm: (RunOutInput) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var runs by remember { mutableStateOf(0) }
-    var end by remember { mutableStateOf(RunOutEnd.STRIKER_END) }
-    var crossed by remember { mutableStateOf(false) }
+    var runsCompleted by remember { mutableStateOf(0) }
+    var selectedWho by remember { mutableStateOf<Player?>(null) }
+    var selectedEnd by remember { mutableStateOf<RunOutEnd?>(null) }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Run Out details") },
+        onDismissRequest = { onDismiss() },
+        title = { Text("Run Out") },
         text = {
             Column {
-                Text("Runs completed before wicket")
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    (0..6).forEach { r ->
-                        AssistChip(onClick = { runs = r }, label = {
-                            Text(r.toString())
-                        }, colors = AssistChipDefaults.assistChipColors(
-                            containerColor = if (runs == r) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-                        ))
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                Text("Which end was the run out?")
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = end == RunOutEnd.STRIKER_END,
-                        onClick = { end = RunOutEnd.STRIKER_END },
-                        label = { Text("Striker's end") }
-                    )
-                    FilterChip(
-                        selected = end == RunOutEnd.NON_STRIKER_END,
-                        onClick = { end = RunOutEnd.NON_STRIKER_END },
-                        label = { Text("Non‑striker's end") }
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                Text("Did batters cross (but not complete an extra run)?")
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(checked = crossed, onCheckedChange = { crossed = it })
-                    Spacer(Modifier.width(8.dp))
-                    Text("Batters crossed")
-                }
-                Spacer(Modifier.height(12.dp))
-                // Preview helper to show which batter would be out
-                if (striker != null || nonStriker != null) {
-                    val likelyOutName = remember(runs, end, crossed, striker?.name, nonStriker?.name) {
-                        fun nameOr(player: Player?, fallback: String) = player?.name ?: fallback
-
-                        when (end) {
-                            RunOutEnd.STRIKER_END -> {
-                                // Striker's end dismissal always gets whoever ends up at striker's end
-                                val oddRuns = (runs % 2 == 1)
-                                val strikerMovedToNonStriker = oddRuns
-                                val finalStrikerAtStrikerEnd = if (crossed) !strikerMovedToNonStriker else strikerMovedToNonStriker
-
-                                if (finalStrikerAtStrikerEnd) {
-                                    nameOr(nonStriker, "Non-striker") // non-striker ended up at striker's end
-                                } else {
-                                    nameOr(striker, "Striker") // striker stayed/returned to striker's end
-                                }
-                            }
-                            RunOutEnd.NON_STRIKER_END -> {
-                                // Non-striker's end dismissal gets whoever ends up at non-striker's end
-                                val oddRuns = (runs % 2 == 1)
-                                val strikerMovedToNonStriker = oddRuns
-                                val finalStrikerAtNonStrikerEnd = if (crossed) !strikerMovedToNonStriker else strikerMovedToNonStriker
-
-                                if (finalStrikerAtNonStrikerEnd) {
-                                    nameOr(striker, "Striker") // striker ended up at non-striker's end
-                                } else {
-                                    nameOr(nonStriker, "Non-striker") // non-striker stayed/returned to non-striker's end
-                                }
-                            }
+                // Runs Completed (0–3)
+                Text("Runs completed before wicket:")
+                Row {
+                    (0..3).forEach { run ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(end = 12.dp)
+                        ) {
+                            RadioButton(
+                                selected = runsCompleted == run,
+                                onClick = { runsCompleted = run }
+                            )
+                            Text("$run")
                         }
                     }
+                }
 
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
-                        )
-                    ) {
-                        Text(
-                            "Likely out: $likelyOutName",
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(8.dp)
-                        )
+                Spacer(Modifier.height(12.dp))
+
+                // Who got out (actual player names)
+                Text("Who got out?")
+                Column {
+                    striker?.let {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(
+                                selected = selectedWho == striker,
+                                onClick = { selectedWho = striker }
+                            )
+                            Text(it.name)
+                        }
                     }
+                    nonStriker?.let {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(
+                                selected = selectedWho == nonStriker,
+                                onClick = { selectedWho = nonStriker }
+                            )
+                            Text(it.name)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // End of wicket
+                Text("At which end?")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(
+                        selected = selectedEnd == RunOutEnd.STRIKER_END,
+                        onClick = { selectedEnd = RunOutEnd.STRIKER_END }
+                    )
+                    Text("Striker’s End", Modifier.padding(end = 16.dp))
+
+                    RadioButton(
+                        selected = selectedEnd == RunOutEnd.NON_STRIKER_END,
+                        onClick = { selectedEnd = RunOutEnd.NON_STRIKER_END }
+                    )
+                    Text("Non-Striker’s End")
                 }
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(RunOutInput(runsCompleted = runs, end = end, battersCrossed = crossed)) }) {
-                Text("Apply")
+            TextButton(
+                onClick = {
+                    val input = RunOutInput(
+                        runsCompleted = runsCompleted,
+                        whoOut = selectedWho?.name ?: "",
+                        end = selectedEnd ?: RunOutEnd.STRIKER_END
+                    )
+                    onConfirm(input)
+                },
+                enabled = selectedWho != null && selectedEnd != null
+            ) {
+                Text("Confirm")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = { onDismiss() }) {
+                Text("Cancel")
+            }
         }
     )
 }
+

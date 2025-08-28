@@ -222,6 +222,19 @@ fun MainScreen() {
             Text("Manage Players", fontSize = 16.sp)
         }
         Spacer(modifier = Modifier.height(24.dp))
+        Button(
+            onClick = {
+                val intent = Intent(context, GroupManagementActivity::class.java)
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+        ) {
+            Icon(Icons.Default.Person, contentDescription = "Manage Groups")
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Manage Groups", fontSize = 16.sp)
+        }
+        Spacer(modifier = Modifier.height(24.dp))
 
         // About Button
         Button(
