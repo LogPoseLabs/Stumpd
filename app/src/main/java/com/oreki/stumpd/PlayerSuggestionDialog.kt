@@ -40,23 +40,22 @@ fun PlayerSuggestionDialog(
 
     // Only players in allowedPlayerIds and not already selected
     LaunchedEffect(selectedPlayers, allowedPlayerIds) {
-        val allow = if (allowedPlayerIds.isEmpty()) {
-            // if no group selected, show none
-            emptySet()
-        } else allowedPlayerIds
         val allRecent = playerStorage.getAllPlayers()
+        val selectedIds = selectedPlayers.toSet()
+        val allowed = allowedPlayerIds.toSet()
         recentPlayers = allRecent
-            .filter { it.id in allow }
-            .filter { it.id !in selectedPlayers.toSet() }
+            .filter { allowed.isEmpty() || it.id in allowed } // allow all if no group restriction
+            .filter { it.id !in selectedIds } // exclude already selected
     }
 
     LaunchedEffect(searchQuery, selectedPlayers, allowedPlayerIds) {
-        val allow = if (allowedPlayerIds.isEmpty()) emptySet() else allowedPlayerIds
+        val selectedIds = selectedPlayers.toSet()
+        val allowed = allowedPlayerIds.toSet()
         suggestions =
             if (searchQuery.isBlank()) emptyList()
             else playerStorage.searchPlayers(searchQuery)
-                .filter { it.id in allow }
-                .filter { it.id !in selectedPlayers.toSet() }
+                .filter { allowed.isEmpty() || it.id in allowed } // allow all if no group restriction
+                .filter { it.id !in selectedIds } // exclude already selected
     }
 
     AlertDialog(
@@ -338,7 +337,7 @@ fun PlayerSuggestionCard(
 
 
 @Composable
-fun PlayerMultiSelectDialog(
+    fun PlayerMultiSelectDialog(
     title: String,
     occupiedIds: Set<String>,
     preselectedIds: Set<String> = emptySet(),
@@ -499,11 +498,11 @@ private fun MultiSelectRow(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Checkbox(checked = checked, onCheckedChange = { onToggle() })
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(4.dp))
             if (highlightQuery.isNotEmpty() && name.contains(highlightQuery, true)) {
                 val start = name.indexOf(highlightQuery, ignoreCase = true)
                 val end = start + highlightQuery.length

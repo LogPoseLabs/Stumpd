@@ -47,7 +47,7 @@ data class GlobalSettings(
 class MatchSettingsManager(
     private val context: Context,
 ) {
-    private val prefs = context.getSharedPreferences("match_settings", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("match_settings_v3", Context.MODE_PRIVATE)
     private val gson = Gson()
 
     fun getGlobalSettings(): GlobalSettings =

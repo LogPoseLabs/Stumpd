@@ -56,28 +56,6 @@ data class Team(
         get() = players.count { !it.isJoker }
 }
 
-// Ball-by-ball tracking
-data class Ball(
-    val ballNumber: Int,
-    val runs: Int,
-    val extras: ExtraType? = null,
-    val extraRuns: Int = 0,
-    val isWicket: Boolean = false,
-    val wicketType: WicketType? = null,
-    val batsman: Player,
-    val bowler: Player,
-    val timestamp: Long = System.currentTimeMillis(),
-)
-
-data class OverRow(
-    val overNumber: Int,               // 1-based
-    val bowlerName: String?,
-    val strikerName: String?,
-    val nonStrikerName: String?,
-    val balls: List<DeliveryUI>,       // 1..6 balls in this over (can include Wd/Nb)
-    val totalRuns: Int
-)
-
 enum class ExtraType(val displayName: String) {
     NO_BALL("No Ball"),
     OFF_SIDE_WIDE("Off Side Wide"),
@@ -95,9 +73,6 @@ enum class WicketType {
     HIT_WICKET,
     BOUNDARY_OUT
 }
-
-enum class DismissedEnd { STRIKER, NON_STRIKER }
-data class SimpleRunOutInput(val runsCompleted: Int, val dismissed: DismissedEnd)
 
 data class RunOutInput(
     val runsCompleted: Int,
@@ -145,8 +120,16 @@ data class MatchHistory(
     val matchSettings: MatchSettings? = null,
     val groupId: String? = null,
     val groupName: String? = null,
-    val shortPitch: Boolean = false
-    )
+    val shortPitch: Boolean = false,
+    // NEW: Player of the Match (optional)
+    val playerOfTheMatchId: String? = null,
+    val playerOfTheMatchName: String? = null,
+    val playerOfTheMatchTeam: String? = null,
+    val playerOfTheMatchImpact: Double? = null,
+    val playerOfTheMatchSummary: String? = null,
+    // NEW: all players’ impacts
+    val playerImpacts: List<PlayerImpact> = emptyList()
+)
 
 // Individual player performance in a match
 data class PlayerMatchStats(
@@ -175,7 +158,7 @@ data class PlayerMatchStats(
 class MatchStorageManager(
     private val context: android.content.Context,
 ) {
-    private val prefs = context.getSharedPreferences("cricket_matches_v2", android.content.Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("cricket_matches_v3", android.content.Context.MODE_PRIVATE)
     private val gson = Gson()
 
     fun saveMatch(match: MatchHistory) {
@@ -184,8 +167,8 @@ class MatchStorageManager(
             matches.add(0, match) // Add to beginning
 
             // Keep only last 100 matches to prevent storage bloat
-            if (matches.size > 100) {
-                matches.subList(100, matches.size).clear()
+            if (matches.size > 500) {
+                matches.subList(500, matches.size).clear()
             }
 
             // Convert to JSON string
@@ -203,6 +186,11 @@ class MatchStorageManager(
         } catch (e: Exception) {
             android.util.Log.e("MatchStorage", "Error saving match", e)
         }
+    }
+
+    fun getLatestMatchID(): String? {
+        val all = getAllMatches()
+        return all.lastOrNull()?.id
     }
 
     fun getAllMatches(): List<MatchHistory> =
@@ -347,3 +335,18 @@ data class NoBallBoundaryOutInput(
     val outBatterName: String? = null, // default striker if null
 )
 
+data class PlayerImpact(
+    val id: String? = null,
+    val name: String,
+    val team: String,
+    val impact: Double,
+    val summary: String,
+    val isJoker: Boolean = false,
+    val runs: Int = 0,
+    val balls: Int = 0,
+    val fours: Int = 0,
+    val sixes: Int = 0,
+    val wickets: Int = 0,
+    val runsConceded: Int = 0,
+    val oversBowled: Double = 0.0
+)

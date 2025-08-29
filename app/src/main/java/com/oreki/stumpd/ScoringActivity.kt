@@ -1,5 +1,6 @@
 package com.oreki.stumpd
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -10,6 +11,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material3.*
@@ -370,10 +373,8 @@ fun ScoringScreen(
         if (exists == -1) return
         val balls = if (currentInnings == 1) jokerBallsBowledInnings1 else jokerBallsBowledInnings2
         if (balls <= 0) return
-        val overs = (balls / 6) + (balls % 6) * 0.1
         val list = bowlingTeamPlayers.toMutableList()
         val j = list[exists]
-        // Only update balls/overs; runsConceded/wickets remain whatever they were before removal if you tracked them elsewhere.
         list[exists] = j.copy(ballsBowled = balls)
         bowlingTeamPlayers = list
     }
@@ -475,10 +476,8 @@ fun ScoringScreen(
                     (context as ComponentActivity).finish()
                 }
             },
-            ballsInOver = ballsInOver,
             currentBowlerSpell = currentBowlerSpell,
             jokerPlayer = jokerPlayer,
-            matchSettings = matchSettings
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -585,7 +584,6 @@ fun ScoringScreen(
         LiveScorecardDialog(
             currentInnings = currentInnings,
             battingTeamName = battingTeamName,
-            bowlingTeamName = bowlingTeamName,
             battingTeamPlayers = battingTeamPlayers,
             bowlingTeamPlayers = bowlingTeamPlayers,
             firstInningsBattingPlayers = firstInningsBattingPlayersList,
@@ -1109,7 +1107,6 @@ fun ScoringScreen(
             overs = firstInningsOvers,
             balls = firstInningsBalls,
             battingTeam = battingTeamName,
-            bowlingTeam = bowlingTeamName,
             battingPlayers = firstInningsBattingPlayersList,
             bowlingPlayers = firstInningsBowlingPlayersList,
             totalOvers = matchSettings.totalOvers,
@@ -1169,7 +1166,14 @@ fun ScoringScreen(
                 context.startActivity(intent)
                 (context as androidx.activity.ComponentActivity).finish()
             },
-            onDismiss = { showMatchCompleteDialog = false },
+            onDismiss = {
+                showMatchCompleteDialog = false
+
+                val intent = android.content.Intent(context, FullScorecardActivity::class.java)
+                intent.putExtra("match_id","")
+                context.startActivity(intent)
+                (context as androidx.activity.ComponentActivity).finish()
+            },
             matchSettings = matchSettings,
             groupId = groupId,
             groupName = groupName
@@ -1628,10 +1632,8 @@ fun PlayersCard(
     onSwapStrike: () -> Unit,
     onShowLiveScorecard: () -> Unit,
     onBackPressed: () -> Unit,
-    ballsInOver: Int,
     currentBowlerSpell: Int,
     jokerPlayer: Player?,
-    matchSettings: MatchSettings
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1652,14 +1654,14 @@ fun PlayersCard(
                 Row {
                     IconButton(onClick = onShowLiveScorecard) {
                         Icon(
-                            Icons.Default.List,
+                            Icons.AutoMirrored.Filled.List,
                             contentDescription = "Live Scorecard",
                             tint = MaterialTheme.colorScheme.primary,
                         )
                     }
                     IconButton(onClick = onBackPressed) {
                         Icon(
-                            Icons.Default.ArrowBack,
+                            Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back to Home",
                             tint = MaterialTheme.colorScheme.primary,
                         )
@@ -1673,7 +1675,6 @@ fun PlayersCard(
                 showSingleSideLayout = showSingleSideLayout,
                 striker = striker,
                 nonStriker = nonStriker,
-                availableBatsmen = availableBatsmen,
                 onSelectStriker = onSelectStriker,
                 onSelectNonStriker = onSelectNonStriker
             )
@@ -1690,7 +1691,6 @@ fun PlayersCard(
 
             BowlerSection(
                 bowler = bowler,
-                ballsInOver = ballsInOver,
                 currentBowlerSpell = currentBowlerSpell,
                 onSelectBowler = onSelectBowler
             )
@@ -1713,7 +1713,6 @@ fun BattingSection(
     showSingleSideLayout: Boolean,
     striker: Player?,
     nonStriker: Player?,
-    availableBatsmen: Int,
     onSelectStriker: () -> Unit,
     onSelectNonStriker: () -> Unit
 ) {
@@ -1817,7 +1816,6 @@ fun SwapStrikeButton(onSwap: () -> Unit) {
 @Composable
 fun BowlerSection(
     bowler: Player?,
-    ballsInOver: Int,
     currentBowlerSpell: Int,
     onSelectBowler: () -> Unit
 ) {
@@ -2011,6 +2009,37 @@ private fun ActionTonalButton(
     }
 }
 
+private data class Agg(
+    val id: String?,
+    val name: String,
+    val team: String,
+    var runs: Int = 0,
+    var balls: Int = 0,
+    var fours: Int = 0,
+    var sixes: Int = 0,
+    var notOut: Boolean = false,
+    var wkts: Int = 0,
+    var rcv: Int = 0,
+    var ballsBowled: Int = 0,
+    var isJoker: Boolean = false
+)
+
+private fun summarizeAgg(a: Agg): String {
+    val bat = if (a.balls > 0) "${a.runs}${if (a.notOut) "*" else ""}(${a.balls})" else ""
+    val bowl = if (a.ballsBowled > 0) "${a.wkts}/${a.rcv}" else ""
+    return listOf(bat, bowl).filter { it.isNotBlank() }.joinToString(" and ")
+}
+
+private fun computeMatchEconomy(
+    firstBat: List<PlayerMatchStats>,
+    secondBat: List<PlayerMatchStats>,
+    totalOvers: Int
+): Double {
+    val totalRuns = firstBat.sumOf { it.runs } + secondBat.sumOf { it.runs }
+    val oversApprox = totalOvers * 2.0
+    return if (oversApprox > 0) totalRuns / oversApprox else 0.0
+}
+
 fun saveMatchToHistory(
     team1Name: String,
     team2Name: String,
@@ -2031,27 +2060,131 @@ fun saveMatchToHistory(
     groupName: String
 ) {
     android.util.Log.d("SaveMatch", "Attempting to save match: $team1Name vs $team2Name")
-
+    // Simple leaders for display
     val allBattingStats = firstInningsBattingStats + secondInningsBattingStats
     val allBowlingStats = firstInningsBowlingStats + secondInningsBowlingStats
     val topBatsman = allBattingStats.maxByOrNull { it.runs }
     val topBowler = allBowlingStats
-        .filter { it.oversBowled > 0 } // Only bowlers who actually bowled
+        .filter { it.oversBowled > 0 }
         .maxWithOrNull { a, b ->
             when {
-                // Primary: Most wickets
                 a.wickets != b.wickets -> a.wickets.compareTo(b.wickets)
-
-                // Secondary: If wickets equal, best economy rate (lower is better)
                 else -> {
                     val economyA = a.runsConceded.toDouble() / a.oversBowled
                     val economyB = b.runsConceded.toDouble() / b.oversBowled
-                    economyB.compareTo(economyA) // Reverse for best economy
+                    economyB.compareTo(economyA)
                 }
             }
         }
 
-    val storageManager = MatchStorageManager(context)
+    val wasChaseWin = winnerTeam == team2Name
+    val matchEconomy = computeMatchEconomy(firstInningsBattingStats, secondInningsBattingStats, matchSettings.totalOvers)
+
+// SINGLE aggregation for impacts
+    val aggMap: LinkedHashMap<String, Agg> = linkedMapOf()
+
+    fun keyOf(p: PlayerMatchStats) = "${p.team}::${p.name.trim().lowercase()}"
+
+    fun mergeInto(map: LinkedHashMap<String, Agg>, incoming: Agg) {
+        val k = "${incoming.team}::${incoming.name.trim().lowercase()}"
+        val a = map[k]
+        if (a == null) {
+            map[k] = incoming
+        } else {
+            a.runs += incoming.runs
+            a.balls += incoming.balls
+            a.fours += incoming.fours
+            a.sixes += incoming.sixes
+            a.notOut = a.notOut || incoming.notOut
+            a.wkts += incoming.wkts
+            a.rcv += incoming.rcv
+            a.ballsBowled += incoming.ballsBowled
+            a.isJoker = a.isJoker || incoming.isJoker
+        }
+    }
+
+    fun addBatting(ps: List<PlayerMatchStats>) {
+        ps.forEach { p ->
+            mergeInto(
+                aggMap,
+                Agg(
+                    id = p.id,
+                    name = p.name,
+                    team = p.team,
+                    runs = p.runs,
+                    balls = p.ballsFaced,
+                    fours = p.fours,
+                    sixes = p.sixes,
+                    notOut = (!p.isOut && p.ballsFaced > 0),
+                    isJoker = p.isJoker
+                )
+            )
+        }
+    }
+
+    fun addBowling(ps: List<PlayerMatchStats>) {
+        ps.forEach { p ->
+            mergeInto(
+                aggMap,
+                Agg(
+                    id = p.id,
+                    name = p.name,
+                    team = p.team,
+                    wkts = p.wickets,
+                    rcv = p.runsConceded,
+                    ballsBowled = (p.oversBowled * 6).toInt(),
+                    isJoker = p.isJoker
+                )
+            )
+        }
+    }
+
+    addBatting(firstInningsBattingStats)
+    addBatting(secondInningsBattingStats)
+    addBowling(firstInningsBowlingStats)
+    addBowling(secondInningsBowlingStats)
+
+    // Single scoring function closes over matchEconomy/wasChaseWin/winnerTeam
+    fun scoreAgg(a: Agg): Double {
+        val sr = if (a.balls > 0) a.runs * 100.0 / a.balls else 0.0
+        val batBase = a.runs + 2.0 * a.fours + 3.0 * a.sixes + if (a.notOut) 10.0 else 0.0
+        val srBonus = if (a.balls >= 10) kotlin.math.max(0.0, kotlin.math.min(10.0, (sr - 100.0) / 5.0)) else 0.0
+        val chaseBonus = if (wasChaseWin) kotlin.math.min(15.0, a.runs / 5.0) else 0.0
+        var bat = batBase + srBonus + chaseBonus
+
+        val eco = if (a.ballsBowled > 0) a.rcv * 6.0 / a.ballsBowled else 0.0
+        val bowlBase = 20.0 * a.wkts - 0.1 * a.rcv - 2.0 * kotlin.math.max(0.0, eco - matchEconomy)
+        val fiveW = if (a.wkts >= 5) 20.0 else if (a.wkts >= 4) 10.0 else 0.0
+        var bowl = if (a.ballsBowled > 0) bowlBase + fiveW else 0.0
+
+        if (a.isJoker && a.ballsBowled > 0 && a.balls > 0) { bat *= 0.8; bowl *= 0.8 }
+
+        val base = when {
+            a.balls > 0 && a.ballsBowled > 0 -> 0.6 * bat + 0.5 * bowl
+            a.balls > 0 -> bat
+            else -> bowl
+        }
+        val teamWinMult = 1.10
+        return if (a.team == winnerTeam) base * teamWinMult else base
+    }
+
+// Build impacts once
+    val impactsUnsorted: List<PlayerImpact> = aggMap.values.map { a ->
+        val impact = scoreAgg(a)
+        PlayerImpact(
+            id = a.id, name = a.name, team = a.team,
+            impact = "%.1f".format(impact).toDouble(),
+            summary = summarizeAgg(a),
+            isJoker = a.isJoker,
+            runs = a.runs, balls = a.balls, fours = a.fours, sixes = a.sixes,
+            wickets = a.wkts, runsConceded = a.rcv, oversBowled = a.ballsBowled / 6.0
+        )
+    }
+    val playerImpactsList: List<PlayerImpact> = impactsUnsorted.sortedByDescending { it.impact }
+
+// POTM = top of impact list
+    val potm = playerImpactsList.firstOrNull()
+
     val matchHistory = MatchHistory(
         team1Name = team1Name,
         team2Name = team2Name,
@@ -2074,10 +2207,19 @@ fun saveMatchToHistory(
         matchSettings = matchSettings,
         groupId = groupId,
         groupName = groupName,
-        shortPitch = matchSettings.shortPitch
+        shortPitch = matchSettings.shortPitch,
+        // POTM from impacts
+        playerOfTheMatchId = potm?.id,
+        playerOfTheMatchName = potm?.name,
+        playerOfTheMatchTeam = potm?.team,
+        playerOfTheMatchImpact = potm?.impact,
+        playerOfTheMatchSummary = potm?.summary,
+        playerImpacts = playerImpactsList
     )
 
+    val storageManager = MatchStorageManager(context)
     storageManager.saveMatch(matchHistory)
+
     val allMatches = storageManager.getAllMatches()
     android.util.Log.d("SaveMatch", "Match saved with detailed stats! Total matches now: ${allMatches.size}")
 
@@ -2092,7 +2234,6 @@ fun saveMatchToHistory(
 fun LiveScorecardDialog(
     currentInnings: Int,
     battingTeamName: String,
-    bowlingTeamName: String,
     battingTeamPlayers: List<Player>,
     bowlingTeamPlayers: List<Player>,
     firstInningsBattingPlayers: List<Player>,
@@ -2388,108 +2529,61 @@ fun LivePlayerStatCard(
 
 @Composable
 fun EnhancedInningsBreakDialog(
-    runs: Int,
-    wickets: Int,
-    overs: Int,
-    balls: Int,
+    runs: Int, wickets: Int, overs: Int, balls: Int,
     battingTeam: String,
-    bowlingTeam: String,
-    battingPlayers: List<Player>,
-    bowlingPlayers: List<Player>,
+    battingPlayers: List<Player>, bowlingPlayers: List<Player>,
     totalOvers: Int,
     onStartSecondInnings: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = { },
+        confirmButton = {
+            Button(onClick = onStartSecondInnings) { Text("Start 2nd Innings") }
+        },
         title = {
-            Text(
-                text = "🏏 First Innings Complete",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-            )
+            Text("🏏 First Innings Complete", style = MaterialTheme.typography.titleLarge)
         },
         text = {
             LazyColumn(
-                modifier = Modifier.height(400.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.heightIn(max = 420.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+// Summary banner
                 item {
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Text(
-                                text = battingTeam,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.surface,
-                            )
-                            Text(
-                                text = "$runs/$wickets ($overs.$balls/$totalOvers overs)",
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.surface,
-                            )
+                        Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(battingTeam, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
+                            Text("$runs/$wickets ($overs.$balls/$totalOvers ov)", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
                         }
                     }
                 }
-                item {
-                    Text(
-                        text = "Batting Performance",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.tertiary,
-                    )
+// Batting top 3
+                item { Text("Top Batting", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.tertiary) }
+                items(battingPlayers.sortedByDescending { it.runs }.take(3)) { p ->
+                    StatRowCompact(name = p.name, left = "${p.runs}${if (!p.isOut && p.ballsFaced > 0) "*" else ""} (${p.ballsFaced})", right = "4s:${p.fours} 6s:${p.sixes}")
                 }
-                items(battingPlayers.sortedByDescending { it.runs }.take(5)) { player ->
-                    LivePlayerStatCard(player, "batting")
-                }
-                val didNotBat = battingPlayers.filter { it.ballsFaced == 0 && it.runs == 0 }
-                if (didNotBat.isNotEmpty()) {
-                    item {
-                        Text(
-                            text = "Did not bat: ${didNotBat.joinToString(", ") { it.name }}",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontStyle = FontStyle.Italic,
-                        )
-                    }
-                }
-                item {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Bowling Performance",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFF5722),
-                    )
-                }
-                items(bowlingPlayers.sortedByDescending { it.wickets }.take(5)) { player ->
-                    LivePlayerStatCard(player, "bowling")
-                }
-                val didNotBowl = bowlingPlayers.filter { it.ballsBowled == 0 && it.wickets == 0 }
-                if (didNotBowl.isNotEmpty()) {
-                    item {
-                        Text(
-                            text = "Did not bowl: ${didNotBowl.joinToString(", ") { it.name }}",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontStyle = FontStyle.Italic,
-                        )
-                    }
+// Bowling top 3
+                item { Text("Top Bowling", style = MaterialTheme.typography.titleSmall, color = Color(0xFFFF5722)) }
+                items(bowlingPlayers.sortedByDescending { it.wickets }.take(3)) { p ->
+                    StatRowCompact(name = p.name, left = "${p.wickets}/${p.runsConceded}", right = "${"%.1f".format(p.oversBowled)} ov - Eco ${"%.1f".format(p.economy)}")
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = onStartSecondInnings,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-            ) {
-                Text("Start 2nd Innings")
-            }
-        },
+        }
     )
+}
+
+@Composable
+private fun StatRowCompact(name: String, left: String, right: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(name, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+        Text(left, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(8.dp))
+        Text(right, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -2516,7 +2610,7 @@ fun ExtrasDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.List, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+        icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
         title = { Text("Extras", style = MaterialTheme.typography.titleLarge) },
         text = {
             when {
@@ -2795,15 +2889,6 @@ fun EnhancedMatchCompleteDialog(
         secondInningsBowlingPlayers.map { it.toMatchStats(team1Name) }
     }
 
-    val allBattingStats = remember(firstInningsBattingStats, secondInningsBattingStats) {
-        firstInningsBattingStats + secondInningsBattingStats
-    }
-    val allBowlingStats = remember(firstInningsBowlingStats, secondInningsBowlingStats) {
-        firstInningsBowlingStats + secondInningsBowlingStats
-    }
-    val topBatsman = remember(allBattingStats) { allBattingStats.maxByOrNull { it.runs } }
-    val topBowler = remember(allBowlingStats) { allBowlingStats.maxByOrNull { it.wickets } }
-
     val finalGroupId = groupId ?: "1"
     val finalGroupName = groupName ?: "Default"
     // Save history (tie-friendly placeholders)
@@ -2974,7 +3059,19 @@ fun EnhancedMatchCompleteDialog(
             ) { Text("New Match") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("View Details") }
+            TextButton(
+                onClick = {
+                    val storageManager = MatchStorageManager(context)
+                    val latestMatchId = storageManager.getLatestMatchID()
+                    val intent = Intent(context, FullScorecardActivity::class.java)
+                    intent.putExtra("match_id", latestMatchId)
+                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    context.startActivity(intent)
+                    (context as ComponentActivity).finish()
+                }
+            ) {
+                Text("View Details")
+            }
         },
     )
 }

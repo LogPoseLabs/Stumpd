@@ -52,7 +52,7 @@ fun MainScreen() {
             .fillMaxSize()
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         // App Title with Cricket Theme
         Text(
@@ -209,27 +209,31 @@ fun MainScreen() {
                 val intent = Intent(context, AddPlayerActivity::class.java)
                 context.startActivity(intent)
             },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .padding(bottom = 16.dp),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
         ) {
             Icon(Icons.Default.Person, contentDescription = "Manage Players")
             Spacer(modifier = Modifier.width(8.dp))
             Text("Manage Players", fontSize = 16.sp)
         }
-        Spacer(modifier = Modifier.height(24.dp))
         Button(
             onClick = {
                 val intent = Intent(context, GroupManagementActivity::class.java)
                 context.startActivity(intent)
             },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .padding(bottom = 16.dp),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
         ) {
             Icon(Icons.Default.Person, contentDescription = "Manage Groups")
             Spacer(modifier = Modifier.width(8.dp))
             Text("Manage Groups", fontSize = 16.sp)
         }
-        Spacer(modifier = Modifier.height(24.dp))
 
         // About Button
         Button(
@@ -239,7 +243,8 @@ fun MainScreen() {
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(60.dp),
+                .height(60.dp)
+                .padding(bottom = 16.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant
             ),

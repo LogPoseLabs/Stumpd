@@ -5,7 +5,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
 class PlayerGroupStorageManager(private val context: Context) {
-    private val prefs = context.getSharedPreferences("player_groups_v2", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("player_groups_v3", Context.MODE_PRIVATE)
     private val gson = Gson()
     private val key = "groups"
 

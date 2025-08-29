@@ -185,11 +185,6 @@ fun FullScorecardScreen(matchId: String) {
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
                     )
-                    Text(
-                        text = "${"%.1f".format(firstInningsOvers)}/$totalOvers overs",
-                        fontSize = 12.sp,
-                        color = Color.Gray,
-                    )
                 }
             }
         }
@@ -275,11 +270,6 @@ fun FullScorecardScreen(matchId: String) {
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
-                    )
-                    Text(
-                        text = "${"%.1f".format(secondInningsOvers)}/$totalOvers overs",
-                        fontSize = 12.sp,
-                        color = Color.Gray,
                     )
                 }
             }
@@ -380,10 +370,7 @@ fun FullScorecardScreen(matchId: String) {
         // Enhanced Match Summary
         item {
             EnhancedMatchSummaryCard(
-                match = match,
-                matchSettings = matchSettings,
-                firstInningsOvers = firstInningsOvers,
-                secondInningsOvers = secondInningsOvers
+                match = match
             )
         }
     }
@@ -397,10 +384,7 @@ fun calculateOversFromStats(bowlingPlayers: List<PlayerMatchStats>): Double {
 // Enhanced Match Summary Card with settings info
 @Composable
 fun EnhancedMatchSummaryCard(
-    match: MatchHistory,
-    matchSettings: MatchSettings,
-    firstInningsOvers: Double,
-    secondInningsOvers: Double
+    match: MatchHistory
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -427,33 +411,97 @@ fun EnhancedMatchSummaryCard(
 
             Spacer(modifier = Modifier.height(11.dp))
 
-            // Show top performers if available
-            match.topBatsman?.let { topBat ->
-                Text(
-                    text = "🏏 Top Batsman: ${topBat.name} - ${topBat.runs} runs",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            match.topBowler?.let { topBowl ->
-                Text(
-                    text = "⚾ Top Bowler: ${topBowl.name} - ${topBowl.wickets} wickets",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            match.jokerPlayerName?.let { joker ->
+            val hasPotm = match.playerOfTheMatchName != null
+            if (hasPotm) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "🃏 Joker: $joker",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.secondary,
+                    text = "⭐ Player of the Match",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                val potmLine = buildString {
+                    append(match.playerOfTheMatchName)
+                    match.playerOfTheMatchTeam?.let { append(" (${it})") }
+                    match.playerOfTheMatchSummary?.let { append(" — $it") }
+                }
+                Text(
+                    text = potmLine,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Medium
                 )
+                match.playerOfTheMatchImpact?.let { imp ->
+                    Text(
+                        text = "Impact: ${"%.1f".format(imp)}",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+                }
+            } else {
+                // Fallback for older matches without POTM
+                match.topBatsman?.let { topBat ->
+                    Text(
+                        text = "🏏 Top Batsman: ${topBat.name} - ${topBat.runs} runs",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                match.topBowler?.let { topBowl ->
+                    Text(
+                        text = "⚾ Top Bowler: ${topBowl.name} - ${topBowl.wickets} wickets",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
-        }
+            match.playerImpacts.takeIf { it.isNotEmpty() }?.let { impacts ->
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Top Impact",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                impacts.take(3).forEach { pi ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "${pi.name} (${pi.team})",
+                            fontSize = 13.sp,
+                            fontWeight = if (pi.name == match.playerOfTheMatchName) FontWeight.SemiBold else FontWeight.Medium
+                        )
+                        Text(
+                            text = "${"%.1f".format(pi.impact)}",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                    pi.summary.takeIf { it.isNotBlank() }?.let { sum ->
+                        Text(
+                            text = sum,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                val context = LocalContext.current
+                TextButton(onClick = {
+                    // Navigate to a dedicated Impact screen
+                    val intent = Intent(context, ImpactListActivity::class.java)
+                    intent.putExtra("match_id", match.id)
+                    context.startActivity(intent)
+                }) {
+                    Text("View all impacts")
+                }
+            }
+            }
     }
 }
 
