@@ -22,6 +22,7 @@ import com.oreki.stumpd.ui.theme.StumpdTheme
 class SplashActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        actionBar?.hide()
         setContent {
             StumpdTheme {
                 SplashScreen {

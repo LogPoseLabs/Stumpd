@@ -16,7 +16,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -25,12 +24,12 @@ import androidx.compose.ui.unit.sp
 import com.oreki.stumpd.ui.theme.SectionTitle
 import com.oreki.stumpd.ui.theme.StatsTopBar
 import com.oreki.stumpd.ui.theme.StumpdTheme
-import com.oreki.stumpd.ui.theme.StumpdTopBar
 import com.oreki.stumpd.ui.theme.sectionContainer
 
 class StatsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        actionBar?.hide()
         setContent {
             StumpdTheme {
                 Surface(

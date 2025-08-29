@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.sp
 import com.oreki.stumpd.ui.theme.SectionCard
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import com.oreki.stumpd.ui.theme.StumpdTopBar
-import com.oreki.stumpd.ui.theme.SuccessContainer
 import java.text.SimpleDateFormat
 import java.util.*
 import com.oreki.stumpd.ui.theme.Label
@@ -29,6 +28,7 @@ import com.oreki.stumpd.ui.theme.successContainerAdaptive
 class MatchDetailActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        actionBar?.hide()
         val matchId = intent.getStringExtra("match_id") ?: ""
 
         setContent {

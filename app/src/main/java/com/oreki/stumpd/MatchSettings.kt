@@ -23,23 +23,10 @@ data class MatchSettings(
     val jokerCanBatAndBowl: Boolean = true,
     val jokerMaxOvers: Int = 1,
     // Match format
-    val matchFormat: MatchFormat = MatchFormat.T20,
     val tossWinnerChoice: TossChoice = TossChoice.BAT_FIRST,
     val enableSuperOver: Boolean = false,
     val shortPitch: Boolean = true
 )
-
-enum class MatchFormat(
-    val displayName: String,
-    val defaultOvers: Int,
-) {
-    T20("T20 (20 overs)", 20),
-
-    T10("T10 (10 overs)", 10),
-    ODI("One Day (50 overs)", 50),
-    TEST("Test Match (Unlimited)", 0),
-    CUSTOM("Custom Format", 0),
-}
 
 enum class TossChoice(
     val displayName: String,

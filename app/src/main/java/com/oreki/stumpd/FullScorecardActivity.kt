@@ -25,6 +25,7 @@ import com.oreki.stumpd.ui.theme.StumpdTheme
 class FullScorecardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        actionBar?.hide()
         val matchId = intent.getStringExtra("match_id") ?: ""
 
         setContent {

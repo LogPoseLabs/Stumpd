@@ -14,8 +14,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
-// Brand colors (from your icon)
-// Teal plate and navy foreground, plus a Joker accent orange.
 private val StumpdTeal = Color(0xFF22AFA0) // teal brand
 private val StumpdTealDark = Color(0xFF158F82)
 private val StumpdNavy = Color(0xFF0C2B3A) // ink/navy

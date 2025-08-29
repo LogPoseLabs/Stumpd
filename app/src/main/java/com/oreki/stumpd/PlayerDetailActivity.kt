@@ -1,7 +1,6 @@
 package com.oreki.stumpd
 
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -31,6 +30,7 @@ import androidx.compose.foundation.rememberScrollState
 class PlayerDetailActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        actionBar?.hide()
         val playerName = intent.getStringExtra("player_name") ?: ""
 
         setContent {

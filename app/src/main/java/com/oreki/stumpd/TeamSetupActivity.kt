@@ -16,18 +16,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.gson.Gson
 import com.oreki.stumpd.ui.theme.PrimaryCta
 import com.oreki.stumpd.ui.theme.SectionTitle
 import com.oreki.stumpd.ui.theme.StumpdTheme
-import com.oreki.stumpd.ui.theme.WarningContainer
 import androidx.compose.foundation.layout.FlowRow
 import com.oreki.stumpd.ui.theme.SectionCard
 import com.oreki.stumpd.ui.theme.StumpdTopBar
@@ -38,7 +35,7 @@ import com.oreki.stumpd.ui.theme.Label
 class TeamSetupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
+        actionBar?.hide()
         setContent {
             StumpdTheme {
                 Surface(
@@ -544,8 +541,6 @@ fun TeamSetupScreen() {
                             )
                         }
 
-                        Spacer(Modifier.height(12.dp))
-                        Divider()
                         Spacer(Modifier.height(12.dp))
 
                         PrimaryCta(

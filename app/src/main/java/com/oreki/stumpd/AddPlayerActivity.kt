@@ -24,11 +24,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import android.widget.Toast
-import com.oreki.stumpd.ui.theme.GroupActionsRow
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 
 class AddPlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        actionBar?.hide()
         setContent {
             StumpdTheme {
                 Surface(
@@ -54,7 +55,7 @@ fun AddPlayerScreen() {
     var showDeleteDialog by remember { mutableStateOf(false) }
     var playerToDelete by remember { mutableStateOf<StoredPlayer?>(null) }
     var successMessage by remember { mutableStateOf("") }
-    var refreshTrigger by remember { mutableStateOf(0) }
+    var refreshTrigger by remember { mutableIntStateOf(0) }
     val groupStorage = remember { PlayerGroupStorageManager(context) }
 
     // Load players with force sync
@@ -91,7 +92,7 @@ fun AddPlayerScreen() {
                 }
             ) {
                 Icon(
-                    Icons.Default.ArrowBack,
+                    Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back to Home",
                     tint = MaterialTheme.colorScheme.primary
                 )
@@ -326,7 +327,7 @@ fun AddPlayerScreen() {
         AddPlayerDialog(
             initialName = playerName,
             onPlayerAdded = { name ->
-                val addedPlayer = playerStorage.addOrUpdatePlayer(name)
+                playerStorage.addOrUpdatePlayer(name)
                 refreshTrigger += 1
                 playerName = ""
                 successMessage = "✅ Added $name"

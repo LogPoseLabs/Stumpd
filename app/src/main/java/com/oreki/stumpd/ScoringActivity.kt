@@ -32,7 +32,7 @@ import kotlinx.coroutines.launch
 class ScoringActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
+        actionBar?.hide()
         val team1Name = intent.getStringExtra("team1_name") ?: "Team A"
         val team2Name = intent.getStringExtra("team2_name") ?: "Team B"
         val jokerName = intent.getStringExtra("joker_name") ?: ""
