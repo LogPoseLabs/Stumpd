@@ -676,117 +676,116 @@ fun ScoringScreen(
                 !jokerPlayer.isOut
 
 
-            EnhancedPlayerSelectionDialog(
-                title = when {
-                    selectingBatsman == 1 -> "Select Striker"
-                    else -> "Select Non-Striker"
-                },
-                players = battingTeamPlayers,
-                // FIXED: Only show joker if wickets have fallen (not for opening)
-                jokerPlayer = if (totalWickets == 0 || jokerOutInCurrentInnings) null else jokerPlayer,
-                currentStrikerIndex = strikerIndex,
-                currentNonStrikerIndex = nonStrikerIndex,
-                allowSingleSide = matchSettings.allowSingleSideBatting,
-                totalWickets = totalWickets,
-                battingTeamPlayers = battingTeamPlayers,
-                bowlingTeamPlayers = bowlingTeamPlayers,
-                jokerOversThisInnings = jokerOversBowledThisInnings(),
-                onPlayerSelected = { player ->
-                    if (selectingBatsman == 1) {
-                        if (player.isJoker) {
-                            // Remove joker from bowling team if they were bowling
-                            val jokerBowlingIndex = bowlingTeamPlayers.indexOfFirst { it.isJoker }
-                            if (jokerBowlingIndex != -1) {
-                                // Reset bowler if joker was bowling
-                                if (bowlerIndex == jokerBowlingIndex) {
-                                    recordCurrentBowlerIfAny()
-                                    bowlerIndex = null
-                                    currentBowlerSpell = 0
-                                    if (ballsInOver > 0) {
-                                        midOverReplacementDueToJoker.value = true
-                                        Toast.makeText(context, "🃏 Joker switched to bat. Select a new bowler to complete the over.", Toast.LENGTH_LONG).show()
-                                        showBowlerDialog = true
-                                    }
-                                }
-
-                                val newBowlingList = bowlingTeamPlayers.toMutableList()
-                                newBowlingList.removeAt(jokerBowlingIndex)
-                                bowlingTeamPlayers = newBowlingList
-
-                                // Update previous bowler index
-                                if (previousBowlerName == jokerName) {
-                                    previousBowlerName = null
+        EnhancedPlayerSelectionDialog(
+            title = when {
+                selectingBatsman == 1 -> "Select Striker"
+                else -> "Select Non-Striker"
+            },
+            players = battingTeamPlayers,
+            // FIXED: Only show joker if wickets have fallen (not for opening)
+            jokerPlayer = if (totalWickets == 0 || jokerOutInCurrentInnings) null else jokerPlayer,
+            currentStrikerIndex = strikerIndex,
+            currentNonStrikerIndex = nonStrikerIndex,
+            allowSingleSide = matchSettings.allowSingleSideBatting,
+            totalWickets = totalWickets,
+            battingTeamPlayers = battingTeamPlayers,
+            bowlingTeamPlayers = bowlingTeamPlayers,
+            jokerOversThisInnings = jokerOversBowledThisInnings(),
+            onPlayerSelected = { player ->
+                if (selectingBatsman == 1) {
+                    if (player.isJoker) {
+                        // Remove joker from bowling team if they were bowling
+                        val jokerBowlingIndex = bowlingTeamPlayers.indexOfFirst { it.isJoker }
+                        if (jokerBowlingIndex != -1) {
+                            // Reset bowler if joker was bowling
+                            if (bowlerIndex == jokerBowlingIndex) {
+                                recordCurrentBowlerIfAny()
+                                bowlerIndex = null
+                                currentBowlerSpell = 0
+                                if (ballsInOver > 0) {
+                                    midOverReplacementDueToJoker.value = true
+                                    Toast.makeText(context, "🃏 Joker switched to bat. Select a new bowler to complete the over.", Toast.LENGTH_LONG).show()
+                                    showBowlerDialog = true
                                 }
                             }
 
-                            // Add joker to batting team
-                            if (!battingTeamPlayers.any { it.isJoker }) {
-                                val newList = battingTeamPlayers.toMutableList()
-                                newList.add(jokerPlayer!!.copy())
-                                battingTeamPlayers = newList
-                                strikerIndex = battingTeamPlayers.size - 1
-                            } else {
-                                strikerIndex = battingTeamPlayers.indexOfFirst { it.isJoker }
+                            val newBowlingList = bowlingTeamPlayers.toMutableList()
+                            newBowlingList.removeAt(jokerBowlingIndex)
+                            bowlingTeamPlayers = newBowlingList
+
+                            // Update previous bowler index
+                            if (previousBowlerName == jokerName) {
+                                previousBowlerName = null
                             }
-                            jokerOutInCurrentInnings = false
-                        } else {
-                            strikerIndex = battingTeamPlayers.indexOfFirst { it.name.trim().equals(player.name.trim(), ignoreCase = true) }
                         }
 
-                        if (!matchSettings.allowSingleSideBatting && (availableBatsmenCount + if (jokerAvailableForBattingInsideBatsmanDialog) 1 else 0) > 1) {
-                            selectingBatsman = 2
-                            // Keep dialog open for second selection
+                        // Add joker to batting team
+                        if (!battingTeamPlayers.any { it.isJoker }) {
+                            val newList = battingTeamPlayers.toMutableList()
+                            newList.add(jokerPlayer!!.copy())
+                            battingTeamPlayers = newList
+                            strikerIndex = battingTeamPlayers.size - 1
                         } else {
-                            showBatsmanDialog = false
-                        }
-                    } else {
-                        // Second batsman selection - same logic for joker
-                        if (player.isJoker) {
-                            // Remove joker from bowling team if they were bowling
-                            val jokerBowlingIndex = bowlingTeamPlayers.indexOfFirst { it.isJoker }
-                            if (jokerBowlingIndex != -1) {
-                                // Reset bowler if joker was bowling
-                                if (bowlerIndex == jokerBowlingIndex) {
-                                    recordCurrentBowlerIfAny()
-                                    bowlerIndex = null
-                                    currentBowlerSpell = 0
-                                    if (ballsInOver > 0) {
-                                        midOverReplacementDueToJoker.value = true
-                                        Toast.makeText(context, "🃏 Joker switched to bat. Select a new bowler to complete the over.", Toast.LENGTH_LONG).show()
-                                        showBowlerDialog = true
-                                    }
-                                }
-                                val newBowlingList = bowlingTeamPlayers.toMutableList()
-                                newBowlingList.removeAt(jokerBowlingIndex)
-                                bowlingTeamPlayers = newBowlingList
-
-                                // Update previous bowler index
-                                if (previousBowlerName == jokerName) {
-                                    previousBowlerName = null
-                                }
-                            }
-
-                            if (!battingTeamPlayers.any { it.isJoker }) {
-                                val newList = battingTeamPlayers.toMutableList()
-                                newList.add(jokerPlayer!!.copy())
-                                battingTeamPlayers = newList
-                                nonStrikerIndex = battingTeamPlayers.size - 1
-                            } else {
-                                nonStrikerIndex = battingTeamPlayers.indexOfFirst { it.isJoker }
-                            }
-                        } else {
-                            nonStrikerIndex = battingTeamPlayers.indexOfFirst { it.name.trim().equals(player.name.trim(), ignoreCase = true) }
+                            strikerIndex = battingTeamPlayers.indexOfFirst { it.isJoker }
                         }
                         jokerOutInCurrentInnings = false
+                    } else {
+                        strikerIndex = battingTeamPlayers.indexOfFirst { it.name.trim().equals(player.name.trim(), ignoreCase = true) }
+                    }
+
+                    if (!matchSettings.allowSingleSideBatting && (availableBatsmenCount + if (jokerAvailableForBattingInsideBatsmanDialog) 1 else 0) > 1) {
+                        selectingBatsman = 2
+                        // Keep dialog open for second selection
+                    } else {
                         showBatsmanDialog = false
                     }
-                },
-                jokerOutInCurrentInnings = jokerOutInCurrentInnings,
-                onDismiss = { showBatsmanDialog = false },
-                matchSettings = matchSettings,
-                otherEndName = pickerOtherEndName
-            )
+                } else {
+                    // Second batsman selection - same logic for joker
+                    if (player.isJoker) {
+                        // Remove joker from bowling team if they were bowling
+                        val jokerBowlingIndex = bowlingTeamPlayers.indexOfFirst { it.isJoker }
+                        if (jokerBowlingIndex != -1) {
+                            // Reset bowler if joker was bowling
+                            if (bowlerIndex == jokerBowlingIndex) {
+                                recordCurrentBowlerIfAny()
+                                bowlerIndex = null
+                                currentBowlerSpell = 0
+                                if (ballsInOver > 0) {
+                                    midOverReplacementDueToJoker.value = true
+                                    Toast.makeText(context, "🃏 Joker switched to bat. Select a new bowler to complete the over.", Toast.LENGTH_LONG).show()
+                                    showBowlerDialog = true
+                                }
+                            }
+                            val newBowlingList = bowlingTeamPlayers.toMutableList()
+                            newBowlingList.removeAt(jokerBowlingIndex)
+                            bowlingTeamPlayers = newBowlingList
 
+                            // Update previous bowler index
+                            if (previousBowlerName == jokerName) {
+                                previousBowlerName = null
+                            }
+                        }
+
+                        if (!battingTeamPlayers.any { it.isJoker }) {
+                            val newList = battingTeamPlayers.toMutableList()
+                            newList.add(jokerPlayer!!.copy())
+                            battingTeamPlayers = newList
+                            nonStrikerIndex = battingTeamPlayers.size - 1
+                        } else {
+                            nonStrikerIndex = battingTeamPlayers.indexOfFirst { it.isJoker }
+                        }
+                    } else {
+                        nonStrikerIndex = battingTeamPlayers.indexOfFirst { it.name.trim().equals(player.name.trim(), ignoreCase = true) }
+                    }
+                    jokerOutInCurrentInnings = false
+                    showBatsmanDialog = false
+                }
+            },
+            jokerOutInCurrentInnings = jokerOutInCurrentInnings,
+            onDismiss = { showBatsmanDialog = false },
+            matchSettings = matchSettings,
+            otherEndName = pickerOtherEndName
+        )
     }
 
     if (showBowlerDialog) {
