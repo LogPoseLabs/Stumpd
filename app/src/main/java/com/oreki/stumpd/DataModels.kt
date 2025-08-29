@@ -69,6 +69,15 @@ data class Ball(
     val timestamp: Long = System.currentTimeMillis(),
 )
 
+data class OverRow(
+    val overNumber: Int,               // 1-based
+    val bowlerName: String?,
+    val strikerName: String?,
+    val nonStrikerName: String?,
+    val balls: List<DeliveryUI>,       // 1..6 balls in this over (can include Wd/Nb)
+    val totalRuns: Int
+)
+
 enum class ExtraType(val displayName: String) {
     NO_BALL("No Ball"),
     OFF_SIDE_WIDE("Off Side Wide"),
@@ -97,80 +106,6 @@ data class RunOutInput(
 )
 
 enum class RunOutEnd { STRIKER_END, NON_STRIKER_END }
-
-// Match state tracking
-data class MatchState(
-    val battingTeam: Team,
-    val bowlingTeam: Team,
-    val jokerPlayer: Player? = null,
-    var currentBatsman1: Player? = null,
-    var currentBatsman2: Player? = null,
-    var striker: Player? = null,
-    var currentBowler: Player? = null,
-    var totalRuns: Int = 0,
-    var totalWickets: Int = 0,
-    var currentOver: Int = 0,
-    var ballsInOver: Int = 0,
-    var balls: MutableList<Ball> = mutableListOf(),
-    val maxOvers: Int = 20,
-) {
-    val currentScore: String
-        get() = "$totalRuns/$totalWickets"
-
-    val oversCompleted: String
-        get() = "$currentOver.$ballsInOver"
-
-    val runRate: Double
-        get() =
-            if (currentOver == 0 && ballsInOver == 0) {
-                0.0
-            } else {
-                totalRuns.toDouble() / ((currentOver * 6 + ballsInOver) / 6.0)
-            }
-}
-
-// Innings management
-data class Innings(
-    val battingTeam: Team,
-    val bowlingTeam: Team,
-    val jokerPlayer: Player? = null,
-    var totalRuns: Int = 0,
-    var totalWickets: Int = 0,
-    var balls: MutableList<Ball> = mutableListOf(),
-    val maxOvers: Int = 20,
-    var isCompleted: Boolean = false,
-) {
-    val currentOver: Int
-        get() =
-            balls.count { ball ->
-                ball.extras == null ||
-                    ball.extras == ExtraType.BYE ||
-                    ball.extras == ExtraType.LEG_BYE
-            } / 6
-
-    val ballsInCurrentOver: Int
-        get() =
-            balls.count { ball ->
-                ball.extras == null ||
-                    ball.extras == ExtraType.BYE ||
-                    ball.extras == ExtraType.LEG_BYE
-            } % 6
-
-    val runRate: Double
-        get() =
-            if (balls.isEmpty()) {
-                0.0
-            } else {
-                totalRuns.toDouble() / (
-                    balls.count { ball ->
-                        ball.extras == null ||
-                            ball.extras == ExtraType.BYE ||
-                            ball.extras == ExtraType.LEG_BYE
-                    } / 6.0
-                )
-            }
-}
-
 
 data class DeliveryUI(
     val over: Int,
@@ -404,10 +339,9 @@ data class DeliverySnapshot(
     val completedBowlersInnings2: List<Player>
 )
 
-data class GroupId(val value: String = java.util.UUID.randomUUID().toString())
+enum class NoBallSubOutcome { NONE, RUN_OUT, BOUNDARY_OUT }
 
-data class GroupInfo(
-    val id: String,
-    val name: String
+data class NoBallBoundaryOutInput(
+    val outBatterName: String? = null, // default striker if null
 )
 

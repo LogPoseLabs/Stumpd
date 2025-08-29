@@ -69,6 +69,13 @@ class ScoringActivity : ComponentActivity() {
     }
 }
 
+object NoBallOutcomeHolders {
+    // Set by ExtrasDialog for NO_BALL flow; consumed in NO_BALL handler and cleared
+    val noBallSubOutcome = mutableStateOf(NoBallSubOutcome.NONE)
+    val noBallRunOutInput = mutableStateOf<RunOutInput?>(null)
+    val noBallBoundaryOutInput = mutableStateOf<NoBallBoundaryOutInput?>(null)
+}
+
 @Composable
 fun ScoringScreen(
     team1Name: String = "Team A",
@@ -207,6 +214,7 @@ fun ScoringScreen(
     }
 
     var showRunOutDialog by remember { mutableStateOf(false) }
+    var isNoBallRunOut by remember { mutableStateOf(false) }
     var pickerOtherEndName by remember { mutableStateOf<String?>(null) }
 
     fun addDelivery(outcome: String, highlight: Boolean = false) {
@@ -613,19 +621,173 @@ fun ScoringScreen(
                         Toast.makeText(context, "${extraType.displayName}! +$totalRuns runs", Toast.LENGTH_SHORT).show()
                     }
                     ExtraType.NO_BALL -> {
-                        updateStrikerAndTotals { player ->
-                            player.copy(ballsFaced = player.ballsFaced + 1)
-                        }
+                        // DO NOT increment ballsInOver or bowler.ballsBowled on No ball
+                        // Bowler concedes totalRuns; all counted in extras for now
                         updateBowlerStats { player ->
                             player.copy(runsConceded = player.runsConceded + totalRuns)
                         }
                         totalExtras += totalRuns
-                        val additionalRuns = totalRuns - matchSettings.noballRuns
-                        if (additionalRuns % 2 == 1 && !showSingleSideLayout) {
-                            swapStrike()
+
+                        val sub = NoBallOutcomeHolders.noBallSubOutcome.value
+                        val ro = NoBallOutcomeHolders.noBallRunOutInput.value
+                        val bo = NoBallOutcomeHolders.noBallBoundaryOutInput.value
+
+                        when (sub) {
+                            NoBallSubOutcome.BOUNDARY_OUT -> {
+                                // Custom gully rule: BoundaryOut behaves like a regular wicket (no run increment), allowed on No ball.
+                                // Identify out batter: given name or default striker
+                                val outName = bo?.outBatterName?.trim()?.takeIf { it.isNotEmpty() } ?: striker?.name ?: "Batsman"
+                                val outIndex = battingTeamPlayers.indexOfFirst { it.name.equals(outName, ignoreCase = true) }
+                                val validIndex = if (outIndex != -1) outIndex else strikerIndex
+
+                                if (validIndex == null) {
+                                    Toast.makeText(context, "Boundary out: could not resolve batter. Aborting wicket.", Toast.LENGTH_LONG).show()
+                                    addDelivery("Nb+${totalRuns}")
+                                } else {
+                                    pushSnapshot()
+                                    totalWickets += 1
+
+                                    // Mark out but DO NOT add any runs; do NOT increment balls/over or bowler balls
+                                    val newList = battingTeamPlayers.toMutableList()
+                                    val dismissedPlayer = newList[validIndex]
+                                    newList[validIndex] = dismissedPlayer.copy(
+                                        isOut = true,
+                                        ballsFaced = dismissedPlayer.ballsFaced + 1
+                                    )
+                                    val outSnapshot = newList[validIndex].copy()
+                                    battingTeamPlayers = newList
+
+                                    // Record completed batter snapshot
+                                    if (currentInnings == 1) {
+                                        if (completedBattersInnings1.none { it.name.equals(outSnapshot.name, true) }) {
+                                            completedBattersInnings1 = (completedBattersInnings1 + outSnapshot).toMutableList()
+                                        } else {
+                                            completedBattersInnings1 = completedBattersInnings1.map {
+                                                if (it.name.equals(outSnapshot.name, true)) outSnapshot else it
+                                            }.toMutableList()
+                                        }
+                                    } else {
+                                        if (completedBattersInnings2.none { it.name.equals(outSnapshot.name, true) }) {
+                                            completedBattersInnings2 = (completedBattersInnings2 + outSnapshot).toMutableList()
+                                        } else {
+                                            completedBattersInnings2 = completedBattersInnings2.map {
+                                                if (it.name.equals(outSnapshot.name, true)) outSnapshot else it
+                                            }.toMutableList()
+                                        }
+                                    }
+
+                                    // Clear the correct end slot; do not advance over or ballsInOver
+                                    if (strikerIndex == validIndex) {
+                                        strikerIndex = null
+                                        selectingBatsman = 1
+                                        pickerOtherEndName = nonStriker?.name
+                                    } else if (nonStrikerIndex == validIndex) {
+                                        nonStrikerIndex = null
+                                        selectingBatsman = 2
+                                        pickerOtherEndName = striker?.name
+                                    } else {
+                                        // Didn't match the two active ends; default to striker replacement
+                                        strikerIndex = null
+                                        selectingBatsman = 1
+                                        pickerOtherEndName = nonStriker?.name
+                                    }
+                                    showBatsmanDialog = true
+
+                                    // Log and toast
+                                    addDelivery("Nb+${totalRuns}; BO(${outSnapshot.name})", highlight = true)
+                                    val totalAfter = battingTeamPlayers.sumOf { it.runs } + totalExtras
+                                    Toast.makeText(context, "No ball + Boundary out! Total: $totalAfter", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            NoBallSubOutcome.RUN_OUT -> {
+                                isNoBallRunOut = true
+                                val input = ro
+                                if (input == null) {
+                                    addDelivery("Nb+${totalRuns}")
+                                    Toast.makeText(context, "No ball! +$totalRuns runs", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    pushSnapshot()
+
+                                    // Resolve outIndex robustly
+                                    val name = input.whoOut.trim()
+                                    val byName = battingTeamPlayers.indexOfFirst { it.name.equals(name, ignoreCase = true) }
+                                    val byStriker = if (striker?.name.equals(name, true)) strikerIndex else null
+                                    val byNonStriker = if (nonStriker?.name.equals(name, true)) nonStrikerIndex else null
+                                    val resolvedIndex = when {
+                                        byName != -1 -> byName
+                                        byStriker != null -> byStriker
+                                        byNonStriker != null -> byNonStriker
+                                        else -> strikerIndex // last-resort: treat as striker
+                                    }
+
+                                    if (resolvedIndex == null) {
+                                        Toast.makeText(context, "Run out on No ball: player \"$name\" not found", Toast.LENGTH_LONG).show()
+                                        addDelivery("Nb+${totalRuns}")
+                                    } else {
+                                        // Mark out; do NOT change ballsInOver or bowler.ballsBowled on No ball
+                                        val updated = battingTeamPlayers.toMutableList()
+                                        updated[resolvedIndex] = updated[resolvedIndex].copy(isOut = true)
+                                        val outSnapshot = updated[resolvedIndex].copy()
+                                        battingTeamPlayers = updated
+                                        totalWickets += 1
+
+                                        // Ledger
+                                        if (currentInnings == 1) {
+                                            if (completedBattersInnings1.none { it.name.equals(outSnapshot.name, true) }) {
+                                                completedBattersInnings1 = (completedBattersInnings1 + outSnapshot).toMutableList()
+                                            } else {
+                                                completedBattersInnings1 = completedBattersInnings1.map {
+                                                    if (it.name.equals(outSnapshot.name, true)) outSnapshot else it
+                                                }.toMutableList()
+                                            }
+                                        } else {
+                                            if (completedBattersInnings2.none { it.name.equals(outSnapshot.name, true) }) {
+                                                completedBattersInnings2 = (completedBattersInnings2 + outSnapshot).toMutableList()
+                                            } else {
+                                                completedBattersInnings2 = completedBattersInnings2.map {
+                                                    if (it.name.equals(outSnapshot.name, true)) outSnapshot else it
+                                                }.toMutableList()
+                                            }
+                                        }
+
+                                        // Only clear the end where wicket occurred; keep the other end intact.
+                                        if (input.end == RunOutEnd.STRIKER_END) {
+                                            if (strikerIndex == resolvedIndex) {
+                                                strikerIndex = null
+                                            }
+                                            // if mismatch (non-striker dismissed but scorer said S), still free striker by intent ONLY if indexes matched
+                                            selectingBatsman = 1
+                                            pickerOtherEndName = nonStriker?.name
+                                        } else { // NON_STRIKER_END
+                                            if (nonStrikerIndex == resolvedIndex) {
+                                                nonStrikerIndex = null
+                                            }
+                                            selectingBatsman = 2
+                                            pickerOtherEndName = striker?.name
+                                        }
+                                        showBatsmanDialog = true
+
+                                        addDelivery("Nb+${totalRuns}; RO(${outSnapshot.name} @ ${if (input.end == RunOutEnd.STRIKER_END) "S" else "NS"})", highlight = true)
+                                        val totalAfter = battingTeamPlayers.sumOf { it.runs } + totalExtras
+                                        Toast.makeText(context, "No ball + Run out! Total: $totalAfter", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                            else -> {
+                                // None: just Nb + runs; do not increment balls/over here either.
+                                val additionalRuns = totalRuns - matchSettings.noballRuns
+                                if (additionalRuns % 2 == 1 && !showSingleSideLayout) {
+                                    swapStrike()
+                                }
+                                addDelivery("Nb+${totalRuns}")
+                                Toast.makeText(context, "No ball! +$totalRuns runs", Toast.LENGTH_SHORT).show()
+                            }
                         }
-                        addDelivery("Nb+${totalRuns}")
-                        Toast.makeText(context, "No ball! +$totalRuns runs", Toast.LENGTH_SHORT).show()
+
+                        // Clear holders after consumption
+                        NoBallOutcomeHolders.noBallSubOutcome.value = NoBallSubOutcome.NONE
+                        NoBallOutcomeHolders.noBallRunOutInput.value = null
+                        NoBallOutcomeHolders.noBallBoundaryOutInput.value = null
                     }
                     ExtraType.BYE, ExtraType.LEG_BYE -> {
                         updateStrikerAndTotals { player ->
@@ -665,7 +827,9 @@ fun ScoringScreen(
                 Toast.makeText(context, "${extraType.displayName}: +$totalRuns. Total: $totalAfter", Toast.LENGTH_SHORT).show()
                 showExtrasDialog = false
             },
-            onDismiss = { showExtrasDialog = false }
+            onDismiss = { showExtrasDialog = false },
+            striker = striker,
+            nonStriker = nonStriker
         )
     }
 
@@ -1252,7 +1416,7 @@ fun ScoringScreen(
                 updateBowlerStats { b ->
                     b.copy(
                         runsConceded = b.runsConceded + runsCompleted,
-                        ballsBowled = b.ballsBowled + 1
+                        ballsBowled = if (isNoBallRunOut) b.ballsBowled else b.ballsBowled + 1
                     )
                 }
 
@@ -1330,8 +1494,10 @@ fun ScoringScreen(
 
 
                 // 9) Ball & over progression (as before)
-                ballsInOver += 1
-                incJokerBallIfBowledThisDelivery()
+                if (!isNoBallRunOut) {
+                    ballsInOver += 1
+                    incJokerBallIfBowledThisDelivery()
+                }
                 // 10) Delivery log + feedback
                 val label = "${runsCompleted} + RO (${outPlayerName} @ ${if (outEnd == RunOutEnd.STRIKER_END) "S" else "NS"})"
                 addDelivery(label, highlight = true)
@@ -1354,6 +1520,7 @@ fun ScoringScreen(
                 ).show()
 
                 showRunOutDialog = false
+                isNoBallRunOut = false
             },
             onDismiss = { showRunOutDialog = false }
         )
@@ -2339,86 +2506,213 @@ fun EnhancedInningsBreakDialog(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ExtrasDialog(
     matchSettings: MatchSettings,
     onExtraSelected: (ExtraType, Int) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    striker: Player?,
+    nonStriker: Player?
 ) {
     var selectedExtraType by remember { mutableStateOf<ExtraType?>(null) }
+
+    // No-ball subflow state
+    var showNoBallOutcomeStep by remember { mutableStateOf(false) }
+    var showRunOutOnNoBall by remember { mutableStateOf(false) }
+    var showBoundaryOutOnNoBall by remember { mutableStateOf(false) }
+
+    fun resetNoBallHolders() {
+        NoBallOutcomeHolders.noBallSubOutcome.value = NoBallSubOutcome.NONE
+        NoBallOutcomeHolders.noBallRunOutInput.value = null
+        NoBallOutcomeHolders.noBallBoundaryOutInput.value = null
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select Extra Type + Runs") },
+        icon = { Icon(Icons.Default.List, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+        title = { Text("Extras", style = MaterialTheme.typography.titleLarge) },
         text = {
-            if (selectedExtraType == null) {
-                Column {
-                    Text("Select Extra Type:", fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
-                    ExtraType.values().forEach { extraType ->
-                        val baseRuns = when(extraType) {
-                            ExtraType.OFF_SIDE_WIDE -> matchSettings.offSideWideRuns
-                            ExtraType.LEG_SIDE_WIDE -> matchSettings.legSideWideRuns
-                            ExtraType.NO_BALL -> matchSettings.noballRuns
-                            ExtraType.BYE -> matchSettings.byeRuns
-                            ExtraType.LEG_BYE -> matchSettings.legByeRuns
-                        }
-                        Button(
-                            onClick = { selectedExtraType = extraType },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 2.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                        ) {
-                            Text("${extraType.displayName} (base +$baseRuns)")
+            when {
+                // STEP 1 — Type
+                selectedExtraType == null -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Select extra type", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        ExtraType.values().forEach { extraType ->
+                            val baseRuns = when (extraType) {
+                                ExtraType.OFF_SIDE_WIDE -> matchSettings.offSideWideRuns
+                                ExtraType.LEG_SIDE_WIDE  -> matchSettings.legSideWideRuns
+                                ExtraType.NO_BALL        -> matchSettings.noballRuns
+                                ExtraType.BYE            -> matchSettings.byeRuns
+                                ExtraType.LEG_BYE        -> matchSettings.legByeRuns
+                            }
+                            // Emphasis: filled for most common, tonal for others
+                            val isPrimary = extraType == ExtraType.NO_BALL || extraType == ExtraType.OFF_SIDE_WIDE || extraType == ExtraType.LEG_SIDE_WIDE
+                            val buttonColors = if (isPrimary) ButtonDefaults.buttonColors()
+                            else ButtonDefaults.filledTonalButtonColors()
+                            Button(
+                                onClick = {
+                                    selectedExtraType = extraType
+                                    showNoBallOutcomeStep = (extraType == ExtraType.NO_BALL)
+                                    if (!showNoBallOutcomeStep) resetNoBallHolders()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = buttonColors,
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Text("${extraType.displayName}  (+$baseRuns base)")
+                            }
                         }
                     }
                 }
-            } else {
-                Column {
-                    Text("${selectedExtraType!!.displayName} + Additional Runs:",
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 8.dp))
-                    val baseRuns = when(selectedExtraType!!) {
+
+                // STEP 2 — No-ball outcome
+                selectedExtraType == ExtraType.NO_BALL && showNoBallOutcomeStep -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("No-ball outcome", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                        // None
+                        FilledTonalButton(
+                            onClick = {
+                                NoBallOutcomeHolders.noBallSubOutcome.value = NoBallSubOutcome.NONE
+                                showNoBallOutcomeStep = false
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp)
+                        ) { Text("None (just No ball + runs)") }
+
+                        // Run out
+                        Button(
+                            onClick = {
+                                NoBallOutcomeHolders.noBallSubOutcome.value = NoBallSubOutcome.RUN_OUT
+                                showRunOutOnNoBall = true
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp)
+                        ) { Text("Run out on No ball") }
+
+                        // Boundary out
+                        FilledTonalButton(
+                            onClick = {
+                                NoBallOutcomeHolders.noBallSubOutcome.value = NoBallSubOutcome.BOUNDARY_OUT
+                                NoBallOutcomeHolders.noBallBoundaryOutInput.value = NoBallBoundaryOutInput(outBatterName = null)
+                                // Immediately finalize: Boundary Out has no extra runs UI
+                                val base = matchSettings.noballRuns
+                                onExtraSelected(ExtraType.NO_BALL, base)   // <-- fire the scoring callback now
+                                showBoundaryOutOnNoBall = false
+                                showNoBallOutcomeStep = false
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                        ) { Text("Boundary out on No ball") }
+
+                        if (showRunOutOnNoBall) {
+                            RunOutDialog(
+                                striker = striker,
+                                nonStriker = nonStriker,
+                                onConfirm = { input ->
+                                    NoBallOutcomeHolders.noBallRunOutInput.value = input
+                                    showRunOutOnNoBall = false
+                                    showNoBallOutcomeStep = false
+                                },
+                                onDismiss = { showRunOutOnNoBall = false }
+                            )
+                        }
+                    }
+                }
+                // STEP 3 — Runs
+                else -> {
+                    val baseRuns = when (selectedExtraType!!) {
                         ExtraType.OFF_SIDE_WIDE -> matchSettings.offSideWideRuns
                         ExtraType.LEG_SIDE_WIDE -> matchSettings.legSideWideRuns
-                        ExtraType.NO_BALL -> matchSettings.noballRuns
-                        ExtraType.BYE -> matchSettings.byeRuns
-                        ExtraType.LEG_BYE -> matchSettings.legByeRuns
+                        ExtraType.NO_BALL       -> matchSettings.noballRuns
+                        ExtraType.BYE           -> matchSettings.byeRuns
+                        ExtraType.LEG_BYE       -> matchSettings.legByeRuns
                     }
-                    LazyColumn {
-                        items((0..6).toList()) { additionalRuns ->
-                            val totalRuns = baseRuns + additionalRuns
-                            Button(
-                                onClick = { onExtraSelected(selectedExtraType!!, totalRuns) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 2.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = when(additionalRuns) {
-                                        0 -> MaterialTheme.colorScheme.secondary
-                                        4 -> MaterialTheme.colorScheme.primary
-                                        6 -> MaterialTheme.colorScheme.tertiary
-                                        else -> MaterialTheme.colorScheme.surfaceVariant
+                    val isBoundaryOut =
+                        selectedExtraType == ExtraType.NO_BALL &&
+                                NoBallOutcomeHolders.noBallSubOutcome.value == NoBallSubOutcome.BOUNDARY_OUT
+
+                    if (isBoundaryOut) {
+                        // Do nothing here; selection will be finalized in onExtraSelected handler that already logs Nb+base
+                        Text("No ball + Boundary out recorded", style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        return@AlertDialog
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "${selectedExtraType!!.displayName} · pick additional runs",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        // Horizontal wrap of compact buttons per M3
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            maxItemsInEachRow = 5
+                        ) {
+                            // Before building buttons:
+                            val additionalOptions =
+                                if (selectedExtraType == ExtraType.NO_BALL) (0..6).toList()
+                                else (0..4).toList() // cap at 4 for Wd, B, Lb
+
+                            // Then use additionalOptions instead of (0..6)
+                            additionalOptions.forEach { add ->
+                                val total = baseRuns + add
+                                val colors =
+                                    when (add) {
+                                        0 -> ButtonDefaults.filledTonalButtonColors()
+                                        4 -> ButtonDefaults.buttonColors()
+                                        6 -> ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                                        else -> ButtonDefaults.outlinedButtonColors()
                                     }
-                                )
-                            ) {
-                                Text("${selectedExtraType!!.displayName} + $additionalRuns runs = $totalRuns total")
+                                val shape = RoundedCornerShape(12.dp)
+                                val btn: @Composable (@Composable () -> Unit) -> Unit =
+                                    if (add in listOf(1,2,3,5)) {
+                                        { content -> OutlinedButton(
+                                            onClick = { onExtraSelected(selectedExtraType!!, total) },
+                                            shape = shape) { content() } }
+                                    } else {
+                                        { content -> Button(
+                                            onClick = { onExtraSelected(selectedExtraType!!, total) },
+                                            colors = colors,
+                                            shape = shape) { content() } }
+                                    }
+                                btn { Text("+$add = $total") }
                             }
                         }
                     }
                 }
             }
         },
+        // Buttons per M3: primary action right, secondary left
         confirmButton = {
-            if (selectedExtraType != null) {
-                TextButton(onClick = { selectedExtraType = null }) {
-                    Text("Back")
-                }
+            // Primary: Continue or Apply depending on step
+            val label = when {
+                selectedExtraType == null -> "Close"
+                selectedExtraType == ExtraType.NO_BALL && showNoBallOutcomeStep -> "Back"
+                else -> "Back"
             }
+            TextButton(onClick = {
+                when {
+                    selectedExtraType == null -> onDismiss()
+                    selectedExtraType == ExtraType.NO_BALL && showNoBallOutcomeStep -> {
+                        showNoBallOutcomeStep = false
+                        resetNoBallHolders()
+                        selectedExtraType = null
+                    }
+                    else -> {
+                        // Back from runs to types
+                        resetNoBallHolders()
+                        selectedExtraType = null
+                    }
+                }
+            }) { Text(label) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
 }
