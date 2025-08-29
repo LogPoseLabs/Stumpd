@@ -108,6 +108,7 @@ data class RunOutInput(
 enum class RunOutEnd { STRIKER_END, NON_STRIKER_END }
 
 data class DeliveryUI(
+    val inning: Int,
     val over: Int,
     val ballInOver: Int,      // 1..6
     val outcome: String,      // "0","1","4","W","Wd+1","Nb+2", etc.

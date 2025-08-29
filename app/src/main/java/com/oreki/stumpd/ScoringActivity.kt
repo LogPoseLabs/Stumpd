@@ -207,9 +207,9 @@ fun ScoringScreen(
     val allDeliveries = remember { mutableStateListOf<DeliveryUI>() }
     // Derived state lists
     val currentOverNumber by remember { derivedStateOf { currentOver + 1 } }   // 1‑based
-    val currentOverDeliveries by remember(allDeliveries, currentOver) {
+    val currentOverDeliveries by remember(allDeliveries, currentOver, currentInnings) {
         derivedStateOf {
-            allDeliveries.filter { it.over == currentOverNumber }
+            allDeliveries.filter { it.inning == currentInnings && it.over == currentOverNumber }
         }
     }
 
@@ -221,6 +221,7 @@ fun ScoringScreen(
         // ball number shown 1..6 based on ballsInOver AFTER increment (so compute from current)
         val ballNumber = (ballsInOver % 6) + 1
         val entry = DeliveryUI(
+            inning = currentInnings,
             over = currentOver + 1,
             ballInOver = ballNumber,
             outcome = outcome,

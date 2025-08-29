@@ -9,10 +9,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.MaterialTheme
@@ -25,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import com.oreki.stumpd.ui.theme.StumpdTopBar
@@ -132,11 +138,22 @@ private fun CreateOrEditGroupDialog(
     val defaultMatchSettings = remember { MatchSettingsManager(context).getDefaultMatchSettings() }
     var matchSettings by remember { mutableStateOf(initial?.defaults?.matchSettings ?: defaultMatchSettings) }
 
+    var totalOversText by remember(matchSettings.totalOvers) { mutableStateOf(matchSettings.totalOvers.toString()) }
+    var maxPerBowlerText by remember(matchSettings.maxOversPerBowler, matchSettings.totalOvers) {
+        mutableStateOf(matchSettings.maxOversPerBowler.toString())
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "Create Group" else "Edit Group") },
         text = {
-            Column {
+            // Bounded height so actions remain visible and content scrolls
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp) // tune for device density
+                    .verticalScroll(rememberScrollState())
+            ) {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Group name") })
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(value = ground, onValueChange = { ground = it }, label = { Text("Ground name") })
@@ -156,18 +173,82 @@ private fun CreateOrEditGroupDialog(
                         label = { Text("Test") },
                     )
                 }
-
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Short pitch")
                     Spacer(Modifier.width(8.dp))
                     Switch(checked = shortPitch, onCheckedChange = { shortPitch = it })
                 }
+
                 Spacer(Modifier.height(12.dp))
-                // Optional: embed a condensed MatchSettings editor, or link to TeamSetup to override
-                Text("Default match settings", fontWeight = FontWeight.Medium)
-                // Reuse existing SettingRow composables if accessible, otherwise keep minimal
-                // For brevity, store current matchSettings without inline editing here.
+                Text("Default match settings", fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary)
+
+                SettingRowMini(
+                    label = "Total overs",
+                    value = totalOversText,
+                    keyboard = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+                    onValueChange = { v ->
+                        // keep UI responsive
+                        totalOversText = v.filter { it.isDigit() }.take(2) // e.g., cap to 2 digits if desired
+                        val ov = totalOversText.toIntOrNull()
+                        if (ov != null && ov in 1..50) {
+                            if (matchSettings.totalOvers != ov) {
+                                matchSettings = matchSettings.copy(totalOvers = ov)
+                                // clamp max/bowler if needed and sync its text mirror
+                                if (matchSettings.maxOversPerBowler > ov) {
+                                    matchSettings = matchSettings.copy(maxOversPerBowler = ov)
+                                    maxPerBowlerText = ov.toString()
+                                }
+                            }
+                        }
+                    }
+                )
+
+                SettingRowMini(
+                    label = "Max/ bowler",
+                    value = maxPerBowlerText,
+                    keyboard = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+                    onValueChange = { v ->
+                        maxPerBowlerText = v.filter { it.isDigit() }.take(2)
+                        val ov = maxPerBowlerText.toIntOrNull()
+                        val cap = matchSettings.totalOvers
+                        if (ov != null && ov in 1..cap) {
+                            if (matchSettings.maxOversPerBowler != ov) {
+                                matchSettings = matchSettings.copy(maxOversPerBowler = ov)
+                            }
+                        }
+                    }
+                )
+
+                ZeroOneSegment(
+                    label = "No ball (+)",
+                    selected = matchSettings.noballRuns,
+                    onSelect = { r -> matchSettings = matchSettings.copy(noballRuns = r) }
+                )
+
+                ZeroOneSegment(
+                    label = "Wide off (+)",
+                    selected = matchSettings.offSideWideRuns,
+                    onSelect = { r -> matchSettings = matchSettings.copy(offSideWideRuns = r) }
+                )
+
+                ZeroOneSegment(
+                    label = "Wide leg (+)",
+                    selected = matchSettings.legSideWideRuns,
+                    onSelect = { r -> matchSettings = matchSettings.copy(legSideWideRuns = r) }
+                )
+
+                ZeroOneSegment(
+                    label = "Bye (+)",
+                    selected = matchSettings.byeRuns,
+                    onSelect = { r -> matchSettings = matchSettings.copy(byeRuns = r) }
+                )
+
+                ZeroOneSegment(
+                    label = "Leg bye (+)",
+                    selected = matchSettings.legByeRuns,
+                    onSelect = { r -> matchSettings = matchSettings.copy(legByeRuns = r) }
+                )
             }
         },
         confirmButton = {
@@ -175,7 +256,7 @@ private fun CreateOrEditGroupDialog(
                 onConfirm(
                     name.trim(),
                     GroupDefaultSettings(
-                        matchSettings = matchSettings.copy(shortPitch = shortPitch), // reflect short-pitch to settings
+                        matchSettings = matchSettings.copy(shortPitch = shortPitch),
                         groundName = ground.trim(),
                         format = format,
                         shortPitch = shortPitch
@@ -186,6 +267,51 @@ private fun CreateOrEditGroupDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ZeroOneSegment(
+    label: String,
+    selected: Int,
+    onSelect: (Int) -> Unit
+) {
+    Column {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        SingleChoiceSegmentedButtonRow {
+            listOf(0, 1).forEachIndexed { index, value ->
+                SegmentedButton(
+                    selected = selected == value,
+                    onClick = { onSelect(value) },
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
+                    label = { Text(value.toString()) }
+                )
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun SettingRowMini(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    keyboard: KeyboardOptions = KeyboardOptions.Default
+) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            keyboardOptions = keyboard,
+            modifier = Modifier.width(96.dp)
+        )
+    }
+    Spacer(Modifier.height(6.dp))
+}
+
+
 
 @Composable
 fun EditGroupDialog(
@@ -208,6 +334,8 @@ fun EditGroupDialog(
         if (q.isEmpty()) allPlayers
         else allPlayers.filter { it.name.contains(q, ignoreCase = true) }
     }
+    var matchSettings by remember(group) { mutableStateOf(group.defaults.matchSettings) }
+
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -295,7 +423,8 @@ fun EditGroupDialog(
                         defaults = group.defaults.copy(
                             groundName = ground.trim(),
                             format = format,
-                            shortPitch = shortPitch
+                            shortPitch = shortPitch,
+                            matchSettings = matchSettings.copy(shortPitch = shortPitch)
                         )
                     )
                     onUpdate(updated)
