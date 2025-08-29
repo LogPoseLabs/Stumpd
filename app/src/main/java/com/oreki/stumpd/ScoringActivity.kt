@@ -2073,7 +2073,8 @@ fun saveMatchToHistory(
         matchDate = System.currentTimeMillis(),
         matchSettings = matchSettings,
         groupId = groupId,
-        groupName = groupName
+        groupName = groupName,
+        shortPitch = matchSettings.shortPitch
     )
 
     storageManager.saveMatch(matchHistory)
@@ -2085,22 +2086,6 @@ fun saveMatchToHistory(
         "Match with detailed stats saved! Total: ${allMatches.size} matches 🏏📊",
         android.widget.Toast.LENGTH_LONG,
     ).show()
-}
-
-fun Player.toMatchStats(teamName: String): PlayerMatchStats {
-    return PlayerMatchStats(
-        name = this.name,
-        runs = this.runs,
-        ballsFaced = this.ballsFaced,
-        fours = this.fours,
-        sixes = this.sixes,
-        wickets = this.wickets,
-        runsConceded = this.runsConceded,
-        oversBowled = this.oversBowled,
-        isOut = this.isOut,
-        isJoker = this.isJoker,
-        team = teamName
-    )
 }
 
 @Composable

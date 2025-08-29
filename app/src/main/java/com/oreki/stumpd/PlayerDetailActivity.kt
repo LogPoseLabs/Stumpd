@@ -1,7 +1,7 @@
 package com.oreki.stumpd
 
-import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -18,7 +18,6 @@ import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -26,6 +25,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 
 class PlayerDetailActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,157 +51,267 @@ class PlayerDetailActivity : ComponentActivity() {
 fun PlayerDetailScreen(playerName: String) {
     val context = LocalContext.current
     val playerStorage = remember { EnhancedPlayerStorageManager(context) }
+    val matchStorage = remember { MatchStorageManager(context) }
+    val groupStorage = remember { PlayerGroupStorageManager(context) }
+    // Data state
+    var allMatches by remember { mutableStateOf(emptyList<MatchHistory>()) }
+    var filteredMatches by remember { mutableStateOf(emptyList<MatchHistory>()) }
     var player by remember { mutableStateOf<PlayerDetailedStats?>(null) }
 
-    // Pager state for swipeable tabs
-    val pagerState = rememberPagerState(pageCount = { 3 })
-    val coroutineScope = rememberCoroutineScope()
+// Filter state (no date filter)
+    var selectedGroupId by remember { mutableStateOf<String?>(null) }      // null => All Groups
+    var selectedGroupName by remember { mutableStateOf("All Groups") }
+    var showGroupPicker by remember { mutableStateOf(false) }
 
-    LaunchedEffect(playerName) {
-        playerStorage.syncPlayerStatsFromMatches()
-        player = playerStorage.getPlayerDetailed(playerName)
+    var selectedPitchType by remember { mutableStateOf<Boolean?>(null) }   // null => All, true => Short, false => Long
+    var showPitchPicker by remember { mutableStateOf(false) }
+
+// Load all matches once
+    LaunchedEffect(Unit) {
+        allMatches = matchStorage.getAllMatches()
     }
 
-    if (player == null) {
-        // Loading state...
-        return
+// Recompute filtered data whenever filters or name change
+    LaunchedEffect(allMatches, selectedGroupId, selectedPitchType, playerName) {
+        var fm = allMatches
+        selectedGroupId?.let { gid -> fm = fm.filter { it.groupId == gid } }
+        selectedPitchType?.let { s -> fm = fm.filter { it.shortPitch == s } }
+        filteredMatches = fm
+
+        val computed = EnhancedPlayerStorageManager(context).computeFromMatches(fm)
+        player = computed.firstOrNull { it.name.equals(playerName, ignoreCase = true) }
     }
 
+// UI
     Column(modifier = Modifier.fillMaxSize()) {
-        // Enhanced Header (your existing code)
+
+        // Header card (unchanged, except safe calls on player)
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer
             )
         ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = player!!.name,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-
-                    Text(
-                        text = "${player!!.totalMatches} matches",
-                        fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-
-                // Player avatar or stats summary
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    )
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = player!!.totalRuns.toString(),
-                            fontSize = 20.sp,
+                            text = playerName,
+                            fontSize = 28.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimary
+                            color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "RUNS",
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onPrimary
+                            text = "${player?.totalMatches ?: 0} matches",
+                            fontSize = 16.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = player!!.totalWickets.toString(),
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                        Text(
-                            text = "WICKETS",
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Last played: ${formatDate(player!!.lastPlayed)}",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-    Spacer(modifier = Modifier.height(16.dp))
-
-            // Swipeable TabRow
-            TabRow(
-                selectedTabIndex = pagerState.currentPage,
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary,
-                indicator = { tabPositions ->
-                    TabRowDefaults.Indicator(
-                        modifier = Modifier.tabIndicatorOffset(tabPositions[pagerState.currentPage]),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            ) {
-                val tabs = listOf("Overview", "Matches", "Statistics")
-                tabs.forEachIndexed { index, title ->
-                    Tab(
-                        selected = pagerState.currentPage == index,
-                        onClick = {
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(index)
+                    // Summary chips (unchanged but safe calls)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = (player?.totalRuns ?: 0).toString(),
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                                Text(
+                                    text = "RUNS",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
                             }
-                        },
-                        text = {
-                            Text(
-                                text = title,
-                                fontWeight = if (pagerState.currentPage == index) FontWeight.Bold else FontWeight.Normal
-                            )
                         }
-                    )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = (player?.totalWickets ?: 0).toString(),
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                                Text(
+                                    text = "WICKETS",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                        }
+                    }
                 }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Swipeable Content
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f)
-            ) { page ->
-                when (page) {
-                    0 -> PlayerOverviewTab(player!!)
-                    1 -> PlayerMatchesTab(player!!)
-                    2 -> PlayerStatisticsTab(player!!)
-                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Last played: ${player?.let { formatDate(it.lastPlayed) } ?: "-"}",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
+
+        // Filter row (new) – mirrors StatsActivity’s chips
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Group filter chip
+            FilledTonalButton(
+                onClick = { showGroupPicker = true },
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.height(IntrinsicSize.Min)
+            ) {
+                Icon(
+                    Icons.Default.Home,
+                    contentDescription = "Group",
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(selectedGroupName, fontSize = 12.sp)
+            }
+
+            // Pitch filter chip
+            val pitchLabel = when (selectedPitchType) {
+                true -> "Short Pitch"
+                false -> "Long Pitch"
+                null -> "All Pitches"
+            }
+            FilledTonalButton(
+                onClick = { showPitchPicker = true },
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Icon(
+                    Icons.Default.Star,
+                    contentDescription = "Pitch",
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(pitchLabel, fontSize = 12.sp)
+            }
+        }
+
+        // TabRow + Pager (keep as-is; just make sure to null-check player)
+        val pagerState = rememberPagerState(pageCount = { 3 })
+        val coroutineScope = rememberCoroutineScope()
+
+        TabRow(
+            selectedTabIndex = pagerState.currentPage,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary,
+            indicator = { tabPositions ->
+                TabRowDefaults.Indicator(
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[pagerState.currentPage]),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        ) {
+            val tabs = listOf("Overview", "Matches", "Statistics")
+            tabs.forEachIndexed { index, title ->
+                Tab(
+                    selected = pagerState.currentPage == index,
+                    onClick = { coroutineScope.launch { pagerState.animateScrollToPage(index) } },
+                    text = {
+                        Text(
+                            text = title,
+                            fontWeight = if (pagerState.currentPage == index) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .fillMaxSize()
+                .weight(1f)
+        ) { page ->
+            when (page) {
+                0 -> if (player != null) PlayerOverviewTab(player!!) else EmptyOverview()
+                1 -> if (player != null) PlayerMatchesTab(player!!) else EmptyMatches()
+                2 -> if (player != null) PlayerStatisticsTab(player!!) else EmptyStats()
+            }
+        }
+    }
+
+// Group picker dialog
+    if (showGroupPicker) {
+        val groups = groupStorage.getAllGroups()
+        AlertDialog(
+            onDismissRequest = { showGroupPicker = false },
+            title = { Text("Filter by Group") },
+            text = {
+                LazyColumn(Modifier.height(360.dp)) {
+                    item {
+                        ListItem(
+                            headlineContent = { Text("All Groups") },
+                            modifier = Modifier.clickable {
+                                selectedGroupId = null
+                                selectedGroupName = "All Groups"
+                                showGroupPicker = false
+                            }
+                        )
+                    }
+                    items(groups) { g ->
+                        ListItem(
+                            headlineContent = { Text(g.name) },
+                            modifier = Modifier.clickable {
+                                selectedGroupId = g.id
+                                selectedGroupName = g.name
+                                showGroupPicker = false
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showGroupPicker = false }) { Text("Close") } }
+        )
+    }
+
+// Pitch picker dialog
+    if (showPitchPicker) {
+        AlertDialog(
+            onDismissRequest = { showPitchPicker = false },
+            title = { Text("Filter by Pitch Type") },
+            text = {
+                Column {
+                    listOf("All", "Short", "Long").forEach { option ->
+                        Text(
+                            text = option,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedPitchType = when (option) {
+                                        "Short" -> true
+                                        "Long" -> false
+                                        else -> null
+                                    }
+                                    showPitchPicker = false
+                                }
+                                .padding(8.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {}
+        )
     }
 }
 
@@ -672,6 +783,110 @@ fun MatchPerformanceCard(match: MatchPerformance) {
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyOverview() {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 0.dp)
+    ) {
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
+                ) {
+                    Text(
+                        "🏏 Batting Summary",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "No stats in this filter",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyMatches() {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 0.dp)
+    ) {
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(text = "🏏", fontSize = 32.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "No match data available",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun EmptyStats() {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 0.dp)
+    ) {
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(text = "📊", fontSize = 32.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "No statistics available",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }

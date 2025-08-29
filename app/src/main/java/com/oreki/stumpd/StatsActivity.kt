@@ -5,9 +5,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -17,9 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oreki.stumpd.ui.theme.SectionTitle
+import com.oreki.stumpd.ui.theme.StatsTopBar
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import com.oreki.stumpd.ui.theme.StumpdTopBar
 import com.oreki.stumpd.ui.theme.sectionContainer
@@ -56,29 +60,48 @@ fun StatsScreen() {
     var selectedGroupName by remember { mutableStateOf("All Groups") }
     var showGroupPicker by remember { mutableStateOf(false) }
 
-    LaunchedEffect(selectedGroupId) {
-        // Filter matches by group selection first
-        val all = matchStorage.getAllMatches()
-        val groupFiltered = selectedGroupId?.let { gId -> all.filter { it.groupId == gId } } ?: all
-        matches = groupFiltered
+    var selectedPitchType by remember { mutableStateOf<Boolean?>(null) }
+    var showPitchPicker by remember { mutableStateOf(false) }
 
-        // Recompute detailed players from groupFiltered only
-        val detailed = EnhancedPlayerStorageManager(context).computeFromMatches(groupFiltered)
+    LaunchedEffect(selectedGroupId, selectedPitchType) {
+        val all = matchStorage.getAllMatches()
+        var filtered = all
+
+        // Group filter
+        selectedGroupId?.let { gId ->
+            filtered = filtered.filter { it.groupId == gId }
+        }
+
+        // Pitch type filter
+        selectedPitchType?.let { type ->
+            filtered = filtered.filter { it.shortPitch == type }
+        }
+
+        matches = filtered
+        val detailed = EnhancedPlayerStorageManager(context).computeFromMatches(filtered)
         players = detailed
     }
 
-
     Scaffold(
         topBar = {
-            StumpdTopBar(
-                title = "Statistics",
-                subtitle = "${players.size} players - ${matches.size} matches • $selectedGroupName",
-                onBack = {
-                    val intent = Intent(context, MainActivity::class.java)
-                    context.startActivity(intent)
-                    (context as ComponentActivity).finish()
-                },
-                actions = {
+            Column {
+                StatsTopBar(
+                    title = "Statistics",
+                    subtitle = "${players.size} players • ${matches.size} matches\n$selectedGroupName",
+                    onBack = {
+                        val intent = Intent(context, MainActivity::class.java)
+                        context.startActivity(intent)
+                        (context as ComponentActivity).finish()
+                    }
+                )
+                // 👇 separate filter row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     FilledTonalButton(
                         onClick = { showGroupPicker = true },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
@@ -86,30 +109,37 @@ fun StatsScreen() {
                     ) {
                         Icon(Icons.Default.Home, contentDescription = "Group", modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(selectedGroupName, fontSize = 12.sp)
+                        Text(selectedGroupName, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    Spacer(Modifier.width(8.dp))
 
-                    // Compact tonal Filter action (similar size to Import/Export you added)
+                    val pitchLabel = when (selectedPitchType) {
+                        true -> "Short Pitch"
+                        false -> "Long Pitch"
+                        null -> "All Pitches"
+                    }
+                    FilledTonalButton(
+                        onClick = { showPitchPicker = true },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Star, contentDescription = "Pitch", modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(pitchLabel, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+
                     FilledTonalButton(
                         onClick = { showFilterDialog = true },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                         modifier = Modifier.height(IntrinsicSize.Min)
                     ) {
-                        Icon(
-                            Icons.Default.List,
-                            contentDescription = "Filter",
-                            modifier = Modifier.size(16.dp)
-                        )
+                        Icon(Icons.Default.List, contentDescription = "Filter", modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(selectedFilter, fontSize = 12.sp)
+                        Text(selectedFilter, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
-            )
+            }
         }
     ) { padding ->
         Column(Modifier.padding(padding).padding(16.dp)) {
-
             if (players.isEmpty()) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -239,6 +269,34 @@ fun StatsScreen() {
                 },
                 confirmButton = {},
                 dismissButton = { TextButton(onClick = { showGroupPicker = false }) { Text("Close") } }
+            )
+        }
+
+        if (showPitchPicker) {
+            AlertDialog(
+                onDismissRequest = { showPitchPicker = false },
+                title = { Text("Filter by Pitch Type") },
+                text = {
+                    Column {
+                        listOf("All", "Short", "Long").forEach { option ->
+                            Text(
+                                text = option,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedPitchType = when (option) {
+                                            "Short" -> true
+                                            "Long" -> false
+                                            else -> null
+                                        }
+                                        showPitchPicker = false
+                                    }
+                                    .padding(8.dp)
+                            )
+                        }
+                    }
+                },
+                confirmButton = {}
             )
         }
 

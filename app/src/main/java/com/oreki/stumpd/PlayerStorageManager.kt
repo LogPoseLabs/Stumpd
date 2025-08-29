@@ -76,6 +76,8 @@ data class MatchPerformance(
     // Match context
     val isWinner: Boolean = false,
     val isJoker: Boolean = false,
+    val groupId: String? = null,
+    val isShortPitch: Boolean = false
 )
 
 // Basic player storage manager
@@ -458,6 +460,7 @@ class EnhancedPlayerStorageManager(
         getAllPlayersDetailed().find {
             it.name.equals(playerName, ignoreCase = true)
         }
+
     fun computeFromMatches(source: List<MatchHistory>): List<PlayerDetailedStats> {
         val playersMap = mutableMapOf<String, PlayerDetailedStats>()
 
@@ -479,7 +482,7 @@ class EnhancedPlayerStorageManager(
                 if (existing == null) {
                     player.totalMatches++
                     player.matchPerformances.add(
-                        PlayerPerformanceFromBat(match, p, myTeam = match.team1Name, opp = match.team2Name)
+                        playerPerformanceFromBat(match, p, myTeam = match.team1Name, opp = match.team2Name)
                     )
                 } else {
                     // merge if same player has multiple entries (safety)
@@ -525,7 +528,7 @@ class EnhancedPlayerStorageManager(
                 if (existing == null) {
                     player.totalMatches++
                     player.matchPerformances.add(
-                        PlayerPerformanceFromBat(match, p, myTeam = match.team2Name, opp = match.team1Name)
+                        playerPerformanceFromBat(match, p, myTeam = match.team2Name, opp = match.team1Name)
                     )
                 } else {
                     val idx = player.matchPerformances.indexOf(existing)
@@ -558,7 +561,7 @@ class EnhancedPlayerStorageManager(
     }
 
     // Helpers inside EnhancedPlayerStorageManager
-    private fun PlayerPerformanceFromBat(
+    private fun playerPerformanceFromBat(
         match: MatchHistory,
         p: PlayerMatchStats,
         myTeam: String,
@@ -578,9 +581,12 @@ class EnhancedPlayerStorageManager(
             runsConceded = 0,
             ballsBowled = 0,
             isWinner = match.winnerTeam == myTeam,
-            isJoker = p.isJoker
+            isJoker = p.isJoker,
+            isShortPitch = match.shortPitch,
+            groupId = match.groupId
         )
     }
+
     private fun upsertBowlPerf(
         player: PlayerDetailedStats,
         match: MatchHistory,

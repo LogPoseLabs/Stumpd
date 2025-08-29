@@ -20,10 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.oreki.stumpd.ui.theme.PrimaryCta
 import com.oreki.stumpd.ui.theme.ResultChip
-import com.oreki.stumpd.ui.theme.SecondaryCta
-import com.oreki.stumpd.ui.theme.SectionCard
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import com.oreki.stumpd.ui.theme.StumpdTopBar
 import com.oreki.stumpd.ui.theme.sectionContainer

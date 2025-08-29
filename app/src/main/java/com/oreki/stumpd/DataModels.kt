@@ -145,6 +145,7 @@ data class MatchHistory(
     val matchSettings: MatchSettings? = null,
     val groupId: String? = null,
     val groupName: String? = null,
+    val shortPitch: Boolean = false
     )
 
 // Individual player performance in a match
