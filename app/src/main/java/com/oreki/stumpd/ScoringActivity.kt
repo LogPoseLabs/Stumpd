@@ -197,7 +197,14 @@ fun ScoringScreen(
     val midOverReplacementDueToJoker = remember { mutableStateOf(false) }
 
     val deliveryHistory = remember { mutableStateListOf<DeliverySnapshot>() }
-    val lastDeliveries = remember { mutableStateListOf<DeliveryUI>() }
+    val allDeliveries = remember { mutableStateListOf<DeliveryUI>() }
+    // Derived state lists
+    val currentOverNumber by remember { derivedStateOf { currentOver + 1 } }   // 1‑based
+    val currentOverDeliveries by remember(allDeliveries, currentOver) {
+        derivedStateOf {
+            allDeliveries.filter { it.over == currentOverNumber }
+        }
+    }
 
     var showRunOutDialog by remember { mutableStateOf(false) }
     var pickerOtherEndName by remember { mutableStateOf<String?>(null) }
@@ -206,17 +213,12 @@ fun ScoringScreen(
         // ball number shown 1..6 based on ballsInOver AFTER increment (so compute from current)
         val ballNumber = (ballsInOver % 6) + 1
         val entry = DeliveryUI(
-            over = currentOver + 1,        // show 1-based over
+            over = currentOver + 1,
             ballInOver = ballNumber,
             outcome = outcome,
             highlight = highlight
         )
-        lastDeliveries.add(entry)
-        if (lastDeliveries.size > 6) lastDeliveries.removeAt(0)
-    }
-
-    fun removeLastDeliveryIfAny() {
-        if (lastDeliveries.isNotEmpty()) lastDeliveries.removeAt(lastDeliveries.lastIndex)
+        allDeliveries.add(entry)
     }
 
     fun pushSnapshot() {
@@ -242,11 +244,29 @@ fun ScoringScreen(
                 completedBowlersInnings2 = completedBowlersInnings2.map { it.copy() },
             )
         )
+        if (deliveryHistory.size > 2) deliveryHistory.removeAt(0)
+    }
+
+    fun removeLastDeliveryIfAny() {
+        if (allDeliveries.isNotEmpty()) {
+            val last = allDeliveries.last()
+            // Only remove if it is from the current over; prevents crossing to previous over
+            if (last.over == currentOver + 1) {
+                allDeliveries.removeAt(allDeliveries.lastIndex)
+            }
+        }
     }
 
     fun undoLastDelivery() {
         if (deliveryHistory.isEmpty()) {
             Toast.makeText(context, "Nothing to undo", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val peek = deliveryHistory.last()
+        val atStartOfSecond = (currentInnings == 2 && currentOver == 0 && ballsInOver == 0)
+        val wouldGoBeforeStartOfSecond = (currentInnings == 2 && peek.currentOver == 0 && peek.ballsInOver == 0)
+        if (atStartOfSecond || wouldGoBeforeStartOfSecond) {
+            Toast.makeText(context, "Cannot undo beyond 0.0 overs in 2nd innings", Toast.LENGTH_SHORT).show()
             return
         }
         val snap = deliveryHistory.removeAt(deliveryHistory.lastIndex)
@@ -271,6 +291,7 @@ fun ScoringScreen(
         showBatsmanDialog = false
         showExtrasDialog = false
         showWicketDialog = false
+        removeLastDeliveryIfAny()
         Toast.makeText(context, "Last delivery undone", Toast.LENGTH_SHORT).show()
     }
 
@@ -479,6 +500,10 @@ fun ScoringScreen(
                 }
                 incJokerBallIfBowledThisDelivery()
 
+                addDelivery(
+                    outcome = runs.toString(),
+                    highlight = (runs == 4 || runs == 6)
+                )
                 if (runs % 2 == 1 && !showSingleSideLayout) {
                     swapStrike()
                 }
@@ -498,48 +523,46 @@ fun ScoringScreen(
                     showBowlerDialog = true
                     Toast.makeText(context, "Over complete! Select new bowler", Toast.LENGTH_LONG).show()
                 }
-                addDelivery(
-                    outcome = runs.toString(),
-                    highlight = (runs == 4 || runs == 6)
-                )
             },
             onShowExtras = { showExtrasDialog = true },
             onShowWicket = { showWicketDialog = true },
-            onUndo = { undoLastDelivery()
-                removeLastDeliveryIfAny()
-            }
+            onUndo = { undoLastDelivery() }
         )
 
-        // Last 10 balls strip
-        if (lastDeliveries.isNotEmpty()) {
+        @OptIn(ExperimentalLayoutApi::class)
+        if (currentOverDeliveries.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
-                Row(
-                    Modifier
+                FlowRow(
+                    modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    maxItemsInEachRow = 6
                 ) {
-                    Text("So far:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    lastDeliveries.forEach { d ->
+                    Text(
+                        "Over ${currentOver + 1}:",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    currentOverDeliveries.forEach { d ->
                         AssistChip(
                             onClick = {},
                             label = { Text(d.outcome, fontSize = 11.sp) },
-                            leadingIcon = null,
                             colors = AssistChipDefaults.assistChipColors(
                                 containerColor = when {
                                     d.outcome == "W" -> MaterialTheme.colorScheme.errorContainer
-                                    d.highlight -> MaterialTheme.colorScheme.tertiaryContainer
-                                    else -> MaterialTheme.colorScheme.surfaceVariant
+                                    d.highlight      -> MaterialTheme.colorScheme.tertiaryContainer
+                                    else             -> MaterialTheme.colorScheme.surfaceVariant
                                 },
                                 labelColor = when {
                                     d.outcome == "W" -> MaterialTheme.colorScheme.onErrorContainer
-                                    d.highlight -> MaterialTheme.colorScheme.onTertiaryContainer
-                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    d.highlight      -> MaterialTheme.colorScheme.onTertiaryContainer
+                                    else             -> MaterialTheme.colorScheme.onSurfaceVariant
                                 }
                             )
                         )
@@ -614,6 +637,7 @@ fun ScoringScreen(
                         incJokerBallIfBowledThisDelivery()
                         totalExtras += totalRuns
                         ballsInOver += 1
+                        addDelivery(if (extraType == ExtraType.BYE) "B+$totalRuns" else "Lb+$totalRuns")
                         if (ballsInOver == 6) {
                             currentOver += 1
                             ballsInOver = 0
@@ -634,7 +658,6 @@ fun ScoringScreen(
                                 swapStrike()
                             }
                         }
-                        addDelivery(if (extraType == ExtraType.BYE) "B+$totalRuns" else "Lb+$totalRuns")
                         Toast.makeText(context, "${extraType.displayName}! +$totalRuns runs", Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -1169,7 +1192,7 @@ fun ScoringScreen(
                 // --- now handle ball/over progression AFTER replacement decision ---
                 ballsInOver += 1
                 incJokerBallIfBowledThisDelivery()
-
+                addDelivery("W", highlight = true)
                 if (ballsInOver == 6) {
                     currentOver += 1
                     ballsInOver = 0
@@ -1189,7 +1212,6 @@ fun ScoringScreen(
                 val bowlerName = bowler?.name ?: "Bowler"
                 val outName = outSnapshot?.name ?: "Batsman"
                 val totalAfter = battingTeamPlayers.sumOf { it.runs } + totalExtras
-                addDelivery("W", highlight = true)
                 Toast.makeText(
                     context,
                     "Wicket! $outName ${wicketType.name.lowercase().replace('_', ' ')}. Total: $totalAfter. $bowlerName to continue.",
@@ -1311,7 +1333,9 @@ fun ScoringScreen(
                 // 9) Ball & over progression (as before)
                 ballsInOver += 1
                 incJokerBallIfBowledThisDelivery()
-
+                // 10) Delivery log + feedback
+                val label = "${runsCompleted} + RO (${outPlayerName} @ ${if (outEnd == RunOutEnd.STRIKER_END) "S" else "NS"})"
+                addDelivery(label, highlight = true)
                 if (ballsInOver == 6) {
                     currentOver += 1
                     ballsInOver = 0
@@ -1323,9 +1347,6 @@ fun ScoringScreen(
                     showBowlerDialog = true
                 }
 
-                // 10) Delivery log + feedback
-                val label = "${runsCompleted} + RO (${outPlayerName} @ ${if (outEnd == RunOutEnd.STRIKER_END) "S" else "NS"})"
-                addDelivery(label, highlight = true)
 
                 Toast.makeText(
                     context,
