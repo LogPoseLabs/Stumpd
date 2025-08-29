@@ -25,6 +25,7 @@ import com.oreki.stumpd.ui.theme.StumpdTheme
 class FullScorecardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        actionBar?.hide()
         val matchId = intent.getStringExtra("match_id") ?: ""
 
         setContent {
@@ -112,7 +113,7 @@ fun FullScorecardScreen(matchId: String) {
                     Icon(
                         Icons.Default.ArrowBack,
                         contentDescription = "Back to Match Details",
-                        tint = Color(0xFF2E7D32),
+                        tint = MaterialTheme.colorScheme.primary,
                     )
                 }
 
@@ -121,7 +122,7 @@ fun FullScorecardScreen(matchId: String) {
                         text = "Full Scorecard",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32),
+                        color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
                         text = "${match.team1Name} vs ${match.team2Name}",
@@ -148,7 +149,7 @@ fun FullScorecardScreen(matchId: String) {
                         Icon(
                             Icons.Default.List,
                             contentDescription = "Match History",
-                            tint = Color(0xFF2E7D32),
+                            tint = MaterialTheme.colorScheme.primary,
                         )
                     }
 
@@ -162,7 +163,7 @@ fun FullScorecardScreen(matchId: String) {
                         Icon(
                             Icons.Default.Home,
                             contentDescription = "Home",
-                            tint = Color(0xFF2E7D32),
+                            tint = MaterialTheme.colorScheme.primary,
                         )
                     }
                 }
@@ -175,19 +176,14 @@ fun FullScorecardScreen(matchId: String) {
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F8FF)),
+                colors = CardDefaults.cardColors(),
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
                         text = "🏏 FIRST INNINGS",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32),
-                    )
-                    Text(
-                        text = "${"%.1f".format(firstInningsOvers)}/$totalOvers overs",
-                        fontSize = 12.sp,
-                        color = Color.Gray,
+                        color = MaterialTheme.colorScheme.primary,
                     )
                 }
             }
@@ -201,7 +197,7 @@ fun FullScorecardScreen(matchId: String) {
                 text = "${match.team1Name} Batting - ${match.firstInningsRuns}/${match.firstInningsWickets}",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32),
+                color = MaterialTheme.colorScheme.primary,
             )
         }
 
@@ -235,7 +231,7 @@ fun FullScorecardScreen(matchId: String) {
                 text = "${match.team2Name} Bowling",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32),
+                color = MaterialTheme.colorScheme.primary,
             )
         }
 
@@ -266,19 +262,14 @@ fun FullScorecardScreen(matchId: String) {
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+                colors = CardDefaults.cardColors(),
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
                         text = "🏏 SECOND INNINGS",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32),
-                    )
-                    Text(
-                        text = "${"%.1f".format(secondInningsOvers)}/$totalOvers overs",
-                        fontSize = 12.sp,
-                        color = Color.Gray,
+                        color = MaterialTheme.colorScheme.primary,
                     )
                 }
             }
@@ -297,7 +288,7 @@ fun FullScorecardScreen(matchId: String) {
                     text = "${match.team2Name} Batting - ${match.secondInningsRuns}/${match.secondInningsWickets}",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32),
+                    color = MaterialTheme.colorScheme.primary,
                 )
 
                 // Target information
@@ -306,7 +297,7 @@ fun FullScorecardScreen(matchId: String) {
                 Text(
                     text = if (required > 0) "Target: $target" else "Target achieved!",
                     fontSize = 12.sp,
-                    color = if (required > 0) Color(0xFFFF5722) else Color(0xFF4CAF50),
+                    color = MaterialTheme.colorScheme.primary,
                     fontStyle = FontStyle.Italic,
                 )
             }
@@ -349,7 +340,7 @@ fun FullScorecardScreen(matchId: String) {
                 text = "${match.team1Name} Bowling",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32),
+                color = MaterialTheme.colorScheme.primary,
             )
         }
 
@@ -379,10 +370,7 @@ fun FullScorecardScreen(matchId: String) {
         // Enhanced Match Summary
         item {
             EnhancedMatchSummaryCard(
-                match = match,
-                matchSettings = matchSettings,
-                firstInningsOvers = firstInningsOvers,
-                secondInningsOvers = secondInningsOvers
+                match = match
             )
         }
     }
@@ -396,14 +384,11 @@ fun calculateOversFromStats(bowlingPlayers: List<PlayerMatchStats>): Double {
 // Enhanced Match Summary Card with settings info
 @Composable
 fun EnhancedMatchSummaryCard(
-    match: MatchHistory,
-    matchSettings: MatchSettings,
-    firstInningsOvers: Double,
-    secondInningsOvers: Double
+    match: MatchHistory
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E8))
+        colors = CardDefaults.cardColors()
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -412,7 +397,7 @@ fun EnhancedMatchSummaryCard(
                 text = "🏆 Match Result",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
+                color = MaterialTheme.colorScheme.primary
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -421,38 +406,102 @@ fun EnhancedMatchSummaryCard(
                 text = "${match.winnerTeam} won by ${match.winningMargin}",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
+                color = MaterialTheme.colorScheme.primary
             )
 
             Spacer(modifier = Modifier.height(11.dp))
 
-            // Show top performers if available
-            match.topBatsman?.let { topBat ->
-                Text(
-                    text = "🏏 Top Batsman: ${topBat.name} - ${topBat.runs} runs",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            match.topBowler?.let { topBowl ->
-                Text(
-                    text = "⚾ Top Bowler: ${topBowl.name} - ${topBowl.wickets} wickets",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            match.jokerPlayerName?.let { joker ->
+            val hasPotm = match.playerOfTheMatchName != null
+            if (hasPotm) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "🃏 Joker Player: $joker",
-                    fontSize = 12.sp,
-                    color = Color(0xFFFF9800),
+                    text = "⭐ Player of the Match",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                val potmLine = buildString {
+                    append(match.playerOfTheMatchName)
+                    match.playerOfTheMatchTeam?.let { append(" (${it})") }
+                    match.playerOfTheMatchSummary?.let { append(" — $it") }
+                }
+                Text(
+                    text = potmLine,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Medium
                 )
+                match.playerOfTheMatchImpact?.let { imp ->
+                    Text(
+                        text = "Impact: ${"%.1f".format(imp)}",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+                }
+            } else {
+                // Fallback for older matches without POTM
+                match.topBatsman?.let { topBat ->
+                    Text(
+                        text = "🏏 Top Batsman: ${topBat.name} - ${topBat.runs} runs",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                match.topBowler?.let { topBowl ->
+                    Text(
+                        text = "⚾ Top Bowler: ${topBowl.name} - ${topBowl.wickets} wickets",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
-        }
+            match.playerImpacts.takeIf { it.isNotEmpty() }?.let { impacts ->
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Top Impact",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                impacts.take(3).forEach { pi ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "${pi.name} (${pi.team})",
+                            fontSize = 13.sp,
+                            fontWeight = if (pi.name == match.playerOfTheMatchName) FontWeight.SemiBold else FontWeight.Medium
+                        )
+                        Text(
+                            text = "${"%.1f".format(pi.impact)}",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                    pi.summary.takeIf { it.isNotBlank() }?.let { sum ->
+                        Text(
+                            text = sum,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                val context = LocalContext.current
+                TextButton(onClick = {
+                    // Navigate to a dedicated Impact screen
+                    val intent = Intent(context, ImpactListActivity::class.java)
+                    intent.putExtra("match_id", match.id)
+                    context.startActivity(intent)
+                }) {
+                    Text("View all impacts")
+                }
+            }
+            }
     }
 }
 
@@ -465,7 +514,7 @@ fun EnhancedBattingScorecardCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
     ) {
         Column(
@@ -499,7 +548,7 @@ fun EnhancedBattingScorecardCard(
                         text = if (player.isJoker) "🃏 ${player.name}" else player.name,
                         fontSize = 14.sp,
                         modifier = Modifier.weight(2f),
-                        color = if (player.isJoker) Color(0xFFFF9800) else Color.Black,
+                        color = if (player.isJoker) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
                     )
                     Text("${player.runs}${if (player.isOut) "" else "*"}", fontSize = 14.sp, modifier = Modifier.weight(1f))
                     Text("${player.ballsFaced}", fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -541,7 +590,7 @@ fun EnhancedBowlingScorecardCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
     ) {
         Column(
@@ -574,7 +623,7 @@ fun EnhancedBowlingScorecardCard(
                         text = if (player.isJoker) "🃏 ${player.name}" else player.name,
                         fontSize = 14.sp,
                         modifier = Modifier.weight(2f),
-                        color = if (player.isJoker) Color(0xFFFF9800) else Color.Black,
+                        color = if (player.isJoker) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
                     )
                     Text("${"%.1f".format(player.oversBowled)}", fontSize = 14.sp, modifier = Modifier.weight(1f))
                     Text("${player.runsConceded}", fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -595,63 +644,6 @@ fun EnhancedBowlingScorecardCard(
                     color = Color.Gray,
                     fontStyle = FontStyle.Italic,
                     modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun MatchSummaryCard(match: MatchHistory) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E8)),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-        ) {
-            Text(
-                text = "🏆 Match Result",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32),
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "${match.winnerTeam} won by ${match.winningMargin}",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32),
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Show top performers if available
-            match.topBatsman?.let { topBat ->
-                Text(
-                    text = "🏏 Top Batsman: ${topBat.name} - ${topBat.runs} runs",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-            }
-
-            match.topBowler?.let { topBowl ->
-                Text(
-                    text = "⚾ Top Bowler: ${topBowl.name} - ${topBowl.wickets}/${topBowl.runs}",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-            }
-
-            match.jokerPlayerName?.let { joker ->
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "🃏 Joker Player: $joker",
-                    fontSize = 12.sp,
-                    color = Color(0xFFFF9800),
-                    fontWeight = FontWeight.Medium,
                 )
             }
         }

@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,6 +22,7 @@ import com.oreki.stumpd.ui.theme.StumpdTheme
 class SplashActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        actionBar?.hide()
         setContent {
             StumpdTheme {
                 SplashScreen {
@@ -46,8 +48,8 @@ fun SplashScreen(onSplashComplete: () -> Unit) {
                 Brush.verticalGradient(
                     colors = listOf(
                         Color(0xFF1B5E20),
-                        Color(0xFF2E7D32),
-                        Color(0xFF4CAF50)
+                        MaterialTheme.colorScheme.primary,
+                        MaterialTheme.colorScheme.primary
                     )
                 )
             ),
@@ -68,13 +70,13 @@ fun SplashScreen(onSplashComplete: () -> Unit) {
                 text = "Stump'd",
                 fontSize = 48.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = MaterialTheme.colorScheme.surface
             )
 
             Text(
                 text = "Your Digital Cricket Scorebook",
                 fontSize = 16.sp,
-                color = Color.White.copy(alpha = 0.8f)
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
             )
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -82,7 +84,7 @@ fun SplashScreen(onSplashComplete: () -> Unit) {
             Text(
                 text = "Loading...",
                 fontSize = 14.sp,
-                color = Color.White.copy(alpha = 0.6f)
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
             )
         }
     }

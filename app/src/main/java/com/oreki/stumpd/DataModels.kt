@@ -2,8 +2,11 @@ package com.oreki.stumpd
 
 import com.google.gson.Gson
 
+data class PlayerId(val value: String = java.util.UUID.randomUUID().toString())
+
 data class Player(
-    val name: String,
+    val id: PlayerId = PlayerId(),
+    val name: String = "",
     var runs: Int = 0,
     var ballsFaced: Int = 0,
     var fours: Int = 0,
@@ -14,32 +17,35 @@ data class Player(
     var ballsBowled: Int = 0,
     val isJoker: Boolean = false,
 ) {
-    val strikeRate: Double
-        get() = if (ballsFaced > 0) (runs.toDouble() / ballsFaced) * 100 else 0.0
-
-    // Real-time overs calculation
-    val oversBowled: Double
-        get() = (ballsBowled / 6) + (ballsBowled % 6) * 0.1
-
-    val economy: Double
-        get() = if (ballsBowled > 0) (runsConceded.toDouble() / ballsBowled) * 6 else 0.0
-
-    // Convert to PlayerMatchStats for saving
-    fun toMatchStats(teamName: String): PlayerMatchStats =
-        PlayerMatchStats(
-            name = name,
-            runs = runs,
-            ballsFaced = ballsFaced,
-            fours = fours,
-            sixes = sixes,
-            wickets = wickets,
-            runsConceded = runsConceded,
-            oversBowled = oversBowled,
-            isOut = isOut,
-            isJoker = isJoker,
-            team = teamName,
-        )
+    val strikeRate: Double get() = if (ballsFaced > 0) (runs.toDouble() / ballsFaced) * 100 else 0.0
+    val oversBowled: Double get() = (ballsBowled / 6) + (ballsBowled % 6) * 0.1
+    val economy: Double get() = if (ballsBowled > 0) (runsConceded.toDouble() / ballsBowled) * 6 else 0.0
+    fun toMatchStats(teamName: String): PlayerMatchStats = PlayerMatchStats(
+        id = id.value,
+        name = name, runs = runs, ballsFaced = ballsFaced, fours = fours, sixes = sixes,
+        wickets = wickets, runsConceded = runsConceded, oversBowled = oversBowled,
+        isOut = isOut, isJoker = isJoker, team = teamName
+    )
 }
+
+// White/Red-ball and short/long pitch
+enum class BallFormat { WHITE_BALL, RED_BALL }
+
+data class GroupDefaultSettings(
+    val matchSettings: MatchSettings,
+    val groundName: String = "",
+    val format: BallFormat = BallFormat.WHITE_BALL,
+    // If true -> short pitch; if false -> long pitch
+    val shortPitch: Boolean = false,
+)
+
+data class PlayerGroup(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String,
+    // Store player ids, not copies
+    val playerIds: List<String> = emptyList(),
+    val defaults: GroupDefaultSettings,
+)
 
 // Enhanced Team data class
 data class Team(
@@ -49,34 +55,6 @@ data class Team(
     val regularPlayersCount: Int
         get() = players.count { !it.isJoker }
 }
-
-// Match setup with joker support
-data class MatchSetup(
-    val team1: Team,
-    val team2: Team,
-    val jokerPlayer: Player? = null, // Single joker for both teams
-    val matchType: MatchType = MatchType.T20,
-    val overs: Int = 20,
-)
-
-enum class MatchType {
-    T20,
-    ODI,
-    TEST,
-}
-
-// Ball-by-ball tracking
-data class Ball(
-    val ballNumber: Int,
-    val runs: Int,
-    val extras: ExtraType? = null,
-    val extraRuns: Int = 0,
-    val isWicket: Boolean = false,
-    val wicketType: WicketType? = null,
-    val batsman: Player,
-    val bowler: Player,
-    val timestamp: Long = System.currentTimeMillis(),
-)
 
 enum class ExtraType(val displayName: String) {
     NO_BALL("No Ball"),
@@ -93,104 +71,25 @@ enum class WicketType {
     RUN_OUT,
     STUMPED,
     HIT_WICKET,
+    BOUNDARY_OUT
 }
 
-// Match state tracking
-data class MatchState(
-    val battingTeam: Team,
-    val bowlingTeam: Team,
-    val jokerPlayer: Player? = null,
-    var currentBatsman1: Player? = null,
-    var currentBatsman2: Player? = null,
-    var striker: Player? = null,
-    var currentBowler: Player? = null,
-    var totalRuns: Int = 0,
-    var totalWickets: Int = 0,
-    var currentOver: Int = 0,
-    var ballsInOver: Int = 0,
-    var balls: MutableList<Ball> = mutableListOf(),
-    val maxOvers: Int = 20,
-) {
-    val currentScore: String
-        get() = "$totalRuns/$totalWickets"
+data class RunOutInput(
+    val runsCompleted: Int,
+    val end: RunOutEnd,
+    val whoOut: String
+)
 
-    val oversCompleted: String
-        get() = "$currentOver.$ballsInOver"
+enum class RunOutEnd { STRIKER_END, NON_STRIKER_END }
 
-    val runRate: Double
-        get() =
-            if (currentOver == 0 && ballsInOver == 0) {
-                0.0
-            } else {
-                totalRuns.toDouble() / ((currentOver * 6 + ballsInOver) / 6.0)
-            }
-}
+data class DeliveryUI(
+    val inning: Int,
+    val over: Int,
+    val ballInOver: Int,      // 1..6
+    val outcome: String,      // "0","1","4","W","Wd+1","Nb+2", etc.
+    val highlight: Boolean = false // e.g., boundary/wicket for tint
+)
 
-// Innings management
-data class Innings(
-    val battingTeam: Team,
-    val bowlingTeam: Team,
-    val jokerPlayer: Player? = null,
-    var totalRuns: Int = 0,
-    var totalWickets: Int = 0,
-    var balls: MutableList<Ball> = mutableListOf(),
-    val maxOvers: Int = 20,
-    var isCompleted: Boolean = false,
-) {
-    val currentOver: Int
-        get() =
-            balls.count { ball ->
-                ball.extras == null ||
-                    ball.extras == ExtraType.BYE ||
-                    ball.extras == ExtraType.LEG_BYE
-            } / 6
-
-    val ballsInCurrentOver: Int
-        get() =
-            balls.count { ball ->
-                ball.extras == null ||
-                    ball.extras == ExtraType.BYE ||
-                    ball.extras == ExtraType.LEG_BYE
-            } % 6
-
-    val runRate: Double
-        get() =
-            if (balls.isEmpty()) {
-                0.0
-            } else {
-                totalRuns.toDouble() / (
-                    balls.count { ball ->
-                        ball.extras == null ||
-                            ball.extras == ExtraType.BYE ||
-                            ball.extras == ExtraType.LEG_BYE
-                    } / 6.0
-                )
-            }
-}
-
-// Complete match structure
-data class CricketMatch(
-    val team1: Team,
-    val team2: Team,
-    val jokerPlayer: Player? = null,
-    val matchType: MatchType = MatchType.T20,
-    val maxOvers: Int = 20,
-    var currentInnings: Int = 1, // 1 for first innings, 2 for second
-    var firstInnings: Innings? = null,
-    var secondInnings: Innings? = null,
-    var tossWinner: Team? = null,
-    var tossDecision: TossDecision? = null,
-) {
-    val isMatchCompleted: Boolean
-        get() =
-            secondInnings?.isCompleted == true ||
-                (secondInnings != null && secondInnings!!.totalRuns > (firstInnings?.totalRuns ?: 0))
-}
-
-enum class TossDecision {
-    BAT_FIRST,
-    BOWL_FIRST,
-}
 
 // Enhanced MatchHistory with proper innings separation
 data class MatchHistory(
@@ -218,11 +117,23 @@ data class MatchHistory(
     val team2Players: List<PlayerMatchStats> = emptyList(),
     val topBatsman: PlayerMatchStats? = null,
     val topBowler: PlayerMatchStats? = null,
-    val matchSettings: MatchSettings? = null
+    val matchSettings: MatchSettings? = null,
+    val groupId: String? = null,
+    val groupName: String? = null,
+    val shortPitch: Boolean = false,
+    // NEW: Player of the Match (optional)
+    val playerOfTheMatchId: String? = null,
+    val playerOfTheMatchName: String? = null,
+    val playerOfTheMatchTeam: String? = null,
+    val playerOfTheMatchImpact: Double? = null,
+    val playerOfTheMatchSummary: String? = null,
+    // NEW: all players’ impacts
+    val playerImpacts: List<PlayerImpact> = emptyList()
 )
 
 // Individual player performance in a match
 data class PlayerMatchStats(
+    val id: String? = null,
     val name: String,
     val runs: Int = 0,
     val ballsFaced: Int = 0,
@@ -247,7 +158,7 @@ data class PlayerMatchStats(
 class MatchStorageManager(
     private val context: android.content.Context,
 ) {
-    private val prefs = context.getSharedPreferences("cricket_matches_v2", android.content.Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("cricket_matches_v3", android.content.Context.MODE_PRIVATE)
     private val gson = Gson()
 
     fun saveMatch(match: MatchHistory) {
@@ -256,8 +167,8 @@ class MatchStorageManager(
             matches.add(0, match) // Add to beginning
 
             // Keep only last 100 matches to prevent storage bloat
-            if (matches.size > 100) {
-                matches.subList(100, matches.size).clear()
+            if (matches.size > 500) {
+                matches.subList(500, matches.size).clear()
             }
 
             // Convert to JSON string
@@ -275,6 +186,11 @@ class MatchStorageManager(
         } catch (e: Exception) {
             android.util.Log.e("MatchStorage", "Error saving match", e)
         }
+    }
+
+    fun getLatestMatchID(): String? {
+        val all = getAllMatches()
+        return all.lastOrNull()?.id
     }
 
     fun getAllMatches(): List<MatchHistory> =
@@ -391,3 +307,46 @@ class MatchStorageManager(
         return null
     }
 }
+
+data class DeliverySnapshot(
+    val strikerIndex: Int?,
+    val nonStrikerIndex: Int?,
+    val bowlerIndex: Int?,
+    val battingTeamPlayers: List<Player>,
+    val bowlingTeamPlayers: List<Player>,
+    val totalWickets: Int,
+    val currentOver: Int,
+    val ballsInOver: Int,
+    val totalExtras: Int,
+    val calculatedTotalRuns: Int,
+    val previousBowlerName: String?,
+    val midOverReplacementDueToJoker: Boolean,
+    val jokerBallsBowledInnings1: Int,
+    val jokerBallsBowledInnings2: Int,
+    val completedBattersInnings1: List<Player>,
+    val completedBattersInnings2: List<Player>,
+    val completedBowlersInnings1: List<Player>,
+    val completedBowlersInnings2: List<Player>
+)
+
+enum class NoBallSubOutcome { NONE, RUN_OUT, BOUNDARY_OUT }
+
+data class NoBallBoundaryOutInput(
+    val outBatterName: String? = null, // default striker if null
+)
+
+data class PlayerImpact(
+    val id: String? = null,
+    val name: String,
+    val team: String,
+    val impact: Double,
+    val summary: String,
+    val isJoker: Boolean = false,
+    val runs: Int = 0,
+    val balls: Int = 0,
+    val fours: Int = 0,
+    val sixes: Int = 0,
+    val wickets: Int = 0,
+    val runsConceded: Int = 0,
+    val oversBowled: Double = 0.0
+)

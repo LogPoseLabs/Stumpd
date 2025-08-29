@@ -5,39 +5,28 @@ import com.google.gson.Gson
 
 data class MatchSettings(
     // Basic match settings
-    val totalOvers: Int = 2,
+    val totalOvers: Int = 5,
     val maxPlayersPerTeam: Int = 11,
-    val allowSingleSideBatting: Boolean = false, // One batsman continues if others get out
+    val allowSingleSideBatting: Boolean = true, // One batsman continues if others get out
     // Extras settings - runs awarded
     val noballRuns: Int = 0,
     val byeRuns: Int = 0,
     val legByeRuns: Int = 0,
-    val legSideWideRuns: Int = 0,
+    val legSideWideRuns: Int = 1,
     val offSideWideRuns: Int = 0,
     // Advanced rules
-    val powerplayOvers: Int = 6, // First 6 overs are powerplay
-    val maxOversPerBowler: Int = 4,
+    val powerplayOvers: Int = 0, // First 6 overs are powerplay
+    val maxOversPerBowler: Int = 2,
     val enforceFollowOn: Boolean = false,
     val duckworthLewisMethod: Boolean = false,
-    // Joker player rules
+    // Joker rules
     val jokerCanBatAndBowl: Boolean = true,
-    val jokerMaxOvers: Int = 2,
-    val jokerCountsForBothTeams: Boolean = true,
+    val jokerMaxOvers: Int = 1,
     // Match format
-    val matchFormat: MatchFormat = MatchFormat.T20,
     val tossWinnerChoice: TossChoice = TossChoice.BAT_FIRST,
+    val enableSuperOver: Boolean = false,
+    val shortPitch: Boolean = true
 )
-
-enum class MatchFormat(
-    val displayName: String,
-    val defaultOvers: Int,
-) {
-    T20("T20 (20 overs)", 20),
-    T10("T10 (10 overs)", 10),
-    ODI("One Day (50 overs)", 50),
-    TEST("Test Match (Unlimited)", 0),
-    CUSTOM("Custom Format", 0),
-}
 
 enum class TossChoice(
     val displayName: String,
@@ -58,7 +47,7 @@ data class GlobalSettings(
 class MatchSettingsManager(
     private val context: Context,
 ) {
-    private val prefs = context.getSharedPreferences("match_settings", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("match_settings_v3", Context.MODE_PRIVATE)
     private val gson = Gson()
 
     fun getGlobalSettings(): GlobalSettings =

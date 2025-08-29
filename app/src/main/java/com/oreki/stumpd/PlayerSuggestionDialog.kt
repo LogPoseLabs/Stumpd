@@ -25,67 +25,59 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun PlayerSuggestionDialog(
     title: String,
-    selectedPlayers: List<String> = emptyList(), // NEW: List of already selected player names
-    currentTeamName: String = "", // NEW: Current team being set up
-    onPlayerSelected: (String) -> Unit,
+    selectedPlayers: List<String> = emptyList(), // selected playerIds
+    currentTeamName: String = "",
+    allowedPlayerIds: Set<String> = emptySet(), // NEW: group scope
+    onPlayerSelected: (String) -> Unit,  // returns playerId
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
     val playerStorage = remember { PlayerStorageManager(context) }
-
     var searchQuery by remember { mutableStateOf("") }
-    var suggestions by remember { mutableStateOf<List<StoredPlayer>>(emptyList()) }
-    var recentPlayers by remember { mutableStateOf<List<StoredPlayer>>(emptyList()) }
+    var suggestions by remember { mutableStateOf(emptyList<StoredPlayer>()) }
+    var recentPlayers by remember { mutableStateOf(emptyList<StoredPlayer>()) }
+    val all = remember { playerStorage.getAllPlayers().associateBy { it.id } }
 
-    // Load recent players on first show, filtered by selection status
-    LaunchedEffect(selectedPlayers) {
-        val allRecentPlayers = playerStorage.getRecentPlayers()
-        recentPlayers =
-            allRecentPlayers.filter { player ->
-                !selectedPlayers.contains(player.name)
-            }
+    // Only players in allowedPlayerIds and not already selected
+    LaunchedEffect(selectedPlayers, allowedPlayerIds) {
+        val allRecent = playerStorage.getAllPlayers()
+        val selectedIds = selectedPlayers.toSet()
+        val allowed = allowedPlayerIds.toSet()
+        recentPlayers = allRecent
+            .filter { allowed.isEmpty() || it.id in allowed } // allow all if no group restriction
+            .filter { it.id !in selectedIds } // exclude already selected
     }
 
-    // Update suggestions when search query changes, filtered by selection status
-    LaunchedEffect(searchQuery, selectedPlayers) {
+    LaunchedEffect(searchQuery, selectedPlayers, allowedPlayerIds) {
+        val selectedIds = selectedPlayers.toSet()
+        val allowed = allowedPlayerIds.toSet()
         suggestions =
-            if (searchQuery.isBlank()) {
-                emptyList()
-            } else {
-                playerStorage.searchPlayers(searchQuery).filter { player ->
-                    !selectedPlayers.contains(player.name)
-                }
-            }
+            if (searchQuery.isBlank()) emptyList()
+            else playerStorage.searchPlayers(searchQuery)
+                .filter { allowed.isEmpty() || it.id in allowed } // allow all if no group restriction
+                .filter { it.id !in selectedIds } // exclude already selected
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Column {
-                Text(
-                    text = title,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                )
+                Text(text = title, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 if (currentTeamName.isNotEmpty()) {
-                    Text(
-                        text = "Adding to: $currentTeamName",
-                        fontSize = 12.sp,
-                        color = Color.Gray,
-                    )
+                    Text(text = "Adding to: $currentTeamName", fontSize = 12.sp, color = Color.Gray)
                 }
                 if (selectedPlayers.isNotEmpty()) {
                     Text(
                         text = "${selectedPlayers.size} player(s) already selected",
                         fontSize = 10.sp,
-                        color = Color(0xFFFF9800),
+                        color = MaterialTheme.colorScheme.secondary
                     )
                 }
             }
         },
         text = {
             Column {
-                // Search/Add Player Input
+                // Search & add
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
@@ -93,9 +85,7 @@ fun PlayerSuggestionDialog(
                     placeholder = { Text("Type to search or add new player") },
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
                     modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = {
-                        Icon(Icons.Default.Person, contentDescription = "Player")
-                    },
+                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = "Player") },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
                             IconButton(onClick = { searchQuery = "" }) {
@@ -105,92 +95,66 @@ fun PlayerSuggestionDialog(
                     },
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(Modifier.height(12.dp))
 
-                // Show warning if player is already selected
-                if (searchQuery.isNotBlank() && selectedPlayers.any { it.equals(searchQuery.trim(), ignoreCase = true) }) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Default.Warning,
-                                contentDescription = "Warning",
-                                tint = Color(0xFFF44336),
-                                modifier = Modifier.size(16.dp),
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "'${searchQuery.trim()}' is already selected",
-                                fontSize = 12.sp,
-                                color = Color(0xFFF44336),
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
+                // Already selected warning by id is not useful when searching a name; remove the name-based warning
 
-                // Add New Player Button (shown when typing and player doesn't exist and isn't selected)
-                if (searchQuery.isNotBlank() &&
-                    suggestions.none { it.name.equals(searchQuery, ignoreCase = true) } &&
-                    !selectedPlayers.any { it.equals(searchQuery.trim(), ignoreCase = true) }
-                ) {
+                // Add new player: allow only if allowedPlayerIds is empty (no group) or will belong to group after creation
+                val canQuickAdd = searchQuery.isNotBlank() &&
+                        suggestions.none { it.name.equals(searchQuery, ignoreCase = true) } &&
+                        searchQuery.trim().isNotEmpty()
+
+                if (canQuickAdd) {
                     Button(
                         onClick = {
-                            playerStorage.addOrUpdatePlayer(searchQuery.trim())
-                            onPlayerSelected(searchQuery.trim())
+                            val added = playerStorage.addOrUpdatePlayer(searchQuery.trim())
+                            // Only allow select if group allows it
+                            if (allowedPlayerIds.isEmpty() || added.id in allowedPlayerIds) {
+                                onPlayerSelected(added.id)
+                            } else {
+                                // ignore if not permitted by group
+                            }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     ) {
                         Icon(Icons.Default.Add, contentDescription = "Add")
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(Modifier.width(8.dp))
                         Text("Add '${searchQuery.trim()}'")
                     }
-
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(Modifier.height(8.dp))
                 }
 
-                // Suggestions or Recent Players
-                LazyColumn(
-                    modifier = Modifier.height(200.dp),
-                ) {
+                // Results list
+                LazyColumn(modifier = Modifier.height(200.dp)) {
                     if (searchQuery.isBlank()) {
-                        // Show recent players when no search
                         if (recentPlayers.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = "Recent Players (Available)",
+                                    text = "Available Players", // title change
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF2E7D32),
+                                    color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(vertical = 4.dp),
                                 )
                             }
-
                             items(recentPlayers) { player ->
                                 PlayerSuggestionCard(
                                     player = player,
-                                    onClick = { onPlayerSelected(player.name) },
+                                    onClick = { onPlayerSelected(player.id) }
                                 )
                             }
                         } else {
                             item {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                                 ) {
                                     Text(
-                                        text =
-                                            if (selectedPlayers.isEmpty()) {
-                                                "No recent players found.\nType a name to add new player."
-                                            } else {
-                                                "All recent players are already selected.\nType a name to add new player."
-                                            },
+                                        text = if (selectedPlayers.isEmpty())
+                                            "No players available for selection.\nType a name to add new player."
+                                        else
+                                            "All the players are already part of a team.\nType a name to add new player.",
                                         modifier = Modifier.padding(16.dp),
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                         fontSize = 12.sp,
@@ -200,31 +164,28 @@ fun PlayerSuggestionDialog(
                             }
                         }
                     } else {
-                        // Show search suggestions
                         if (suggestions.isNotEmpty()) {
                             item {
                                 Text(
                                     text = "Available Players",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF2E7D32),
+                                    color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(vertical = 4.dp),
                                 )
                             }
-
                             items(suggestions) { player ->
                                 PlayerSuggestionCard(
                                     player = player,
-                                    onClick = { onPlayerSelected(player.name) },
-                                    highlightQuery = searchQuery,
+                                    onClick = { onPlayerSelected(player.id) },
+                                    highlightQuery = searchQuery
                                 )
                             }
                         } else {
-                            // Show message when no available suggestions
                             item {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                                 ) {
                                     Text(
                                         text = "No available players found matching '$searchQuery'.\nAll matching players may already be selected.",
@@ -238,15 +199,16 @@ fun PlayerSuggestionDialog(
                         }
                     }
 
-                    // Show selected players count at bottom
+                    // Selected summary
                     if (selectedPlayers.isNotEmpty()) {
+                        val selectedNames = selectedPlayers.mapNotNull { all[it]?.name }
                         item {
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(Modifier.height(8.dp))
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD)),
                             ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
+                                Column(Modifier.padding(12.dp)) {
                                     Text(
                                         text = "Already Selected (${selectedPlayers.size}):",
                                         fontSize = 12.sp,
@@ -254,7 +216,7 @@ fun PlayerSuggestionDialog(
                                         color = Color(0xFF1976D2),
                                     )
                                     Text(
-                                        text = selectedPlayers.joinToString(", "),
+                                        text = selectedNames.joinToString(", "),
                                         fontSize = 10.sp,
                                         color = Color(0xFF1976D2),
                                         maxLines = 2,
@@ -267,11 +229,7 @@ fun PlayerSuggestionDialog(
             }
         },
         confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
 
@@ -287,7 +245,7 @@ fun PlayerSuggestionCard(
                 .fillMaxWidth()
                 .padding(vertical = 2.dp)
                 .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Row(
             modifier =
@@ -299,7 +257,7 @@ fun PlayerSuggestionCard(
             Icon(
                 Icons.Default.Person,
                 contentDescription = "Player",
-                tint = Color(0xFF2E7D32),
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp),
             )
 
@@ -323,7 +281,7 @@ fun PlayerSuggestionCard(
                             text = player.name.substring(startIndex, endIndex),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2E7D32),
+                            color = MaterialTheme.colorScheme.primary,
                         )
                         if (endIndex < player.name.length) {
                             Text(
@@ -351,7 +309,7 @@ fun PlayerSuggestionCard(
                     Text(
                         text = "New player",
                         fontSize = 10.sp,
-                        color = Color(0xFF4CAF50),
+                        color = MaterialTheme.colorScheme.primary,
                         fontStyle = FontStyle.Italic,
                     )
                 }
@@ -362,17 +320,212 @@ fun PlayerSuggestionCard(
                 Text(
                     text = "${player.matchesPlayed}",
                     fontSize = 12.sp,
-                    color = Color(0xFF2E7D32),
+                    color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
                 )
             } else {
                 Icon(
                     Icons.Default.Add,
                     contentDescription = "New Player",
-                    tint = Color(0xFF4CAF50),
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(16.dp),
                 )
             }
         }
+    }
+}
+
+
+@Composable
+    fun PlayerMultiSelectDialog(
+    title: String,
+    occupiedIds: Set<String>,
+    preselectedIds: Set<String> = emptySet(),
+    allowedPlayerIds: Set<String> = emptySet(), // NEW
+    onConfirm: (List<String>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val playerStorage = remember { PlayerStorageManager(context) }
+    var searchQuery by remember { mutableStateOf("") }
+    var suggestions by remember { mutableStateOf(emptyList<StoredPlayer>()) }
+    var recentPlayers by remember { mutableStateOf(emptyList<StoredPlayer>()) }
+    var selected by remember { mutableStateOf(preselectedIds) }
+
+    val allowed = remember(allowedPlayerIds) { allowedPlayerIds.toSet() }
+
+    LaunchedEffect(occupiedIds, allowed) {
+        recentPlayers = playerStorage.getAllPlayers()
+            .filter { it.id !in occupiedIds }
+            .filter { allowed.isEmpty() || it.id in allowed }
+    }
+    LaunchedEffect(searchQuery, occupiedIds, allowed) {
+        suggestions =
+            if (searchQuery.isBlank()) emptyList()
+            else playerStorage.searchPlayers(searchQuery)
+                .filter { it.id !in occupiedIds }
+                .filter { allowed.isEmpty() || it.id in allowed }
+    }
+
+    fun toggle(id: String) { selected = if (id in selected) selected - id else selected + id }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Player Name") },
+                    placeholder = { Text("Type to search or add new player") },
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear")
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                val canQuickAdd = searchQuery.isNotBlank() &&
+                        suggestions.none { it.name.equals(searchQuery, true) }
+
+                if (canQuickAdd) {
+                    FilledTonalButton(
+                        onClick = {
+                            val cleaned = searchQuery.trim()
+                            val sp = playerStorage.addOrUpdatePlayer(cleaned)
+                            if (allowed.isEmpty() || sp.id in allowed) {
+                                toggle(sp.id)
+                            }
+                            searchQuery = ""
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Add '$searchQuery'")
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                LazyColumn(Modifier.height(240.dp)) {
+                    if (searchQuery.isBlank()) {
+                        if (recentPlayers.isNotEmpty()) {
+                            item {
+                                Text(
+                                    "Available Players",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                            }
+                            items(recentPlayers) { player ->
+                                MultiSelectRow(
+                                    id = player.id,                            // id
+                                    name = player.name,
+                                    checked = player.id in selected,          // check by id
+                                    onToggle = { toggle(player.id) },         // toggle by id
+                                )
+                            }
+                        } else {
+                            item { InfoCard("No available players.\nType a name to add new player.") }
+                        }
+                    } else {
+                        if (suggestions.isNotEmpty()) {
+                            item {
+                                Text(
+                                    "Available Players",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                            }
+                            items(suggestions) { player ->
+                                MultiSelectRow(
+                                    id = player.id,
+                                    name = player.name,
+                                    checked = player.id in selected,
+                                    onToggle = { toggle(player.id) },
+                                    highlightQuery = searchQuery
+                                )
+                            }
+                        } else {
+                            item { InfoCard("No available players matching '$searchQuery'.") }
+                        }
+                    }
+
+                    if (selected.isNotEmpty()) {
+                        item {
+                            Spacer(Modifier.height(8.dp))
+                            AssistChip(onClick = {}, label = { Text("Selected: ${selected.size}") })
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(selected.toList()) }, enabled = selected.isNotEmpty()) {
+                Text("Add (${selected.size})")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun MultiSelectRow(
+    id: String,
+    name: String,
+    checked: Boolean,
+    onToggle: () -> Unit,
+    highlightQuery: String = ""
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .clickable { onToggle() }
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(checked = checked, onCheckedChange = { onToggle() })
+            Spacer(Modifier.width(4.dp))
+            if (highlightQuery.isNotEmpty() && name.contains(highlightQuery, true)) {
+                val start = name.indexOf(highlightQuery, ignoreCase = true)
+                val end = start + highlightQuery.length
+                Row {
+                    if (start > 0) Text(name.substring(0, start))
+                    Text(name.substring(start, end), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    if (end < name.length) Text(name.substring(end))
+                }
+            } else {
+                Text(name)
+            }
+        }
+    }
+}
+
+@Composable
+private fun InfoCard(text: String) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(16.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp
+        )
     }
 }

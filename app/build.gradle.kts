@@ -6,6 +6,15 @@ plugins {
 android {
     namespace = "com.oreki.stumpd"
     compileSdk = 35
+    applicationVariants.all {
+        outputs.all {
+            val variantName = name // e.g., debug, release
+            val appName = "Stumpd" // change to your preferred base name
+            val versionNameSafe = versionName?.replace("[^A-Za-z0-9._-]".toRegex(), "_") ?: "v"
+            val versionCodeSafe = versionCode
+            val newName = "${appName}-${variantName}-${versionNameSafe}(${versionCodeSafe}).apk"
+        }
+    }
 
     defaultConfig {
         applicationId = "com.oreki.stumpd"
@@ -69,4 +78,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("com.google.code.gson:gson:2.10.1")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.appcompat:appcompat:1.6.1")
+
 }

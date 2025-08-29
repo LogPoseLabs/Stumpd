@@ -10,23 +10,27 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Home
+import com.oreki.stumpd.ui.theme.Label
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.oreki.stumpd.ui.theme.ResultChip
 import com.oreki.stumpd.ui.theme.StumpdTheme
+import com.oreki.stumpd.ui.theme.StumpdTopBar
+import com.oreki.stumpd.ui.theme.sectionContainer
 import java.text.SimpleDateFormat
 import java.util.*
 
 class MatchHistoryActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        actionBar?.hide()
         setContent {
             StumpdTheme {
                 Surface(
@@ -45,132 +49,171 @@ class MatchHistoryActivity : ComponentActivity() {
 fun MatchHistoryScreen() {
     val context = LocalContext.current
     val storageManager = remember { MatchStorageManager(context) }
-    var matches by remember { mutableStateOf<List<MatchHistory>>(listOf()) }
+    val groupStorage = remember { PlayerGroupStorageManager(context) }
+
+    var allMatches by remember { mutableStateOf<List<MatchHistory>>(emptyList()) }
     var debugInfo by remember { mutableStateOf("") }
 
+    // Group filter state
+    data class GroupFilter(val id: String?, val name: String) // id == null => All Groups; id == "__UNASSIGNED__" => legacy
+    var selectedFilter by remember { mutableStateOf(GroupFilter(id = null, name = "All Groups")) }
+    var showGroupPicker by remember { mutableStateOf(false) }
+
+    // Load once
     LaunchedEffect(Unit) {
-        matches = storageManager.getAllMatches()
+        allMatches = storageManager.getAllMatches()
         debugInfo = storageManager.debugStorage()
-        android.util.Log.d("MatchHistory", "Loaded ${matches.size} matches")
+        android.util.Log.d("MatchHistory", "Loaded ${allMatches.size} matches")
         android.util.Log.d("MatchHistory", debugInfo)
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        // Header with debug info
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = { (context as ComponentActivity).finish() }) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-            }
-            Column {
-                Text(
-                    text = "Match History",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32)
-                )
-                Text(
-                    text = "${matches.size} matches found",
-                    fontSize = 12.sp,
-                    color = Color.Gray
-                )
-            }
+    // Apply filter
+    val filteredMatches = remember(allMatches, selectedFilter) {
+        when {
+            selectedFilter.id == null -> allMatches
+            else -> allMatches.filter { it.groupId == selectedFilter.id }
         }
+    }
 
-        Spacer(modifier = Modifier.height(8.dp))
-        // Rest of your existing UI...
-        if (matches.isEmpty()) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))
-            ) {
-                Column(
-                    modifier = Modifier.padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+    Scaffold(
+        topBar = {
+            StumpdTopBar(
+                title = "Archive",
+                subtitle = "${filteredMatches.size} matches",
+                onBack = { (context as ComponentActivity).finish() },
+                actions = {
+                    // Group filter button
+                    FilledTonalButton(
+                        onClick = { showGroupPicker = true },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Home, contentDescription = "Group", modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(selectedFilter.name, fontSize = 8.sp)
+                    }
+                    Spacer(Modifier.width(8.dp))
+
+                    // Export
+                    FilledTonalButton(
+                        onClick = {
+                            val path = storageManager.exportMatches()
+                            if (path != null) {
+                                android.widget.Toast.makeText(context, "Backup saved to: $path", android.widget.Toast.LENGTH_LONG).show()
+                            } else {
+                                android.widget.Toast.makeText(context, "Export failed", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) { Text("Export", fontSize = 12.sp) }
+
+                    Spacer(Modifier.width(8.dp))
+
+                    // Import
+                    OutlinedButton(
+                        onClick = {
+                            val downloadsPath = android.os.Environment.getExternalStoragePublicDirectory(
+                                android.os.Environment.DIRECTORY_DOWNLOADS
+                            )
+                            val backupFile = java.io.File(downloadsPath, "stumpd_backup.json")
+                            if (storageManager.importMatches(backupFile.absolutePath)) {
+                                allMatches = storageManager.getAllMatches()
+                                android.widget.Toast.makeText(context, "Backup imported", android.widget.Toast.LENGTH_LONG).show()
+                            } else {
+                                android.widget.Toast.makeText(context, "Import failed. Put stumpd_backup.json in Downloads", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) { Text("Import", fontSize = 12.sp) }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)
+        ) {
+            if (filteredMatches.isEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
-                    Text(text = "🏏", fontSize = 48.sp)
-                    Text(text = "No matches played yet", fontSize = 18.sp, fontWeight = FontWeight.Medium)
-                    Text(text = "Start scoring to build your match history!", fontSize = 14.sp, color = Color.Gray)
-                }
-            }
-        } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(matches) { match ->
-                    MatchHistoryCard(match = match) {
-                        storageManager.deleteMatch(match.id)
-                        matches = storageManager.getAllMatches()
+                    Column(
+                        modifier = Modifier.padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(text = "🏏", fontSize = 48.sp)
+                        Text(
+                            text = "No matches found",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = when (selectedFilter.id) {
+                                null -> "Start scoring to build your match history!"
+                                else -> "No matches in ${selectedFilter.name}."
+                            },
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
-            }
-        }
-        // Add these buttons in your MatchHistoryScreen
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = {
-                    val backupPath = storageManager.exportMatches()
-                    if (backupPath != null) {
-                        android.widget.Toast.makeText(
-                            context,
-                            "Backup saved to: $backupPath",
-                            android.widget.Toast.LENGTH_LONG
-                        ).show()
-                    } else {
-                        android.widget.Toast.makeText(
-                            context,
-                            "Export failed",
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(filteredMatches) { match ->
+                        MatchHistoryCard(
+                            match = match,
+                            onDelete = {
+                                storageManager.deleteMatch(match.id)
+                                allMatches = storageManager.getAllMatches()
+                            }
+                        )
                     }
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
-            ) {
-                Text("Export Backup")
-            }
-
-            Button(
-                onClick = {
-                    // For simplicity, this imports from a predefined location
-                    // In a real app, you'd use a file picker
-                    val downloadsPath = android.os.Environment.getExternalStoragePublicDirectory(
-                        android.os.Environment.DIRECTORY_DOWNLOADS
-                    )
-                    val backupFile = java.io.File(downloadsPath, "stumpd_backup.json")
-
-                    if (storageManager.importMatches(backupFile.absolutePath)) {
-                        matches = storageManager.getAllMatches()
-                        android.widget.Toast.makeText(
-                            context,
-                            "Backup imported successfully!",
-                            android.widget.Toast.LENGTH_LONG
-                        ).show()
-                    } else {
-                        android.widget.Toast.makeText(
-                            context,
-                            "Import failed. Place backup file in Downloads as 'stumpd_backup.json'",
-                            android.widget.Toast.LENGTH_LONG
-                        ).show()
-                    }
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
-            ) {
-                Text("Import Backup")
+                }
             }
         }
     }
-}
 
+    // Group picker dialog
+    if (showGroupPicker) {
+        val groups = remember { groupStorage.getAllGroups() }
+        AlertDialog(
+            onDismissRequest = { showGroupPicker = false },
+            title = { Text("Filter by Group") },
+            text = {
+                LazyColumn(Modifier.height(360.dp)) {
+                    // All Groups
+                    item {
+                        ListItem(
+                            headlineContent = { Text("All Groups") },
+                            modifier = Modifier.clickable {
+                                selectedFilter = GroupFilter(id = null, name = "All Groups")
+                                showGroupPicker = false
+                            }
+                        )
+                    }
+                    // Real groups
+                    items(groups) { g ->
+                        val count = allMatches.count { it.groupId == g.id }
+                        ListItem(
+                            headlineContent = { Text(g.name) },
+                            supportingContent = {
+                                Text("$count matches", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            },
+                            modifier = Modifier.clickable {
+                                selectedFilter = GroupFilter(id = g.id, name = g.name)
+                                showGroupPicker = false
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showGroupPicker = false }) { Text("Close") } }
+        )
+    }
+}
 
 @Composable
 fun MatchHistoryCard(
@@ -188,27 +231,41 @@ fun MatchHistoryCard(
                 intent.putExtra("match_id", match.id)
                 context.startActivity(intent)
             },
-        colors = CardDefaults.cardColors(
-            containerColor = Color.White
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = sectionContainer()),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            // Header with date and delete button
+            // Header with date, group badge and delete button
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = dateFormat.format(Date(match.matchDate)),
-                    fontSize = 12.sp,
-                    color = Color.Gray
-                )
-
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        dateFormat.format(Date(match.matchDate)),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    // Group badge if present
+                    match.groupName?.takeIf { it.isNotBlank() }?.let { gName ->
+                        Spacer(Modifier.width(8.dp))
+                        AssistChip(onClick = {}, label = { Text(gName, fontSize = 10.sp) })
+                    } ?: run {
+                        // If no group, show "Unassigned" subtly
+                        Spacer(Modifier.width(8.dp))
+                        AssistChip(
+                            onClick = {},
+                            label = { Text("Unassigned", fontSize = 10.sp) },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        )
+                    }
+                }
                 IconButton(
                     onClick = onDelete,
                     modifier = Modifier.size(24.dp)
@@ -216,7 +273,7 @@ fun MatchHistoryCard(
                     Icon(
                         Icons.Default.Delete,
                         contentDescription = "Delete Match",
-                        tint = Color(0xFFF44336),
+                        tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -235,59 +292,43 @@ fun MatchHistoryCard(
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
-                    Text(
-                        text = "${match.firstInningsRuns}/${match.firstInningsWickets}",
-                        fontSize = 14.sp,
-                        color = Color.Gray
-                    )
+                    Label("${match.firstInningsRuns}/${match.firstInningsWickets}")
                 }
-
                 Text(
                     text = "vs",
                     fontSize = 14.sp,
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.align(Alignment.CenterVertically)
                 )
-
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = match.team2Name,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
-                    Text(
-                        text = "${match.secondInningsRuns}/${match.secondInningsWickets}",
-                        fontSize = 14.sp,
-                        color = Color.Gray
-                    )
+                    Label("${match.secondInningsRuns}/${match.secondInningsWickets}")
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Winner section
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFFE8F5E8)
-                )
-            ) {
-                Text(
-                    text = "🏆 ${match.winnerTeam} won by ${match.winningMargin}",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32),
-                    modifier = Modifier.padding(12.dp)
-                )
+            // Winner/Tie chip
+            val winnerText = if (match.winnerTeam.equals("TIE", true)) {
+                "Match Tied • ${match.winningMargin}"
+            } else {
+                "${match.winnerTeam} won by ${match.winningMargin}"
+            }
+            Row(Modifier.padding(top = 8.dp)) {
+                ResultChip(text = winnerText, positive = !match.winnerTeam.equals("TIE", true))
             }
 
-            // Show joker if present
+            // Joker if present
             match.jokerPlayerName?.let { jokerName ->
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "🃏 Joker: $jokerName",
                     fontSize = 12.sp,
-                    color = Color(0xFFFF9800),
+                    color = MaterialTheme.colorScheme.secondary,
                     fontWeight = FontWeight.Medium
                 )
             }
