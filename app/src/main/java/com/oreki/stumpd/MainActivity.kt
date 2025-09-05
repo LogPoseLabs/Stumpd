@@ -14,20 +14,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Person
 import com.oreki.stumpd.ui.theme.StumpdTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        actionBar?.hide()
         setContent {
             StumpdTheme {
                 Surface(
@@ -52,7 +52,7 @@ fun MainScreen() {
             .fillMaxSize()
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         // App Title with Cricket Theme
         Text(
@@ -65,13 +65,13 @@ fun MainScreen() {
             text = "Stump'd",
             fontSize = 40.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF2E7D32)
+            color = MaterialTheme.colorScheme.primary
         )
 
         Text(
             text = "Your Digital Cricket Scorebook",
             fontSize = 16.sp,
-            color = Color.Gray,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
@@ -80,7 +80,7 @@ fun MainScreen() {
             Text(
                 text = "$matchCount matches played",
                 fontSize = 14.sp,
-                color = Color(0xFF4CAF50),
+                color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.padding(bottom = 32.dp)
             )
@@ -99,7 +99,7 @@ fun MainScreen() {
                 .height(60.dp)
                 .padding(bottom = 16.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF4CAF50)
+                containerColor = MaterialTheme.colorScheme.primary
             ),
             shape = RoundedCornerShape(12.dp)
         ) {
@@ -109,7 +109,7 @@ fun MainScreen() {
                 Icon(
                     Icons.Default.PlayArrow,
                     contentDescription = "Start Match",
-                    tint = Color.White
+                    tint = MaterialTheme.colorScheme.onPrimary
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -131,7 +131,7 @@ fun MainScreen() {
                 .height(60.dp)
                 .padding(bottom = 16.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF2196F3)
+                containerColor = MaterialTheme.colorScheme.error
             ),
             shape = RoundedCornerShape(12.dp)
         ) {
@@ -141,7 +141,7 @@ fun MainScreen() {
                 Icon(
                     Icons.Default.Star,
                     contentDescription = "Match History",
-                    tint = Color.White
+                    tint = MaterialTheme.colorScheme.onError
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -152,8 +152,8 @@ fun MainScreen() {
                 if (matchCount > 0) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Badge(
-                        containerColor = Color.White,
-                        contentColor = Color(0xFF2196F3)
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                     ) {
                         Text(
                             text = matchCount.toString(),
@@ -180,7 +180,10 @@ fun MainScreen() {
                 .height(60.dp)
                 .padding(bottom = 16.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (matchCount > 0) Color(0xFF9C27B0) else Color(0xFFBDBDBD)
+                containerColor = if (matchCount > 0)
+                    MaterialTheme.colorScheme.tertiary
+                else
+                    MaterialTheme.colorScheme.surfaceVariant
             ),
             shape = RoundedCornerShape(12.dp)
         ) {
@@ -188,44 +191,13 @@ fun MainScreen() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    Icons.Default.KeyboardArrowUp,
+                    Icons.Default.Menu,
                     contentDescription = "Statistics",
-                    tint = Color.White
+                    tint = MaterialTheme.colorScheme.onTertiary
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Statistics",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
-
-        // About Button
-        Button(
-            onClick = {
-                val intent = Intent(context, AboutActivity::class.java)
-                context.startActivity(intent)
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(60.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF9E9E9E)
-            ),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Default.Info,
-                    contentDescription = "About",
-                    tint = Color.White
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "About",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -237,20 +209,77 @@ fun MainScreen() {
                 val intent = Intent(context, AddPlayerActivity::class.java)
                 context.startActivity(intent)
             },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0))
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .padding(bottom = 16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
         ) {
-            Icon(Icons.Default.Add, contentDescription = "Manage Players")
+            Icon(Icons.Default.Person, contentDescription = "Manage Players")
             Spacer(modifier = Modifier.width(8.dp))
             Text("Manage Players", fontSize = 16.sp)
         }
-        Spacer(modifier = Modifier.height(24.dp))
+        Button(
+            onClick = {
+                val intent = Intent(context, GroupManagementActivity::class.java)
+                context.startActivity(intent)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .padding(bottom = 16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+        ) {
+            Icon(Icons.Default.Person, contentDescription = "Manage Groups")
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Manage Groups", fontSize = 16.sp)
+        }
+
+        // About Button
+        Button(
+            onClick = {
+                val intent = Intent(context, AboutActivity::class.java)
+                context.startActivity(intent)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .padding(bottom = 16.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Info,
+                    contentDescription = "About",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "About",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(20.dp))
 
         // App version info
         Text(
             text = "Version 1.0.0",
             fontSize = 12.sp,
-            color = Color.Gray
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = "by LogPoseLabs",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

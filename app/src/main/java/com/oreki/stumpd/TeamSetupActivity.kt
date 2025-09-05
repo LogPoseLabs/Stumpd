@@ -1,10 +1,12 @@
 package com.oreki.stumpd
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
@@ -15,20 +17,26 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.gson.Gson
+import com.oreki.stumpd.ui.theme.PrimaryCta
+import com.oreki.stumpd.ui.theme.SectionTitle
 import com.oreki.stumpd.ui.theme.StumpdTheme
+import androidx.compose.foundation.layout.FlowRow
+import com.oreki.stumpd.ui.theme.SectionCard
+import com.oreki.stumpd.ui.theme.StumpdTopBar
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.lazy.items
+import com.oreki.stumpd.ui.theme.Label
 
 class TeamSetupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
+        actionBar?.hide()
         setContent {
             StumpdTheme {
                 Surface(
@@ -75,6 +83,15 @@ fun TeamSetupScreen() {
     var powerplayOversText by remember { mutableStateOf(matchSettings.powerplayOvers.toString()) }
     var jokerMaxOversText by remember { mutableStateOf(matchSettings.jokerMaxOvers.toString()) }
 
+    var showGroupPicker by remember { mutableStateOf(false) }
+    val groupStorage = remember { PlayerGroupStorageManager(context) }
+    val playerStorage = remember { PlayerStorageManager(context) }
+
+    var selectedGroup by remember { mutableStateOf<PlayerGroup?>(null) }
+
+    var tossWinner by remember { mutableStateOf<String?>(null) }
+    var tossChoice by remember { mutableStateOf<String?>(null) }
+
     // Expandable sections state
     var expandedSections by remember {
         mutableStateOf(setOf("basic")) // Start with basic expanded
@@ -88,600 +105,700 @@ fun TeamSetupScreen() {
         }
     }
 
-    // Calculate dynamic max players (actual team sizes + joker if applicable)
-    val calculatedMaxPlayers = maxOf(team1.players.size, team2.players.size) +
-            if (jokerPlayer != null && matchSettings.jokerCountsForBothTeams) 1 else 0
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Header
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(
-                    onClick = {
-                        val intent = Intent(context, MainActivity::class.java)
-                        context.startActivity(intent)
-                        (context as androidx.activity.ComponentActivity).finish()
-                    },
-                ) {
-                    Icon(
-                        Icons.Default.ArrowBack,
-                        contentDescription = "Back to Home",
-                        tint = Color(0xFF2E7D32),
-                    )
+    Scaffold(
+        topBar = {
+            StumpdTopBar(
+                title = "Quick Match Setup",
+                subtitle = "Configure match settings and teams",
+                onBack = {
+                    val intent = Intent(context, MainActivity::class.java)
+                    context.startActivity(intent)
+                    (context as ComponentActivity).finish()
                 }
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "⚡ Quick Match Setup",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32),
-                    )
-                    Text(
-                        text = "Configure match settings and teams",
-                        fontSize = 14.sp,
-                        color = Color.Gray,
+            )
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            "📂 Group",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = selectedGroup?.name ?: "No group selected", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            FilledTonalButton(onClick = {
+                                showGroupPicker = true
+                            }) {
+                                Icon(Icons.Default.Home, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(if (selectedGroup == null) "Select Group" else "Change")
+                            }
+                        }
+                    }
+                }
+            }
+            // Basic Settings Section
+            item {
+                SettingsSection(
+                    title = "🏏 Basic Settings",
+                    isExpanded = expandedSections.contains("basic"),
+                    onToggle = { toggleSection("basic") }
+                ) {
+                    // Total Overs
+                    SettingRow(
+                        label = "Total Overs",
+                        value = oversText,
+                        onValueChange = { value ->
+                            oversText = value
+                            value.toIntOrNull()?.let { overs ->
+                                if (overs > 0 && overs <= 50) {
+                                    matchSettings = matchSettings.copy(totalOvers = overs)
+                                }
+                            }
+                        }
                     )
                 }
             }
-        }
 
-        // Basic Settings Section
-        item {
-            SettingsSection(
-                title = "🏏 Basic Settings",
-                isExpanded = expandedSections.contains("basic"),
-                onToggle = { toggleSection("basic") }
-            ) {
-                // Match Format Selection
-                Text(
-                    text = "Match Format:",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // Extras Settings Section
+            item {
+                SettingsSection(
+                    title = "⚾ Extras Settings",
+                    isExpanded = expandedSections.contains("extras"),
+                    onToggle = { toggleSection("extras") }
                 ) {
-                    MatchFormat.values().forEach { format ->
-                        FilterChip(
-                            onClick = {
-                                matchSettings = matchSettings.copy(
-                                    matchFormat = format,
-                                    totalOvers = if (format != MatchFormat.CUSTOM) format.defaultOvers else matchSettings.totalOvers
-                                )
-                            },
-                            label = { Text(format.name, fontSize = 11.sp) },
-                            selected = matchSettings.matchFormat == format,
-                            modifier = Modifier.height(32.dp)
+                    SettingRow(
+                        label = "Leg Side Wide Runs",
+                        value = legSideWideRunsText,
+                        onValueChange = { value ->
+                            legSideWideRunsText = value
+                            value.toIntOrNull()?.let { runs ->
+                                if (runs >= 1 && runs <= 1) {
+                                    matchSettings = matchSettings.copy(legSideWideRuns = runs)
+                                }
+                            }
+                        }
+                    )
+
+                    SettingRow(
+                        label = "Off Side Wide Runs",
+                        value = offSideWideRunsText,
+                        onValueChange = { value ->
+                            offSideWideRunsText = value
+                            value.toIntOrNull()?.let { runs ->
+                                if (runs >= 0 && runs <= 1) {
+                                    matchSettings = matchSettings.copy(offSideWideRuns = runs)
+                                }
+                            }
+                        }
+                    )
+
+                    SettingRow(
+                        label = "No Ball Runs",
+                        value = noballRunsText,
+                        onValueChange = { value ->
+                            noballRunsText = value
+                            value.toIntOrNull()?.let { runs ->
+                                if (runs >= 0 && runs <= 1) {
+                                    matchSettings = matchSettings.copy(noballRuns = runs)
+                                }
+                            }
+                        }
+                    )
+
+                    SettingRow(
+                        label = "Bye Runs",
+                        value = byeRunsText,
+                        onValueChange = { value ->
+                            byeRunsText = value
+                            value.toIntOrNull()?.let { runs ->
+                                if (runs >= 0 && runs <= 1) {
+                                    matchSettings = matchSettings.copy(byeRuns = runs)
+                                }
+                            }
+                        }
+                    )
+
+                    SettingRow(
+                        label = "Leg Bye Runs",
+                        value = legByeRunsText,
+                        onValueChange = { value ->
+                            legByeRunsText = value
+                            value.toIntOrNull()?.let { runs ->
+                                if (runs >= 0 && runs <= 1) {
+                                    matchSettings = matchSettings.copy(legByeRuns = runs)
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+
+            // Special Rules Section
+            item {
+                SettingsSection(
+                    title = "⚡ Special Rules",
+                    isExpanded = expandedSections.contains("special"),
+                    onToggle = { toggleSection("special") }
+                ) {
+                    SwitchSettingRow(
+                        label = "Single Side Batting",
+                        description = "Allow one batsman to continue if others get out",
+                        checked = matchSettings.allowSingleSideBatting,
+                        onCheckedChange = {
+                            matchSettings = matchSettings.copy(allowSingleSideBatting = it)
+                        }
+                    )
+                    SwitchSettingRow(
+                        label = "Short Pitch",
+                        description = "0-4 runs available. No 6",
+                        checked = matchSettings.shortPitch,
+                        onCheckedChange = {
+                            matchSettings = matchSettings.copy(shortPitch = it)
+                        }
+                    )
+
+                    SwitchSettingRow(
+                        label = "Enable Joker",
+                        description = "A player who can bat and bowl for both teams",
+                        checked = matchSettings.jokerCanBatAndBowl,
+                        onCheckedChange = {
+                            matchSettings = matchSettings.copy(jokerCanBatAndBowl = it)
+                            if (!it) jokerPlayer = null // Clear joker if disabled
+                        }
+                    )
+
+                    if (matchSettings.jokerCanBatAndBowl) {
+                        SettingRow(
+                            label = "Joker Max Overs",
+                            value = jokerMaxOversText,
+                            onValueChange = { value ->
+                                jokerMaxOversText = value
+                                value.toIntOrNull()?.let { overs ->
+                                    if (overs >= 1 && overs <= matchSettings.totalOvers) {
+                                        matchSettings = matchSettings.copy(jokerMaxOvers = overs)
+                                    }
+                                }
+                            }
                         )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Total Overs
-                SettingRow(
-                    label = "Total Overs",
-                    value = oversText,
-                    onValueChange = { value ->
-                        oversText = value
-                        value.toIntOrNull()?.let { overs ->
-                            if (overs > 0 && overs <= 50) {
-                                matchSettings = matchSettings.copy(totalOvers = overs)
-                            }
-                        }
-                    }
-                )
             }
-        }
 
-        // Extras Settings Section
-        item {
-            SettingsSection(
-                title = "⚾ Extras Settings",
-                isExpanded = expandedSections.contains("extras"),
-                onToggle = { toggleSection("extras") }
-            ) {
-                SettingRow(
-                    label = "Leg Side Wide Runs",
-                    value = legSideWideRunsText,
-                    onValueChange = { value ->
-                        legSideWideRunsText = value
-                        value.toIntOrNull()?.let { runs ->
-                            if (runs >= 1 && runs <= 1) {
-                                matchSettings = matchSettings.copy(legSideWideRuns = runs)
-                            }
-                        }
-                    }
-                )
-
-                SettingRow(
-                    label = "Off Side Wide Runs",
-                    value = offSideWideRunsText,
-                    onValueChange = { value ->
-                        offSideWideRunsText = value
-                        value.toIntOrNull()?.let { runs ->
-                            if (runs >= 0 && runs <= 1) {
-                                matchSettings = matchSettings.copy(offSideWideRuns = runs)
-                            }
-                        }
-                    }
-                )
-
-                SettingRow(
-                    label = "No Ball Runs",
-                    value = noballRunsText,
-                    onValueChange = { value ->
-                        noballRunsText = value
-                        value.toIntOrNull()?.let { runs ->
-                            if (runs >= 0 && runs <= 1) {
-                                matchSettings = matchSettings.copy(noballRuns = runs)
-                            }
-                        }
-                    }
-                )
-
-                SettingRow(
-                    label = "Bye Runs",
-                    value =  byeRunsText,
-                    onValueChange = { value ->
-                        byeRunsText = value
-                        value.toIntOrNull()?.let { runs ->
-                            if (runs >= 0 && runs <= 1) {
-                                matchSettings = matchSettings.copy(byeRuns = runs)
-                            }
-                        }
-                    }
-                )
-
-                SettingRow(
-                    label = "Leg Bye Runs",
-                    value = legByeRunsText,
-                    onValueChange = { value ->
-                        legByeRunsText = value
-                        value.toIntOrNull()?.let { runs ->
-                            if (runs >= 0 && runs <= 1) {
-                                matchSettings = matchSettings.copy(legByeRuns = runs)
-                            }
-                        }
-                    }
-                )
-            }
-        }
-
-        // Special Rules Section
-        item {
-            SettingsSection(
-                title = "⚡ Special Rules",
-                isExpanded = expandedSections.contains("special"),
-                onToggle = { toggleSection("special") }
-            ) {
-                SwitchSettingRow(
-                    label = "Single Side Batting",
-                    description = "Allow one batsman to continue if others get out",
-                    checked = matchSettings.allowSingleSideBatting,
-                    onCheckedChange = {
-                        matchSettings = matchSettings.copy(allowSingleSideBatting = it)
-                    }
-                )
-
-                SwitchSettingRow(
-                    label = "Enable Joker Player",
-                    description = "A player who can bat and bowl for both teams",
-                    checked = matchSettings.jokerCanBatAndBowl,
-                    onCheckedChange = {
-                        matchSettings = matchSettings.copy(jokerCanBatAndBowl = it)
-                        if (!it) jokerPlayer = null // Clear joker if disabled
-                    }
-                )
-
-                if (matchSettings.jokerCanBatAndBowl) {
+            // Advanced Rules Section
+            item {
+                SettingsSection(
+                    title = "🎯 Advanced Rules",
+                    isExpanded = expandedSections.contains("advanced"),
+                    onToggle = { toggleSection("advanced") }
+                ) {
                     SettingRow(
-                        label = "Joker Max Overs",
-                        value = jokerMaxOversText,
+                        label = "Max Overs per Bowler",
+                        value = maxOversPerBowlerText,
                         onValueChange = { value ->
-                            jokerMaxOversText = value
+                            maxOversPerBowlerText = value
                             value.toIntOrNull()?.let { overs ->
-                                if (overs >= 1 && overs <= matchSettings.totalOvers) {
-                                    matchSettings = matchSettings.copy(jokerMaxOvers = overs)
+                                if (overs > 0 && overs <= matchSettings.totalOvers) {
+                                    matchSettings = matchSettings.copy(maxOversPerBowler = overs)
+                                }
+                            }
+                        }
+                    )
+
+                    SettingRow(
+                        label = "Powerplay Overs",
+                        value = powerplayOversText,
+                        onValueChange = { value ->
+                            powerplayOversText = value
+                            value.toIntOrNull()?.let { overs ->
+                                if (overs >= 0 && overs <= matchSettings.totalOvers) {
+                                    matchSettings = matchSettings.copy(powerplayOvers = overs)
                                 }
                             }
                         }
                     )
 
                     SwitchSettingRow(
-                        label = "Joker Counts for Both Teams",
-                        description = "Joker player adds to both team sizes",
-                        checked = matchSettings.jokerCountsForBothTeams,
+                        label = "Enforce Follow-On",
+                        description = "Traditional test match follow-on rules",
+                        checked = matchSettings.enforceFollowOn,
                         onCheckedChange = {
-                            matchSettings = matchSettings.copy(jokerCountsForBothTeams = it)
+                            matchSettings = matchSettings.copy(enforceFollowOn = it)
+                        }
+                    )
+
+                    SwitchSettingRow(
+                        label = "Duckworth-Lewis Method",
+                        description = "Apply D/L method for interrupted matches",
+                        checked = matchSettings.duckworthLewisMethod,
+                        onCheckedChange = {
+                            matchSettings = matchSettings.copy(duckworthLewisMethod = it)
                         }
                     )
                 }
             }
-        }
 
-        // Advanced Rules Section
-        item {
-            SettingsSection(
-                title = "🎯 Advanced Rules",
-                isExpanded = expandedSections.contains("advanced"),
-                onToggle = { toggleSection("advanced") }
-            ) {
-                SettingRow(
-                    label = "Max Overs per Bowler",
-                    value = maxOversPerBowlerText,
-                    onValueChange = { value ->
-                        maxOversPerBowlerText = value
-                        value.toIntOrNull()?.let { overs ->
-                            if (overs > 0 && overs <= matchSettings.totalOvers) {
-                                matchSettings = matchSettings.copy(maxOversPerBowler = overs)
-                            }
-                        }
-                    }
-                )
-
-                SettingRow(
-                    label = "Powerplay Overs",
-                    value = powerplayOversText,
-                    onValueChange = { value ->
-                        powerplayOversText = value
-                        value.toIntOrNull()?.let { overs ->
-                            if (overs >= 0 && overs <= matchSettings.totalOvers) {
-                                matchSettings = matchSettings.copy(powerplayOvers = overs)
-                            }
-                        }
-                    }
-                )
-
-                SwitchSettingRow(
-                    label = "Enforce Follow-On",
-                    description = "Traditional test match follow-on rules",
-                    checked = matchSettings.enforceFollowOn,
-                    onCheckedChange = {
-                        matchSettings = matchSettings.copy(enforceFollowOn = it)
-                    }
-                )
-
-                SwitchSettingRow(
-                    label = "Duckworth-Lewis Method",
-                    description = "Apply D/L method for interrupted matches",
-                    checked = matchSettings.duckworthLewisMethod,
-                    onCheckedChange = {
-                        matchSettings = matchSettings.copy(duckworthLewisMethod = it)
-                    }
-                )
-            }
-        }
-
-        // Team Names Section
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA)),
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "👥 Team Names",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32),
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        OutlinedTextField(
-                            value = team1.name,
-                            onValueChange = { team1 = team1.copy(name = it) },
-                            label = { Text("Team 1 Name") },
-                            modifier = Modifier.weight(1f),
-                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
-                        )
-
-                        OutlinedTextField(
-                            value = team2.name,
-                            onValueChange = { team2 = team2.copy(name = it) },
-                            label = { Text("Team 2 Name") },
-                            modifier = Modifier.weight(1f),
-                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
-                        )
-                    }
-                }
-            }
-        }
-
-        // Team Cards Section
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                // Team 1 Card
-                EnhancedTeamCard(
-                    team = team1,
-                    jokerPlayer = jokerPlayer,
-                    onAddPlayer = { showTeam1Dialog = true },
-                    onRemovePlayer = { player ->
-                        val newPlayers = team1.players.toMutableList()
-                        newPlayers.remove(player)
-                        team1 = team1.copy(players = newPlayers)
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-
-                // Team 2 Card
-                EnhancedTeamCard(
-                    team = team2,
-                    jokerPlayer = jokerPlayer,
-                    onAddPlayer = { showTeam2Dialog = true },
-                    onRemovePlayer = { player ->
-                        val newPlayers = team2.players.toMutableList()
-                        newPlayers.remove(player)
-                        team2 = team2.copy(players = newPlayers)
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-
-        // Joker Player Section
-        if (matchSettings.jokerCanBatAndBowl) {
+            // Team Names Section
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                    ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "🃏 Joker Player (Optional)",
+                            text = "👥 Team Names",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFFF9800),
-                        )
-                        Text(
-                            text = "A player who can bat and bowl for both teams (max ${matchSettings.jokerMaxOvers} overs)",
-                            fontSize = 12.sp,
-                            color = Color(0xFFFF9800),
-                            modifier = Modifier.padding(bottom = 8.dp),
+                            color = MaterialTheme.colorScheme.primary,
                         )
 
-                        if (jokerPlayer == null) {
-                            Button(
-                                onClick = { showJokerDialog = true },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFFF9800),
-                                ),
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = "Add Joker")
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Add Joker Player")
-                            }
-                        } else {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = "🃏 ${jokerPlayer!!.name}",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFFF9800),
-                                )
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                                Row {
-                                    TextButton(onClick = { showJokerDialog = true }) {
-                                        Text("Change")
-                                    }
-                                    TextButton(onClick = { jokerPlayer = null }) {
-                                        Text("Remove")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Match Summary & Start Button
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E8)),
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                ) {
-                    Text(
-                        text = "📊 Match Summary",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32),
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Format:", fontSize = 12.sp, color = Color.Gray)
-                        Text("${matchSettings.matchFormat.displayName}", fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Teams:", fontSize = 12.sp, color = Color.Gray)
-                        Text("${team1.players.size} v ${team2.players.size}", fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                    }
-
-                    if (jokerPlayer != null) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            Text("Joker:", fontSize = 12.sp, color = Color.Gray)
-                            Text("${jokerPlayer!!.name}", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFFFF9800))
+                            OutlinedTextField(
+                                value = team1.name,
+                                onValueChange = { team1 = team1.copy(name = it) },
+                                label = { Text("Team 1 Name") },
+                                modifier = Modifier.weight(1f),
+                                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                            )
+
+                            OutlinedTextField(
+                                value = team2.name,
+                                onValueChange = { team2 = team2.copy(name = it) },
+                                label = { Text("Team 2 Name") },
+                                modifier = Modifier.weight(1f),
+                                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                            )
                         }
                     }
+                }
+                // after Team Names section, before EnhancedTeamCard row
+                if (selectedGroup != null) {
+                    val prefs = context.getSharedPreferences("match_prefs_v3", Context.MODE_PRIVATE)
+                    val last1 = prefs.getStringSet("last_team1_ids_${selectedGroup!!.id}", null)
+                    val last2 = prefs.getStringSet("last_team2_ids_${selectedGroup!!.id}", null)
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Special:", fontSize = 12.sp, color = Color.Gray)
-                        Text(
-                            text = buildString {
-                                if (matchSettings.allowSingleSideBatting) append("Single Side")
-                                if (matchSettings.jokerCanBatAndBowl && isNotEmpty()) append(", ")
-                                if (matchSettings.jokerCanBatAndBowl) append("Joker Enabled")
-                                if (isEmpty()) append("Standard Rules")
-                            },
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Button(
-                        onClick = {
-                            val minPlayersPerTeam = 2
-                            val team1Size = team1.players.size
-                            val team2Size = team2.players.size
-                            if (team1Size >= minPlayersPerTeam && team2Size >= minPlayersPerTeam) {
-                                if (team1Size == team2Size) {
-                                    val intent = Intent(context, ScoringActivity::class.java)
-
-                                    // Pass team data via intent
-                                    intent.putExtra("team1_name", team1.name)
-                                    intent.putExtra("team2_name", team2.name)
-                                    intent.putExtra("joker_name", jokerPlayer?.name ?: "")
-
-                                    // Pass player names as string arrays
-                                    val team1PlayerNames =
-                                        team1.players.map { it.name }.toTypedArray()
-                                    val team2PlayerNames =
-                                        team2.players.map { it.name }.toTypedArray()
-
-                                    intent.putExtra("team1_players", team1PlayerNames)
-                                    intent.putExtra("team2_players", team2PlayerNames)
-
-                                    // Pass match settings with calculated max players
-                                    val finalMatchSettings = matchSettings.copy(
-                                        maxPlayersPerTeam = maxOf(
-                                            team1.players.size,
-                                            team2.players.size,
-                                            11
+                    if (last1 != null && last2 != null) {
+                        FilledTonalButton(
+                            onClick = {
+                                val allPlayers = playerStorage.getAllPlayers().associateBy { it.id }
+                                val t1Players = last1.mapNotNull { pid ->
+                                    allPlayers[pid]?.let { sp ->
+                                        Player(
+                                            id = PlayerId(sp.id), name = sp.name
                                         )
-                                    )
-                                    intent.putExtra(
-                                        "match_settings",
-                                        gson.toJson(finalMatchSettings)
-                                    )
-
-                                    context.startActivity(intent)
-                                } else {
-                                    Toast.makeText(
-                                        context,
-                                        "Both team needs to have same number of players",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                    }
                                 }
-                            }
-                            else {
-                                Toast.makeText(context, "Each team needs at least $minPlayersPerTeam player!", Toast.LENGTH_SHORT).show()
+                                val t2Players = last2.mapNotNull { pid ->
+                                    allPlayers[pid]?.let { sp ->
+                                        Player(
+                                            id = PlayerId(sp.id), name = sp.name
+                                        )
+                                    }
+                                }
+
+                                team1 = team1.copy(players = t1Players.toMutableList())
+                                team2 = team2.copy(players = t2Players.toMutableList())
+                                Toast.makeText(
+                                    context,
+                                    "✅ Loaded last teams for ${selectedGroup!!.name}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Use Last Teams from ${selectedGroup!!.name}")
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+            }
+
+            // Team Cards Section
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    // Team 1 Card
+                    EnhancedTeamCard(
+                        team = team1,
+                        jokerPlayer = jokerPlayer,
+                        onAddPlayer = {
+                            if (selectedGroup == null) {
+                                Toast.makeText(context, "Select a group first", Toast.LENGTH_SHORT).show()
+                            } else {
+                                showTeam1Dialog = true
                             }
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF4CAF50),
-                        ),
-                        enabled = team1.players.isNotEmpty() && team2.players.isNotEmpty(),
+                        onRemovePlayer = { player ->
+                            val newPlayers = team1.players.toMutableList()
+                            newPlayers.remove(player)
+                            team1 = team1.copy(players = newPlayers)
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+
+                    // Team 2 Card
+                    EnhancedTeamCard(
+                        team = team2,
+                        jokerPlayer = jokerPlayer,
+                        onAddPlayer = {
+                            if (selectedGroup == null) {
+                                Toast.makeText(context, "Select a group first", Toast.LENGTH_SHORT).show()
+                            } else {
+                                showTeam2Dialog = true
+                            }
+                        },
+                        onRemovePlayer = { player ->
+                            val newPlayers = team2.players.toMutableList()
+                            newPlayers.remove(player)
+                            team2 = team2.copy(players = newPlayers)
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                if (team1.players.isNotEmpty() && team2.players.isNotEmpty()) {
+                    TossSelectionRadio(
+                        team1Name = team1.name,
+                        team2Name = team2.name
+                    ) { winner, choice ->
+                        tossWinner = winner
+                        tossChoice = choice
+                    }
+                }
+
+            }
+
+            // Joker Section
+            if (matchSettings.jokerCanBatAndBowl) {
+                // Joker Section (adaptive container + better contrast)
+                item {
+                    val container = com.oreki.stumpd.ui.theme.warningContainerAdaptive()
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = container),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                     ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = "Start Match")
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
+                        Column(Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("🃏", fontSize = 16.sp)
+                                Spacer(Modifier.width(8.dp))
+                                SectionTitle("Joker (Optional)")
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = "A player who can bat and bowl for both teams (max ${matchSettings.jokerMaxOvers} overs)",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Spacer(Modifier.height(12.dp))
+                            if (jokerPlayer == null) {
+                                FilledTonalButton(
+                                    onClick = { if (selectedGroup == null) {
+                                        Toast.makeText(context, "Select a group first", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        showJokerDialog = true
+                                    } },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = "Add Joker")
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Add Joker")
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "🃏 ${jokerPlayer!!.name}",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                    Row {
+                                        TextButton(onClick = { showJokerDialog = true }) { Text("Change") }
+                                        TextButton(onClick = { jokerPlayer = null }) { Text("Remove") }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Match Summary & Start Button
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = com.oreki.stumpd.ui.theme.sectionContainer()
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("📊", fontSize = 16.sp)
+                            Spacer(Modifier.width(8.dp))
+                            SectionTitle("Match Summary")
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Label("Teams")
+                            Text("${team1.players.size} v ${team2.players.size}", fontWeight = FontWeight.Medium)
+                        }
+
+                        if (jokerPlayer != null) {
+                            Spacer(Modifier.height(8.dp))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Label("Joker")
+                                Text(jokerPlayer!!.name, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Medium)
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Label("Special")
+                            Text(
+                                buildString {
+                                    if (matchSettings.allowSingleSideBatting) append("Single Side")
+                                    if (matchSettings.jokerCanBatAndBowl && isNotEmpty()) append(", ")
+                                    if (matchSettings.jokerCanBatAndBowl) append("Joker")
+                                    if (matchSettings.shortPitch && isNotEmpty()) append(", ")
+                                    if (matchSettings.shortPitch) append("Short pitch")
+                                    if (isEmpty()) append("Standard Rules")
+                                },
+                                fontWeight = FontWeight.Thin,
+                                fontSize = 10.sp
+                            )
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+
+                        PrimaryCta(
                             text = "Start ${matchSettings.totalOvers} overs Match",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
+                            onClick = {
+                                val minPlayersPerTeam = 2
+                                val team1Size = team1.players.size
+                                val team2Size = team2.players.size
+                                if (team1Size >= minPlayersPerTeam && team2Size >= minPlayersPerTeam) {
+                                    if (team1Size == team2Size) {
+                                        val intent = Intent(context, ScoringActivity::class.java)
+
+                                        if (selectedGroup == null) {
+                                            Toast.makeText(context, "Please select a group (e.g., Saturday or Sunday)", Toast.LENGTH_SHORT).show()
+                                            return@PrimaryCta
+                                        }
+                                        intent.putExtra("group_id", selectedGroup?.id ?: "")
+                                        intent.putExtra("group_name", selectedGroup?.name ?: "")
+
+                                        // Pass team data via intent
+                                        intent.putExtra("team1_name", team1.name)
+                                        intent.putExtra("team2_name", team2.name)
+                                        intent.putExtra("joker_name", jokerPlayer?.name ?: "")
+
+                                        // Pass player names as string arrays
+                                        val team1PlayerNames =
+                                            team1.players.map { it.name }.toTypedArray()
+                                        val team2PlayerNames =
+                                            team2.players.map { it.name }.toTypedArray()
+
+                                        intent.putExtra("team1_players", team1PlayerNames)
+                                        intent.putExtra("team2_players", team2PlayerNames)
+                                        intent.putExtra("team1_player_ids", team1.players.map { it.id.value }.toTypedArray())
+                                        intent.putExtra("team2_player_ids", team2.players.map { it.id.value }.toTypedArray())
+                                        intent.putExtra("toss_winner", tossWinner ?: "")
+                                        intent.putExtra("toss_choice", tossChoice ?: "")
+
+                                        // Pass match settings with calculated max players
+                                        val finalMatchSettings = matchSettings.copy(
+                                            maxPlayersPerTeam = maxOf(
+                                                team1.players.size,
+                                                team2.players.size,
+                                                11
+                                            )
+                                        )
+                                        intent.putExtra(
+                                            "match_settings",
+                                            gson.toJson(finalMatchSettings)
+                                        )
+                                        // inside onClick of PrimaryCta just before startActivity
+                                        val prefs = context.getSharedPreferences("match_prefs_v3", Context.MODE_PRIVATE)
+                                        prefs.edit()
+                                            .putStringSet("last_team1_ids_${selectedGroup!!.id}", team1.players.map { it.id.value }.toSet())
+                                            .putStringSet("last_team2_ids_${selectedGroup!!.id}", team2.players.map { it.id.value }.toSet())
+                                            .apply()
+
+                                        context.startActivity(intent)
+                                    } else {
+                                        Toast.makeText(
+                                            context,
+                                            "Both team needs to have same number of players",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                                else {
+                                    Toast.makeText(context, "Each team needs at least $minPlayersPerTeam player!", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            enabled = selectedGroup != null && team1.players.isNotEmpty() && team2.players.isNotEmpty()
                         )
                     }
                 }
             }
         }
-    }
+        val allowedIds = selectedGroup?.playerIds?.toSet() ?: emptySet()
 
-    // Player Selection Dialogs remain the same...
-    if (showTeam1Dialog) {
-        PlayerSuggestionDialog(
-            title = "Add Player to ${team1.name}",
-            selectedPlayers = (team1.players + team2.players).map { it.name } +
-                    listOfNotNull(jokerPlayer?.name),
-            currentTeamName = team1.name,
-            onPlayerSelected = { playerName ->
-                val newPlayers = team1.players.toMutableList()
-                newPlayers.add(Player(playerName))
-                team1 = team1.copy(players = newPlayers)
-                showTeam1Dialog = false
-            },
-            onDismiss = { showTeam1Dialog = false },
-        )
-    }
+        if (showGroupPicker) {
+            val groups = groupStorage.getAllGroups()
+            AlertDialog(
+                onDismissRequest = { showGroupPicker = false },
+                title = { Text("Choose Group") },
+                text = {
+                    if (groups.isEmpty()) {
+                        Column {
+                            Text("No groups yet.")
+                            Spacer(Modifier.height(8.dp))
+                            FilledTonalButton(onClick = {
+                                // quick create with defaults
+                                groupStorage.createGroup("Saturday")
+                                groupStorage.createGroup("Sunday")
+                                showGroupPicker = false
+                                Toast.makeText(context, "Created Saturday & Sunday", Toast.LENGTH_SHORT).show()
+                            }) { Text("Create Saturday & Sunday") }
+                        }
+                    } else {
+                        LazyColumn(Modifier.height(300.dp)) {
+                            items(groups) { g ->
+                                ListItem(
+                                    headlineContent = { Text(g.name) },
+                                    supportingContent = { Text("${g.playerIds.size} players", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                    modifier = Modifier.clickable {
+                                        selectedGroup = g
+                                        // Load defaults
+                                        matchSettings = g.defaults.matchSettings.copy(shortPitch = g.defaults.shortPitch)
+                                        // Optionally set UI fields from matchSettings to keep text inputs in sync
+                                        oversText = matchSettings.totalOvers.toString()
+                                        maxOversPerBowlerText = matchSettings.maxOversPerBowler.toString()
+                                        legSideWideRunsText = matchSettings.legSideWideRuns.toString()
+                                        offSideWideRunsText = matchSettings.offSideWideRuns.toString()
+                                        noballRunsText = matchSettings.noballRuns.toString()
+                                        byeRunsText = matchSettings.byeRuns.toString()
+                                        legByeRunsText = matchSettings.legByeRuns.toString()
+                                        powerplayOversText = matchSettings.powerplayOvers.toString()
+                                        jokerMaxOversText = matchSettings.jokerMaxOvers.toString()
 
-    if (showTeam2Dialog) {
-        PlayerSuggestionDialog(
-            title = "Add Player to ${team2.name}",
-            selectedPlayers = (team1.players + team2.players).map { it.name } +
-                    listOfNotNull(jokerPlayer?.name),
-            currentTeamName = team2.name,
-            onPlayerSelected = { playerName ->
-                val newPlayers = team2.players.toMutableList()
-                newPlayers.add(Player(playerName))
-                team2 = team2.copy(players = newPlayers)
-                showTeam2Dialog = false
-            },
-            onDismiss = { showTeam2Dialog = false },
-        )
-    }
+                                        // Reflect pitch toggle
+                                        // matchSettings.shortPitch already set; UI switch bound to matchSettings.shortPitch
 
-    if (showJokerDialog) {
-        PlayerSuggestionDialog(
-            title = "Select Joker Player",
-            selectedPlayers = (team1.players + team2.players).map { it.name },
-            currentTeamName = "Joker (Both Teams)",
-            onPlayerSelected = { playerName ->
-                jokerPlayer = Player(playerName, isJoker = true)
-                showJokerDialog = false
-            },
-            onDismiss = { showJokerDialog = false },
-        )
+                                        // Preload players (optional UX): keep selection empty and let user assign,
+                                        // or suggest from group:
+                                        // Convert ids -> StoredPlayer -> Player
+                                        val allPlayers = playerStorage.getAllPlayers().associateBy { it.id }
+                                        val groupPlayers = g.playerIds.mapNotNull { id -> allPlayers[id]?.let { sp -> Player(id = PlayerId(sp.id), name = sp.name) } }
+                                        // Leave teams as-is, but the add dialogs/suggestions will source from groupPlayers first
+
+                                        showGroupPicker = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = { showGroupPicker = false }) { Text("Close") } }
+            )
+        }
+        // Team 1 multi-add
+        if (showTeam1Dialog) {
+            val occupied = (team1.players + team2.players).map { it.id.value }.toSet() +
+                    listOfNotNull(jokerPlayer?.id?.value)
+            PlayerMultiSelectDialog(
+                title = "Add Players to ${team1.name}",
+                occupiedIds = occupied,
+                allowedPlayerIds = allowedIds,
+                onConfirm = { ids ->
+                    val all = playerStorage.getAllPlayers().associateBy { it.id }
+                    val newPlayers = team1.players.toMutableList()
+                    ids.forEach { pid ->
+                        all[pid]?.let { sp ->
+                            newPlayers.add(Player(id = PlayerId(sp.id), name = sp.name))
+                        }
+                    }
+                    // Optional sort
+                    newPlayers.sortBy { it.name.lowercase() }
+                    team1 = team1.copy(players = newPlayers)
+                    showTeam1Dialog = false
+                },
+                onDismiss = { showTeam1Dialog = false }
+            )
+        }
+
+// Team 2 multi-add
+        if (showTeam2Dialog) {
+            val occupied = (team1.players + team2.players).map { it.id.value }.toSet() +
+                    listOfNotNull(jokerPlayer?.id?.value)
+            PlayerMultiSelectDialog(
+                title = "Add Players to ${team2.name}",
+                occupiedIds = occupied,
+                allowedPlayerIds = allowedIds,
+                onConfirm = { ids ->
+                    val all = playerStorage.getAllPlayers().associateBy { it.id }
+                    val newPlayers = team2.players.toMutableList()
+                    ids.forEach { pid ->
+                        all[pid]?.let { sp ->
+                            newPlayers.add(Player(id = PlayerId(sp.id), name = sp.name))
+                        }
+                    }
+                    newPlayers.sortBy { it.name.lowercase() }
+                    team2 = team2.copy(players = newPlayers)
+                    showTeam2Dialog = false
+                },
+                onDismiss = { showTeam2Dialog = false }
+            )
+        }
+
+// Joker single-select
+        if (showJokerDialog) {
+            PlayerSuggestionDialog(
+                title = "Select Joker",
+                selectedPlayers = (team1.players + team2.players).map { it.id.value },
+                currentTeamName = "Joker (Both Teams)",
+                onPlayerSelected = { playerId ->
+                    val sp = playerStorage.getAllPlayers().find { it.id == playerId }
+                    jokerPlayer = Player(id = PlayerId(playerId), name = sp?.name ?: "Joker", isJoker = true)
+                    showJokerDialog = false
+                },
+                onDismiss = { showJokerDialog = false },
+            )
+        }
     }
 }
 
-// Helper Composables for Settings Sections
 @Composable
 fun SettingsSection(
     title: String,
@@ -689,69 +806,54 @@ fun SettingsSection(
     onToggle: () -> Unit,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onToggle() },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = title,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32),
-                )
-
+    SectionCard {
+        ListItem(
+            headlineContent = { SectionTitle(title) },
+            trailingContent = {
                 Icon(
-                    imageVector = if (isExpanded) Icons.Default.ArrowDropDown else Icons.Default.PlayArrow,
-                    contentDescription = if (isExpanded) "Collapse" else "Expand",
-                    tint = Color(0xFF2E7D32)
+                    if (isExpanded) Icons.Default.ArrowDropDown else Icons.Default.PlayArrow,
+                    null
                 )
-            }
-
-            if (isExpanded) {
-                Spacer(modifier = Modifier.height(12.dp))
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onToggle() }
+        )
+        AnimatedVisibility(visible = isExpanded) {
+            Column(Modifier.padding(top = 8.dp)) {
                 content()
             }
         }
     }
 }
 
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingRow(
     label: String,
     value: String,
     onValueChange: (String) -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.weight(1f)
-        )
-
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.width(80.dp),
-            singleLine = true
-        )
+    Column {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            OutlinedTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                modifier = Modifier.width(110.dp),
+                placeholder = { Label("0") }
+            )
+        }
+        Spacer(Modifier.height(8.dp))
     }
-
-    Spacer(modifier = Modifier.height(8.dp))
 }
+
 
 @Composable
 fun SwitchSettingRow(
@@ -761,35 +863,105 @@ fun SwitchSettingRow(
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-            )
-            description?.let { desc ->
-                Text(
-                    text = desc,
-                    fontSize = 12.sp,
-                    color = Color.Gray,
-                )
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyMedium)
+            if (description != null) Label(description)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+    Spacer(Modifier.height(8.dp))
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TossSelectionRadio(
+    team1Name: String,
+    team2Name: String,
+    onTossSelected: (winner: String, choice: String) -> Unit
+) {
+    var tossWinner by remember { mutableStateOf<String?>(null) }
+    var tossChoice by remember { mutableStateOf<String?>(null) }
+
+    val teamNames = listOf(team1Name, team2Name)
+    val choices = listOf("Batting first", "Bowling first")
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+    ) {
+        Text("Toss Details", fontWeight = FontWeight.Bold)
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Winner radio group
+        Text("Who won the toss?", fontWeight = FontWeight.SemiBold)
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            teamNames.forEach { name ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable {
+                        tossWinner = name
+                        tossChoice = null
+                    }
+                ) {
+                    RadioButton(
+                        selected = tossWinner == name,
+                        onClick = {
+                            tossWinner = name
+                            tossChoice = null
+                        }
+                    )
+                    Text(name, modifier = Modifier.padding(end = 8.dp))
+                }
             }
         }
 
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange
-        )
-    }
+        // Choice radio group only after winner picked
+        if (tossWinner != null) {
+            Text("${tossWinner} chose to:", fontWeight = FontWeight.SemiBold)
 
-    Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                choices.forEach { choice ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable {
+                            tossChoice = choice
+                            onTossSelected(tossWinner!!, choice)
+                        }
+                    ) {
+                        RadioButton(
+                            selected = tossChoice == choice,
+                            onClick = {
+                                tossChoice = choice
+                                onTossSelected(tossWinner!!, choice)
+                            }
+                        )
+                        Text(choice, modifier = Modifier.padding(end = 8.dp))
+                    }
+                }
+            }
+        }
+    }
 }
 
+
 // Updated EnhancedTeamCard without maxPlayers parameter
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EnhancedTeamCard(
     team: Team,
@@ -800,7 +972,7 @@ fun EnhancedTeamCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
     ) {
         Column(
@@ -816,13 +988,13 @@ fun EnhancedTeamCard(
                     text = team.name,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32),
+                    color = MaterialTheme.colorScheme.primary,
                 )
 
                 Text(
                     text = "${team.players.size} players",
                     fontSize = 14.sp,
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
@@ -837,42 +1009,24 @@ fun EnhancedTeamCard(
                     modifier = Modifier.padding(bottom = 6.dp),
                 )
 
-                team.players.forEach { player ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 2.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Person,
-                                contentDescription = "Player",
-                                tint = Color(0xFF2E7D32),
-                                modifier = Modifier.size(16.dp),
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = player.name,
-                                fontSize = 14.sp,
-                            )
-                        }
-
-                        IconButton(
-                            onClick = { onRemovePlayer(player) },
-                            modifier = Modifier.size(24.dp),
-                        ) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Remove Player",
-                                tint = Color(0xFFF44336),
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
+                // after "Players:" text
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    team.players.forEach { player ->
+                        AssistChip(
+                            onClick = {},
+                            label = { Text(player.name) },
+                            trailingIcon = {
+                                IconButton(onClick = { onRemovePlayer(player) }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Remove", modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        )
                     }
                 }
-
+                HorizontalDivider()
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
@@ -880,40 +1034,56 @@ fun EnhancedTeamCard(
             Button(
                 onClick = onAddPlayer,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Add Player")
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Add Player")
             }
+        }
+    }
+}
 
-            // Show joker info if selected
-            jokerPlayer?.let { joker ->
-                Spacer(modifier = Modifier.height(8.dp))
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "🃏",
-                            fontSize = 16.sp,
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Joker: ${joker.name}",
-                            fontSize = 12.sp,
-                            color = Color(0xFFFF9800),
-                            fontWeight = FontWeight.Medium,
-                        )
+@Composable
+private fun PickFromGroupButton(
+    label: String,
+    onGroupPicked: (PlayerGroup) -> Unit
+) {
+    val context = LocalContext.current
+    val storage = remember { PlayerGroupStorageManager(context) }
+    var open by remember { mutableStateOf(false) }
+
+    FilledTonalButton(onClick = { open = true }) {
+        Icon(Icons.Default.Home, contentDescription = null)
+        Spacer(Modifier.width(8.dp))
+        Text(label)
+    }
+
+    if (open) {
+        val groups = storage.getAllGroups()
+        AlertDialog(
+            onDismissRequest = { open = false },
+            title = { Text("Choose Group") },
+            text = {
+                if (groups.isEmpty()) {
+                    Text("No groups yet.")
+                } else {
+                    LazyColumn(Modifier.height(300.dp)) {
+                        items(groups) { g ->
+                            ListItem(
+                                headlineContent = { Text(g.name) },
+                                supportingContent = { Text("${g.playerIds.size} players", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                modifier = Modifier.clickable {
+                                    onGroupPicked(g)
+                                    open = false
+                                }
+                            )
+                        }
                     }
                 }
-            }
-        }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { open = false }) { Text("Close") } }
+        )
     }
 }

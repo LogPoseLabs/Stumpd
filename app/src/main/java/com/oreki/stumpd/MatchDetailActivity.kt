@@ -6,9 +6,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,13 +16,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.oreki.stumpd.ui.theme.SectionCard
 import com.oreki.stumpd.ui.theme.StumpdTheme
+import com.oreki.stumpd.ui.theme.StumpdTopBar
 import java.text.SimpleDateFormat
 import java.util.*
+import com.oreki.stumpd.ui.theme.Label
+import com.oreki.stumpd.ui.theme.sectionContainer
+import com.oreki.stumpd.ui.theme.successContainerAdaptive
 
 class MatchDetailActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        actionBar?.hide()
         val matchId = intent.getStringExtra("match_id") ?: ""
 
         setContent {
@@ -40,6 +43,7 @@ class MatchDetailActivity : ComponentActivity() {
         }
     }
 }
+
 
 @Composable
 fun MatchDetailScreen(matchId: String) {
@@ -69,206 +73,155 @@ fun MatchDetailScreen(matchId: String) {
         return
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        item {
-            // Enhanced Header with navigation
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = {
-                        val intent = Intent(context, MatchHistoryActivity::class.java)
-                        context.startActivity(intent)
-                        (context as ComponentActivity).finish()
-                    }
-                ) {
-                    Icon(
-                        Icons.Default.ArrowBack,
-                        contentDescription = "Back to History",
-                        tint = Color(0xFF2E7D32)
-                    )
+    Scaffold(
+        topBar = {
+            StumpdTopBar(
+                title = "Match Scorecard",
+                subtitle = "${match.team1Name} vs ${match.team2Name}",
+                onBack = {
+                    val intent = Intent(context, MatchHistoryActivity::class.java)
+                    context.startActivity(intent)
+                    (context as ComponentActivity).finish()
+                },
+                onHome = {
+                    val intent = Intent(context, MainActivity::class.java)
+                    context.startActivity(intent)
+                    (context as ComponentActivity).finish()
                 }
+            )
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
+        ) {
+            item { Spacer(modifier = Modifier.height(16.dp)) }
 
-                Column {
-                    Text(
-                        text = "Match Scorecard",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32)
+            item {
+                SectionCard(title = "Match Info", sectionContainerColor=sectionContainer()) {
+                    Text("${match.team1Name} vs ${match.team2Name}", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(4.dp))
+                    Label(
+                        SimpleDateFormat("MMMM dd, yyyy 'at' hh:mm a", Locale.getDefault())
+                            .format(Date(match.matchDate))
                     )
-                    Text(
-                        text = "${match.team1Name} vs ${match.team2Name}",
-                        fontSize = 14.sp,
-                        color = Color.Gray
-                    )
-                }
-
-                Spacer(modifier = Modifier.weight(1f))
-
-                // Quick action to go back to home
-                IconButton(
-                    onClick = {
-                        val intent = Intent(context, MainActivity::class.java)
-                        context.startActivity(intent)
-                        (context as ComponentActivity).finish()
+                    match.jokerPlayerName?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Label("Joker"); Text(it, color = MaterialTheme.colorScheme.secondary)
+                        }
                     }
-                ) {
-                    Icon(
-                        Icons.Default.Home,
-                        contentDescription = "Home",
-                        tint = Color(0xFF2E7D32)
-                    )
                 }
             }
-        }
 
-        item { Spacer(modifier = Modifier.height(16.dp)) }
+            item {
+                val isTie = match.winnerTeam.equals("TIE", ignoreCase = true)
 
-        item {
-            // Match Info
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = bannerContainerFor(isTie)
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                 ) {
-                    Text(
-                        text = "${match.team1Name} vs ${match.team2Name}",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Text(
-                        text = SimpleDateFormat("MMMM dd, yyyy 'at' hh:mm a", Locale.getDefault())
-                            .format(Date(match.matchDate)),
-                        fontSize = 14.sp,
-                        color = Color.Gray
-                    )
-
-                    match.jokerPlayerName?.let {
+                    Column(
+                        Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                         Text(
-                            text = "🃏 Joker: $it",
-                            fontSize = 14.sp,
-                            color = Color(0xFFFF9800),
-                            fontWeight = FontWeight.Medium
+                            text = if (isTie) "🏆 TIE" else "🏆 ${match.winnerTeam}",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Label(
+                            if (isTie) "scores level" else "won by ${match.winningMargin}"
                         )
                     }
                 }
             }
-        }
 
-        item { Spacer(modifier = Modifier.height(16.dp)) }
+            item { Spacer(modifier = Modifier.height(24.dp)) }
 
-        item {
-            // Match Result
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E8))
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+            item {
+                // Innings Summary
+                Text(
+                    text = "Innings Summary",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            item { Spacer(modifier = Modifier.height(12.dp)) }
+
+            item {
+                // First Innings Enhanced
+                EnhancedInningsSummaryCard(
+                    title = "${match.team1Name} - 1st Innings",
+                    runs = match.firstInningsRuns,
+                    wickets = match.firstInningsWickets,
+                    runRate = if (match.firstInningsRuns > 0) match.firstInningsRuns / (match.matchSettings?.totalOvers?.toDouble()!!) else 5.0,
+                    match = match,
+                    isFirstInnings = true
+                )
+            }
+
+            item { Spacer(modifier = Modifier.height(12.dp)) }
+
+            item {
+                // Second Innings Enhanced
+                EnhancedInningsSummaryCard(
+                    title = "${match.team2Name} - 2nd Innings",
+                    runs = match.secondInningsRuns,
+                    wickets = match.secondInningsWickets,
+                    runRate = if (match.secondInningsRuns > 0) match.secondInningsRuns / (match.matchSettings?.totalOvers?.toDouble()!!) else 5.0,
+                    match = match,
+                    isFirstInnings = false
+                )
+            }
+
+            item { Spacer(modifier = Modifier.height(24.dp)) }
+
+            // Add Full Scorecard Button
+            item {
+                Button(
+                    onClick = {
+                        val intent =
+                            android.content.Intent(context, FullScorecardActivity::class.java)
+                        intent.putExtra("match_id", matchId)
+                        context.startActivity(intent)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
                 ) {
                     Text(
-                        text = "🏆 ${match.winnerTeam}",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32)
-                    )
-                    Text(
-                        text = "won by ${match.winningMargin}",
+                        text = "📊 View Full Scorecard",
                         fontSize = 16.sp,
-                        color = Color(0xFF2E7D32)
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
-        }
 
-        item { Spacer(modifier = Modifier.height(24.dp)) }
+            item { Spacer(modifier = Modifier.height(16.dp)) }
 
-        item {
-            // Innings Summary
-            Text(
-                text = "Innings Summary",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
-            )
-        }
-
-        item { Spacer(modifier = Modifier.height(12.dp)) }
-
-        item {
-            // First Innings Enhanced
-            EnhancedInningsSummaryCard(
-                title = "${match.team1Name} - 1st Innings",
-                runs = match.firstInningsRuns,
-                wickets = match.firstInningsWickets,
-                runRate = if (match.firstInningsRuns > 0) match.firstInningsRuns / (match.matchSettings?.totalOvers?.toDouble()!!) else 5.0,
-                match = match,
-                isFirstInnings = true
-            )
-        }
-
-        item { Spacer(modifier = Modifier.height(12.dp)) }
-
-        item {
-            // Second Innings Enhanced
-            EnhancedInningsSummaryCard(
-                title = "${match.team2Name} - 2nd Innings",
-                runs = match.secondInningsRuns,
-                wickets = match.secondInningsWickets,
-                runRate = if (match.secondInningsRuns > 0) match.secondInningsRuns / (match.matchSettings?.totalOvers?.toDouble()!!) else 5.0,
-                match = match,
-                isFirstInnings = false
-            )
-        }
-
-        item { Spacer(modifier = Modifier.height(24.dp)) }
-
-        // Add Full Scorecard Button
-        item {
-            Button(
-                onClick = {
-                    val intent = android.content.Intent(context, FullScorecardActivity::class.java)
-                    intent.putExtra("match_id", matchId)
-                    context.startActivity(intent)
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF4CAF50)
-                )
-            ) {
+            item {
+                // Match Stats
                 Text(
-                    text = "📊 View Full Scorecard",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
+                    text = "Match Statistics",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
-        }
 
-        item { Spacer(modifier = Modifier.height(16.dp)) }
+            item { Spacer(modifier = Modifier.height(12.dp)) }
 
-        item {
-            // Match Stats
-            Text(
-                text = "Match Statistics",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
-            )
-        }
-
-        item { Spacer(modifier = Modifier.height(12.dp)) }
-
-        item {
-            MatchStatsCard(match)
+            item {
+                MatchStatsCard(match)
+            }
         }
     }
 }
@@ -314,8 +267,9 @@ fun EnhancedInningsSummaryCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        colors = CardDefaults.cardColors(containerColor = sectionContainer()),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = MaterialTheme.shapes.medium
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -337,14 +291,15 @@ fun EnhancedInningsSummaryCard(
                     text = "$runs/$wickets",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32)
+                    color = MaterialTheme.colorScheme.primary,
+                    letterSpacing = 0.25.sp
                 )
 
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = "Run Rate",
                         fontSize = 12.sp,
-                        color = Color.Gray
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
                         text = "%.2f".format(runRate),
@@ -363,7 +318,7 @@ fun EnhancedInningsSummaryCard(
                     text = if (required > 0) "Target: $target (needed $required more)"
                     else "Target achieved!",
                     fontSize = 12.sp,
-                    color = if (required > 0) Color(0xFFFF5722) else Color(0xFF4CAF50),
+                    color = if (required > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                     fontStyle = FontStyle.Italic
                 )
             }
@@ -371,12 +326,11 @@ fun EnhancedInningsSummaryCard(
             // Top Performers Section
             if (topBatsman != null || topBowler != null) {
                 Spacer(modifier = Modifier.height(16.dp))
-
                 Text(
                     text = "🌟 Top Performers",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2E7D32)
+                    color = MaterialTheme.colorScheme.primary
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -398,20 +352,19 @@ fun EnhancedInningsSummaryCard(
                                 text = if (batsman.isJoker) "🃏 ${batsman.name}" else batsman.name,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = if (batsman.isJoker) Color(0xFFFF9800) else Color.Black
+                                color = if (batsman.isJoker) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface
                             )
                         }
 
                         Text(
                             text = "${batsman.runs}${if (batsman.isOut) "" else "*"} (${batsman.ballsFaced}) - SR: ${"%.1f".format(batsman.strikeRate)}",
                             fontSize = 12.sp,
-                            color = Color.Gray
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
-
+                Spacer(modifier = Modifier.height(8.dp))
                 // Top Bowler
                 topBowler?.let { bowler ->
                     Row(
@@ -429,14 +382,14 @@ fun EnhancedInningsSummaryCard(
                                 text = if (bowler.isJoker) "🃏 ${bowler.name}" else bowler.name,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = if (bowler.isJoker) Color(0xFFFF9800) else Color.Black
+                                color = if (bowler.isJoker) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
                             )
                         }
 
                         Text(
                             text = "${bowler.wickets}/${bowler.runsConceded} (${"%.1f".format(bowler.oversBowled)}) - Eco: ${"%.1f".format(bowler.economy)}",
                             fontSize = 12.sp,
-                            color = Color.Gray
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -455,7 +408,7 @@ fun EnhancedInningsSummaryCard(
                     Text(
                         text = statusText,
                         fontSize = 11.sp,
-                        color = Color.Gray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontStyle = FontStyle.Italic
                     )
                 }
@@ -465,7 +418,7 @@ fun EnhancedInningsSummaryCard(
                     Text(
                         text = "Did not bowl: ${didNotBowl.joinToString(", ") { it.name }}",
                         fontSize = 11.sp,
-                        color = Color.Gray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontStyle = FontStyle.Italic
                     )
                 }
@@ -482,7 +435,7 @@ fun MatchStatsCard(match: MatchHistory) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -521,5 +474,16 @@ fun MatchStatsCard(match: MatchHistory) {
                 StatRow("Best Bowler", "${topWicketTaker.name} (${topWicketTaker.wickets} wickets)")
             }
         }
+    }
+}
+
+@Composable
+private fun bannerContainerFor(isTie: Boolean): Color {
+    return if (isTie) {
+        // neutral/grey container for TIE
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    } else {
+        // success/greenish container (your adaptive helper if you have one)
+        successContainerAdaptive()
     }
 }
