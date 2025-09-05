@@ -2225,15 +2225,13 @@ fun saveMatchToHistory(
         val runsWeight   = 20.0 / overs
         val fourBonus    = 1.0 * (20.0 / overs)
         val sixBonus     = 1.5 * (20.0 / overs)
-        val notOutBonus  = 2.0 * (20.0 / overs)
         val wicketWeight = 50.0 / overs
 
         // batting
         val sr = if (a.balls > 0) a.runs * 100.0 / a.balls else 0.0
         var bat = a.runs * runsWeight +
                 a.fours * fourBonus +
-                a.sixes * sixBonus +
-                (if (a.notOut) notOutBonus else 0.0)
+                a.sixes * sixBonus
 
         val srBonus = if (a.balls >= 10)
             kotlin.math.max(0.0, kotlin.math.min(10.0, (sr - 100.0) / 5.0))
