@@ -1,5 +1,6 @@
 package com.oreki.stumpd
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
@@ -88,6 +89,8 @@ fun TeamSetupScreen() {
 
     var selectedGroup by remember { mutableStateOf<PlayerGroup?>(null) }
 
+    var tossWinner by remember { mutableStateOf<String?>(null) }
+    var tossChoice by remember { mutableStateOf<String?>(null) }
 
     // Expandable sections state
     var expandedSections by remember {
@@ -387,6 +390,48 @@ fun TeamSetupScreen() {
                         }
                     }
                 }
+                // after Team Names section, before EnhancedTeamCard row
+                if (selectedGroup != null) {
+                    val prefs = context.getSharedPreferences("match_prefs_v3", Context.MODE_PRIVATE)
+                    val last1 = prefs.getStringSet("last_team1_ids_${selectedGroup!!.id}", null)
+                    val last2 = prefs.getStringSet("last_team2_ids_${selectedGroup!!.id}", null)
+
+                    if (last1 != null && last2 != null) {
+                        FilledTonalButton(
+                            onClick = {
+                                val allPlayers = playerStorage.getAllPlayers().associateBy { it.id }
+                                val t1Players = last1.mapNotNull { pid ->
+                                    allPlayers[pid]?.let { sp ->
+                                        Player(
+                                            id = PlayerId(sp.id), name = sp.name
+                                        )
+                                    }
+                                }
+                                val t2Players = last2.mapNotNull { pid ->
+                                    allPlayers[pid]?.let { sp ->
+                                        Player(
+                                            id = PlayerId(sp.id), name = sp.name
+                                        )
+                                    }
+                                }
+
+                                team1 = team1.copy(players = t1Players.toMutableList())
+                                team2 = team2.copy(players = t2Players.toMutableList())
+                                Toast.makeText(
+                                    context,
+                                    "✅ Loaded last teams for ${selectedGroup!!.name}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Use Last Teams from ${selectedGroup!!.name}")
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
             }
 
             // Team Cards Section
@@ -433,6 +478,16 @@ fun TeamSetupScreen() {
                         modifier = Modifier.weight(1f),
                     )
                 }
+                if (team1.players.isNotEmpty() && team2.players.isNotEmpty()) {
+                    TossSelectionRadio(
+                        team1Name = team1.name,
+                        team2Name = team2.name
+                    ) { winner, choice ->
+                        tossWinner = winner
+                        tossChoice = choice
+                    }
+                }
+
             }
 
             // Joker Section
@@ -575,6 +630,8 @@ fun TeamSetupScreen() {
                                         intent.putExtra("team2_players", team2PlayerNames)
                                         intent.putExtra("team1_player_ids", team1.players.map { it.id.value }.toTypedArray())
                                         intent.putExtra("team2_player_ids", team2.players.map { it.id.value }.toTypedArray())
+                                        intent.putExtra("toss_winner", tossWinner ?: "")
+                                        intent.putExtra("toss_choice", tossChoice ?: "")
 
                                         // Pass match settings with calculated max players
                                         val finalMatchSettings = matchSettings.copy(
@@ -588,6 +645,12 @@ fun TeamSetupScreen() {
                                             "match_settings",
                                             gson.toJson(finalMatchSettings)
                                         )
+                                        // inside onClick of PrimaryCta just before startActivity
+                                        val prefs = context.getSharedPreferences("match_prefs_v3", Context.MODE_PRIVATE)
+                                        prefs.edit()
+                                            .putStringSet("last_team1_ids_${selectedGroup!!.id}", team1.players.map { it.id.value }.toSet())
+                                            .putStringSet("last_team2_ids_${selectedGroup!!.id}", team2.players.map { it.id.value }.toSet())
+                                            .apply()
 
                                         context.startActivity(intent)
                                     } else {
@@ -811,6 +874,89 @@ fun SwitchSettingRow(
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
     Spacer(Modifier.height(8.dp))
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TossSelectionRadio(
+    team1Name: String,
+    team2Name: String,
+    onTossSelected: (winner: String, choice: String) -> Unit
+) {
+    var tossWinner by remember { mutableStateOf<String?>(null) }
+    var tossChoice by remember { mutableStateOf<String?>(null) }
+
+    val teamNames = listOf(team1Name, team2Name)
+    val choices = listOf("Batting first", "Bowling first")
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+    ) {
+        Text("Toss Details", fontWeight = FontWeight.Bold)
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Winner radio group
+        Text("Who won the toss?", fontWeight = FontWeight.SemiBold)
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            teamNames.forEach { name ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable {
+                        tossWinner = name
+                        tossChoice = null
+                    }
+                ) {
+                    RadioButton(
+                        selected = tossWinner == name,
+                        onClick = {
+                            tossWinner = name
+                            tossChoice = null
+                        }
+                    )
+                    Text(name, modifier = Modifier.padding(end = 8.dp))
+                }
+            }
+        }
+
+        // Choice radio group only after winner picked
+        if (tossWinner != null) {
+            Text("${tossWinner} chose to:", fontWeight = FontWeight.SemiBold)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                choices.forEach { choice ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable {
+                            tossChoice = choice
+                            onTossSelected(tossWinner!!, choice)
+                        }
+                    ) {
+                        RadioButton(
+                            selected = tossChoice == choice,
+                            onClick = {
+                                tossChoice = choice
+                                onTossSelected(tossWinner!!, choice)
+                            }
+                        )
+                        Text(choice, modifier = Modifier.padding(end = 8.dp))
+                    }
+                }
+            }
+        }
+    }
 }
 
 

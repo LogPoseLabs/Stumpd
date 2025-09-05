@@ -46,6 +46,8 @@ class ScoringActivity : ComponentActivity() {
         val matchSettingsJson = intent.getStringExtra("match_settings") ?: ""
         val groupId = intent.getStringExtra("group_id")
         val groupName = intent.getStringExtra("group_name")
+        val tossWinner = intent.getStringExtra("toss_winner")
+        val tossChoice = intent.getStringExtra("toss_choice")
 
 
         setContent {
@@ -64,7 +66,9 @@ class ScoringActivity : ComponentActivity() {
                         team2PlayerIds = team2PlayerIds,
                         matchSettingsJson = matchSettingsJson,
                         groupId = groupId,
-                        groupName = groupName
+                        groupName = groupName,
+                        tossChoice = tossChoice,
+                        tossWinner = tossWinner
                     )
                 }
             }
@@ -90,7 +94,9 @@ fun ScoringScreen(
     team2PlayerIds: Array<String> = arrayOf("1","2"),
     matchSettingsJson: String = "",
     groupId: String?,
-    groupName: String?
+    groupName: String?,
+    tossChoice: String?,
+    tossWinner: String?,
 ) {
     val context = LocalContext.current
     val gson = Gson()
@@ -150,10 +156,46 @@ fun ScoringScreen(
     }
 
     var currentInnings by remember { mutableStateOf(1) }
-    var battingTeamPlayers by remember { mutableStateOf(team1Players) }
-    var bowlingTeamPlayers by remember { mutableStateOf(team2Players) }
-    var battingTeamName by remember { mutableStateOf(team1Name) }
-    var bowlingTeamName by remember { mutableStateOf(team2Name) }
+    // read toss extras once
+//    val tossWinnerExtra = remember { (LocalContext.current as? ComponentActivity)?.intent?.getStringExtra("toss_winner") ?: "" }
+//    val tossChoiceExtra = remember { (LocalContext.current as? ComponentActivity)?.intent?.getStringExtra("toss_choice") ?: "" }
+
+    val initialBattingTeamPlayers: MutableList<Player>
+    val initialBowlingTeamPlayers: MutableList<Player>
+    val initialBattingTeamName: String
+    val initialBowlingTeamName: String
+
+    if (tossWinner != null && tossChoice != null) {
+        val team1Won = tossWinner.equals(team1Name, ignoreCase = true)
+        val battingChosen = tossChoice.contains("Batting", ignoreCase = true)
+
+        // Decide who bats first
+        val team1BatsFirst = (team1Won && battingChosen) || (!team1Won && !battingChosen)
+
+        if (team1BatsFirst) {
+            initialBattingTeamPlayers = team1Players
+            initialBowlingTeamPlayers = team2Players
+            initialBattingTeamName = team1Name
+            initialBowlingTeamName = team2Name
+        } else {
+            initialBattingTeamPlayers = team2Players
+            initialBowlingTeamPlayers = team1Players
+            initialBattingTeamName = team2Name
+            initialBowlingTeamName = team1Name
+        }
+    } else {
+        // default
+        initialBattingTeamPlayers = team1Players
+        initialBowlingTeamPlayers = team2Players
+        initialBattingTeamName = team1Name
+        initialBowlingTeamName = team2Name
+    }
+
+    var battingTeamPlayers by remember { mutableStateOf(initialBattingTeamPlayers) }
+    var bowlingTeamPlayers by remember { mutableStateOf(initialBowlingTeamPlayers) }
+    var battingTeamName by remember { mutableStateOf(initialBattingTeamName) }
+    var bowlingTeamName by remember { mutableStateOf(initialBowlingTeamName) }
+
 
     var firstInningsRuns by remember { mutableStateOf(0) }
     var firstInningsWickets by remember { mutableStateOf(0) }
@@ -219,6 +261,8 @@ fun ScoringScreen(
     var showRunOutDialog by remember { mutableStateOf(false) }
     var isNoBallRunOut by remember { mutableStateOf(false) }
     var pickerOtherEndName by remember { mutableStateOf<String?>(null) }
+    var pendingSwapAfterBatsmanPick by remember { mutableStateOf(false) }
+    var pendingBowlerDialogAfterBatsmanPick by remember { mutableStateOf(false) }
 
     fun addDelivery(outcome: String, highlight: Boolean = false) {
         // ball number shown 1..6 based on ballsInOver AFTER increment (so compute from current)
@@ -360,11 +404,11 @@ fun ScoringScreen(
     }
 
     fun swapStrike() {
-        if (nonStriker != null) {
-            val temp = strikerIndex
-            strikerIndex = nonStrikerIndex
-            nonStrikerIndex = temp
-        }
+        val si = strikerIndex
+        val nsi = nonStrikerIndex
+        if (si == null || nsi == null) return  // only swap when both ends are occupied
+        strikerIndex = nsi
+        nonStrikerIndex = si
     }
 
     fun ensureJokerStatsAppliedOnAdd() {
@@ -901,6 +945,16 @@ fun ScoringScreen(
                         // Keep dialog open for second selection
                     } else {
                         showBatsmanDialog = false
+
+                        if (pendingSwapAfterBatsmanPick) {
+                            if (!showSingleSideLayout) swapStrike()
+                            pendingSwapAfterBatsmanPick = false
+                        }
+                        if (pendingBowlerDialogAfterBatsmanPick) {
+                            showBowlerDialog = true
+                            pendingBowlerDialogAfterBatsmanPick = false
+                        }
+
                     }
                 } else {
                     // Second batsman selection - same logic for joker
@@ -942,6 +996,16 @@ fun ScoringScreen(
                     }
                     jokerOutInCurrentInnings = false
                     showBatsmanDialog = false
+
+                    if (pendingSwapAfterBatsmanPick) {
+                        if (!showSingleSideLayout) swapStrike()
+                        pendingSwapAfterBatsmanPick = false
+                    }
+                    if (pendingBowlerDialogAfterBatsmanPick) {
+                        showBowlerDialog = true
+                        pendingBowlerDialogAfterBatsmanPick = false
+                    }
+
                 }
             },
             jokerOutInCurrentInnings = jokerOutInCurrentInnings,
@@ -1370,8 +1434,11 @@ fun ScoringScreen(
                     currentBowlerSpell = 0
                     midOverReplacementDueToJoker.value = false
 
-                    // If a batsman picker is active, prioritize that — postpone bowler picker until after
-                    if (!showBatsmanDialog) {
+                    if (showBatsmanDialog) {
+                        pendingSwapAfterBatsmanPick = !showSingleSideLayout
+                        pendingBowlerDialogAfterBatsmanPick = true
+                    } else {
+                        if (!showSingleSideLayout) swapStrike()
                         showBowlerDialog = true
                     }
                 }
@@ -1514,7 +1581,13 @@ fun ScoringScreen(
                     bowlerIndex = null
                     currentBowlerSpell = 0
                     midOverReplacementDueToJoker.value = false
-                    showBowlerDialog = true
+                    if (showBatsmanDialog) {
+                        pendingSwapAfterBatsmanPick = !showSingleSideLayout
+                        pendingBowlerDialogAfterBatsmanPick = true
+                    } else {
+                        if (!showSingleSideLayout) swapStrike()
+                        showBowlerDialog = true
+                    }
                 }
 
 

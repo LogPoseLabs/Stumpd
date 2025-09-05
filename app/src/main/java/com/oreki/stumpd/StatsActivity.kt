@@ -1,9 +1,11 @@
 package com.oreki.stumpd
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -25,8 +27,15 @@ import com.oreki.stumpd.ui.theme.SectionTitle
 import com.oreki.stumpd.ui.theme.StatsTopBar
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import com.oreki.stumpd.ui.theme.sectionContainer
+import androidx.compose.material3.DateRangePicker
+import androidx.compose.material3.rememberDateRangePickerState
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class StatsActivity : ComponentActivity() {
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         actionBar?.hide()
@@ -43,6 +52,8 @@ class StatsActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun StatsScreen() {
     val context = LocalContext.current
@@ -61,8 +72,10 @@ fun StatsScreen() {
 
     var selectedPitchType by remember { mutableStateOf<Boolean?>(null) }
     var showPitchPicker by remember { mutableStateOf(false) }
+    var showDateRangePicker by remember { mutableStateOf(false) }
 
-    LaunchedEffect(selectedGroupId, selectedPitchType) {
+
+    LaunchedEffect(selectedGroupId, selectedPitchType, selectedFilter) {
         val all = matchStorage.getAllMatches()
         var filtered = all
 
@@ -76,6 +89,28 @@ fun StatsScreen() {
             filtered = filtered.filter { it.shortPitch == type }
         }
 
+        when {
+            selectedFilter == "All Time" -> { /* no-op */ }
+
+            selectedFilter.startsWith("Date:") -> {
+                val iso = selectedFilter.removePrefix("Date:")
+                val selDate = LocalDate.parse(iso) // ISO yyyy-MM-dd
+                filtered = filtered.filter {
+                    val d = Instant.ofEpochMilli(it.matchDate).atZone(ZoneId.systemDefault()).toLocalDate()
+                    d == selDate
+                }
+            }
+
+            selectedFilter.startsWith("CustomRange:") -> {
+                val parts = selectedFilter.removePrefix("CustomRange:").split("|")
+                val start = LocalDate.parse(parts[0])
+                val end = LocalDate.parse(parts[1])
+                filtered = filtered.filter {
+                    val d = Instant.ofEpochMilli(it.matchDate).atZone(ZoneId.systemDefault()).toLocalDate()
+                    d in start..end
+                }
+            }
+        }
         matches = filtered
         val detailed = EnhancedPlayerStorageManager(context).computeFromMatches(filtered)
         players = detailed
@@ -300,49 +335,134 @@ fun StatsScreen() {
         }
 
         if (showFilterDialog) {
+            // compute last 3 distinct match dates as LocalDate
+            val last3Dates = matches
+                .map { Instant.ofEpochMilli(it.matchDate).atZone(ZoneId.systemDefault()).toLocalDate() }
+                .distinct()
+                .sortedDescending()
+                .take(3)
+
             AlertDialog(
                 onDismissRequest = { showFilterDialog = false },
                 title = { Text("Filter Statistics") },
                 text = {
                     Column {
-                        val filters = listOf(
-                            "All Time",
-                            "Last 30 Days",
-                            "Last 3 Months",
-                            "This Year",
-                            "Per Match Average"
-                        )
-                        filters.forEach { filter ->
+                        // 1) All Time
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedFilter = "All Time"
+                                    showFilterDialog = false
+                                }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedFilter == "All Time",
+                                onClick = {
+                                    selectedFilter = "All Time"
+                                    showFilterDialog = false
+                                }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("All Time")
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+                        Text("Last 3 Match Dates", fontWeight = FontWeight.SemiBold)
+
+                        // 2) Last 3 dates — store token as Date:yyyy-MM-dd for easy parsing
+                        last3Dates.forEach { date ->
+                            val iso = date.toString() // yyyy-MM-dd
+                            val label = date.format(DateTimeFormatter.ofPattern("dd MMM yyyy"))
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        selectedFilter = filter
+                                        selectedFilter = "Date:$iso"
                                         showFilterDialog = false
                                     }
-                                    .padding(vertical = 8.dp),
+                                    .padding(vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 RadioButton(
-                                    selected = selectedFilter == filter,
+                                    selected = selectedFilter == "Date:$iso",
                                     onClick = {
-                                        selectedFilter = filter
+                                        selectedFilter = "Date:$iso"
                                         showFilterDialog = false
                                     }
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text(filter)
+                                Text(label)
                             }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        // 3) Custom date range -> open date-range picker dialog
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    showDateRangePicker = true
+                                }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedFilter.startsWith("CustomRange"),
+                                onClick = { showDateRangePicker = true }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Custom Date Range…")
                         }
                     }
                 },
                 confirmButton = {
                     TextButton(onClick = { showFilterDialog = false }) {
-                        Text("Apply")
+                        Text("Close")
                     }
                 }
             )
         }
+
+        // show DateRangePicker inline inside an AlertDialog (only when requested)
+        if (showDateRangePicker) {
+            val dateRangeState = rememberDateRangePickerState()
+
+            AlertDialog(
+                onDismissRequest = { showDateRangePicker = false },
+                title = { Text("Select Date Range") },
+                text = {
+                    // the inline picker (shows calendar UI)
+                    DateRangePicker(state = dateRangeState)
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val startMillis = dateRangeState.selectedStartDateMillis
+                        val endMillis = dateRangeState.selectedEndDateMillis
+                        if (startMillis != null && endMillis != null) {
+                            val startLocal = Instant.ofEpochMilli(startMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+                            val endLocal = Instant.ofEpochMilli(endMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+                            // store as ISO for parsing later
+                            selectedFilter = "CustomRange:${startLocal}|${endLocal}"
+                        }
+                        showDateRangePicker = false
+                        showFilterDialog = false
+                    }) {
+                        Text("Apply")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDateRangePicker = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+
     }
 }
 @Composable
