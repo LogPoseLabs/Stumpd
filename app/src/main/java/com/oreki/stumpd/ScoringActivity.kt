@@ -2219,17 +2219,37 @@ fun saveMatchToHistory(
 
     // Single scoring function closes over matchEconomy/wasChaseWin/winnerTeam
     fun scoreAgg(a: Agg): Double {
-        val sr = if (a.balls > 0) a.runs * 100.0 / a.balls else 0.0
-        val batBase = a.runs + 2.0 * a.fours + 3.0 * a.sixes + if (a.notOut) 10.0 else 0.0
-        val srBonus = if (a.balls >= 10) kotlin.math.max(0.0, kotlin.math.min(10.0, (sr - 100.0) / 5.0)) else 0.0
-        val chaseBonus = if (wasChaseWin) kotlin.math.min(15.0, a.runs / 5.0) else 0.0
-        var bat = batBase + srBonus + chaseBonus
+        val overs = matchSettings.totalOvers.toDouble()
 
+        // dynamic weights
+        val runsWeight   = 20.0 / overs
+        val fourBonus    = 1.0 * (20.0 / overs)
+        val sixBonus     = 1.5 * (20.0 / overs)
+        val notOutBonus  = 2.0 * (20.0 / overs)
+        val wicketWeight = 50.0 / overs
+
+        // batting
+        val sr = if (a.balls > 0) a.runs * 100.0 / a.balls else 0.0
+        var bat = a.runs * runsWeight +
+                a.fours * fourBonus +
+                a.sixes * sixBonus +
+                (if (a.notOut) notOutBonus else 0.0)
+
+        val srBonus = if (a.balls >= 10)
+            kotlin.math.max(0.0, kotlin.math.min(10.0, (sr - 100.0) / 5.0))
+        else 0.0
+        val chaseBonus = if (wasChaseWin) kotlin.math.min(15.0, a.runs / 5.0) else 0.0
+        bat += srBonus + chaseBonus
+
+        // bowling
         val eco = if (a.ballsBowled > 0) a.rcv * 6.0 / a.ballsBowled else 0.0
-        val bowlBase = 20.0 * a.wkts - 0.1 * a.rcv - 2.0 * kotlin.math.max(0.0, eco - matchEconomy)
+        val bowlBase = a.wkts * wicketWeight -
+                0.1 * a.rcv -
+                2.0 * kotlin.math.max(0.0, eco - matchEconomy)
         val fiveW = if (a.wkts >= 5) 20.0 else if (a.wkts >= 4) 10.0 else 0.0
         var bowl = if (a.ballsBowled > 0) bowlBase + fiveW else 0.0
 
+        // joker discount on scoring but still record stats
         if (a.isJoker && a.ballsBowled > 0 && a.balls > 0) { bat *= 0.8; bowl *= 0.8 }
 
         val base = when {
@@ -2237,11 +2257,11 @@ fun saveMatchToHistory(
             a.balls > 0 -> bat
             else -> bowl
         }
-        val teamWinMult = 1.10
-        return if (a.team == winnerTeam) base * teamWinMult else base
+
+        return if (a.team == winnerTeam) base * 1.10 else base
     }
 
-// Build impacts once
+    // Build impacts once
     val impactsUnsorted: List<PlayerImpact> = aggMap.values.map { a ->
         val impact = scoreAgg(a)
         PlayerImpact(
@@ -2253,10 +2273,16 @@ fun saveMatchToHistory(
             wickets = a.wkts, runsConceded = a.rcv, oversBowled = a.ballsBowled / 6.0
         )
     }
-    val playerImpactsList: List<PlayerImpact> = impactsUnsorted.sortedByDescending { it.impact }
 
-// POTM = top of impact list
-    val potm = playerImpactsList.firstOrNull()
+    val playerImpactsListWithoutJoker: List<PlayerImpact> =
+        impactsUnsorted
+            .filterNot { it.isJoker }
+            .sortedByDescending { it.impact }
+
+    val playerImpactsListWithJoker: List<PlayerImpact> = impactsUnsorted.sortedByDescending { it.impact }
+
+    // POTM = top of impact list
+    val potm = playerImpactsListWithoutJoker.firstOrNull()
 
     val matchHistory = MatchHistory(
         team1Name = team1Name,
@@ -2287,7 +2313,7 @@ fun saveMatchToHistory(
         playerOfTheMatchTeam = potm?.team,
         playerOfTheMatchImpact = potm?.impact,
         playerOfTheMatchSummary = potm?.summary,
-        playerImpacts = playerImpactsList
+        playerImpacts = playerImpactsListWithJoker
     )
 
     val storageManager = MatchStorageManager(context)
