@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Stump\'d</string>
+    
+    <!-- Firebase Google Sign-In -->
+    <!-- This will be replaced by google-services.json value automatically -->
+    <string name="default_web_client_id" translatable="false">YOUR_WEB_CLIENT_ID</string>
+</resources>

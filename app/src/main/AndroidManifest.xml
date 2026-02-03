@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Permissions for backup/restore -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"
+        tools:ignore="ScopedStorage" />
+    
+    <!-- Internet permission for Firebase sync -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    
+    <!-- Permission for OTA updates (installing APKs) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application
+        android:name=".StumpdApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Stumpd"
+        tools:targetApi="31">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Stumpd">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".TeamSetupActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ScoringActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".MatchHistoryActivity"
+            android:exported="false" />
+        <activity
+            android:name=".DataManagementActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".StatsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".AboutActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".MatchDetailActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".FullScorecardActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".AddPlayerActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".PlayerDetailActivity"
+            android:exported="false" />
+
+        <activity android:name=".GroupManagementActivity"
+            android:exported="false"/>
+
+        <activity android:name=".EditGroupActivity"
+            android:exported="false"/>
+
+        <activity android:name=".ImpactListActivity"
+            android:exported="false" />
+
+        <activity android:name=".AllPlayersStatsActivity"
+            android:exported="false" />
+
+        <activity android:name=".CloudSyncActivity"
+            android:exported="false" />
+        
+        <activity android:name=".LiveMatchesActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Stumpd" />
+        
+        <activity android:name=".SpectatorActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Stumpd" />
+
+        <activity android:name=".EnhancedCloudSyncActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Stumpd" />
+
+        <!-- FileProvider for APK installation (OTA updates) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+    </application>
+
+</manifest>
