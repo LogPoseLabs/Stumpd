@@ -179,11 +179,12 @@ fun MatchDetailScreen(matchId: String) {
 
             item {
                 // First Innings Enhanced
+                val totalOvers1 = match.matchSettings?.totalOvers?.toDouble() ?: 6.0
                 EnhancedInningsSummaryCard(
                     title = "${match.team1Name} - 1st Innings",
                     runs = match.firstInningsRuns,
                     wickets = match.firstInningsWickets,
-                    runRate = if (match.firstInningsRuns > 0) match.firstInningsRuns / (match.matchSettings?.totalOvers?.toDouble()!!) else 5.0,
+                    runRate = if (match.firstInningsRuns > 0 && totalOvers1 > 0) match.firstInningsRuns / totalOvers1 else 0.0,
                     match = match,
                     isFirstInnings = true
                 )
@@ -193,11 +194,12 @@ fun MatchDetailScreen(matchId: String) {
 
             item {
                 // Second Innings Enhanced
+                val totalOvers2 = match.matchSettings?.totalOvers?.toDouble() ?: 6.0
                 EnhancedInningsSummaryCard(
                     title = "${match.team2Name} - 2nd Innings",
                     runs = match.secondInningsRuns,
                     wickets = match.secondInningsWickets,
-                    runRate = if (match.secondInningsRuns > 0) match.secondInningsRuns / (match.matchSettings?.totalOvers?.toDouble()!!) else 5.0,
+                    runRate = if (match.secondInningsRuns > 0 && totalOvers2 > 0) match.secondInningsRuns / totalOvers2 else 0.0,
                     match = match,
                     isFirstInnings = false
                 )

@@ -288,36 +288,42 @@ fun AboutScreen() {
                         val featureCategories = listOf(
                             "Match Scoring" to listOf(
                                 "Live ball-by-ball scoring",
-                                "Real-time statistics & analytics",
-                                "Swipe navigation between tabs",
-                                "Undo last delivery",
-                                "Powerplay tracking & doubling"
+                                "Partnerships & Fall of Wickets tracking",
+                                "Powerplay tracking & doubling",
+                                "Retired batsman support",
+                                "Undo last delivery"
+                            ),
+                            "Live & Cloud" to listOf(
+                                "Live match sharing & spectating",
+                                "Cloud backup & sync (Firebase)",
+                                "Multi-device support",
+                                "OTA app updates",
+                                "Group-based data sharing"
+                            ),
+                            "Statistics & Analytics" to listOf(
+                                "Player of the Match (Impact Score)",
+                                "Advanced player statistics",
+                                "Strike rate & economy calculations",
+                                "Boundary %, dot ball %, consistency",
+                                "Form guide & pressure index"
                             ),
                             "Player Management" to listOf(
-                                "Advanced team & player management",
-                                "Player group system",
+                                "Player groups with invite codes",
                                 "Unique joker player mechanics",
-                                "Availability toggle per group",
-                                "Auto-sync statistics"
-                            ),
-                            "Match Intelligence" to listOf(
-                                "Strike rate & economy calculations",
-                                "Live & required run rates",
-                                "Target calculations",
-                                "Chase tracker",
-                                "Wicket type categorization"
+                                "Per-group availability toggle",
+                                "Detailed player profiles",
+                                "Historical performance tracking"
                             ),
                             "Data & History" to listOf(
                                 "Comprehensive match history",
-                                "Detailed digital scorecards",
-                                "Group-based filtering",
-                                "Backup & restore functionality",
-                                "Ball-by-ball replay data"
+                                "Full digital scorecards",
+                                "Ball-by-ball replay data",
+                                "Import & export functionality",
+                                "Group-based filtering"
                             ),
                             "Modern UI" to listOf(
                                 "Material Design 3",
                                 "Adaptive dark/light themes",
-                                "Modernized dialogs & cards",
                                 "Responsive layouts",
                                 "Beautiful animations"
                             )
@@ -483,7 +489,7 @@ fun AboutScreen() {
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
-                        text = "© 2025 LogPoseLabs. All rights reserved.",
+                        text = "© 2026 LogPoseLabs. All rights reserved.",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
