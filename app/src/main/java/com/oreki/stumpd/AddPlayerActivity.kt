@@ -186,6 +186,7 @@ fun AddPlayerScreen() {
                 subtitle = "${allPlayers.size} players • $groupName",
                 onBack = {
                     val intent = Intent(context, MainActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                     context.startActivity(intent)
                     (context as ComponentActivity).finish()
                 },

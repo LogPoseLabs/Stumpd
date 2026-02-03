@@ -162,22 +162,9 @@ fun FullScorecardScreen(matchId: String) {
                 actions = {
                 IconButton(
                     onClick = {
-                        val intent = Intent(context, MatchHistoryActivity::class.java)
-                        context.startActivity(intent)
-                        (context as ComponentActivity).finish()
-                        }
-                ) {
-                    Icon(
-                            Icons.AutoMirrored.Filled.List,
-                            contentDescription = "Match History"
-                    )
-                }
-
-                IconButton(
-                    onClick = {
                         val intent = Intent(context, MainActivity::class.java)
+                        intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                         context.startActivity(intent)
-                        (context as ComponentActivity).finish()
                         }
                 ) {
                     Icon(

@@ -118,7 +118,7 @@ fun MatchHistoryScreen() {
                                 Color.Transparent
                         ) {
                             Icon(
-                                Icons.Default.AccountCircle,
+                                Icons.Default.FilterList,
                                 contentDescription = "Filter by Group",
                                 tint = if (selectedFilter.id != null)
                                     MaterialTheme.colorScheme.primary
@@ -181,7 +181,7 @@ fun MatchHistoryScreen() {
                             
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Icon(
-                                    Icons.Default.Refresh,
+                                    Icons.Default.Pending,
                                     contentDescription = null,
                                     modifier = Modifier.size(20.dp),
                                     tint = MaterialTheme.colorScheme.tertiary
@@ -213,7 +213,7 @@ fun MatchHistoryScreen() {
                     label = { Text(selectedFilter.name, fontSize = 13.sp) },
                     leadingIcon = {
                         Icon(
-                            Icons.Default.AccountCircle,
+                            Icons.Default.Group,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )
@@ -242,7 +242,7 @@ fun MatchHistoryScreen() {
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Icon(
-                            Icons.Default.Star,
+                            Icons.Default.SportsScore,
                             contentDescription = null,
                             modifier = Modifier.size(72.dp),
                             tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
@@ -269,6 +269,7 @@ fun MatchHistoryScreen() {
                         Button(
                             onClick = {
                                 val intent = android.content.Intent(context, MainActivity::class.java)
+                                intent.flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
                                 context.startActivity(intent)
                                 (context as ComponentActivity).finish()
                             }
@@ -843,7 +844,7 @@ fun InProgressMatchCard(
                 )
             ) {
                 Icon(
-                    imageVector = Icons.Default.Home,  // Using Home as play icon placeholder
+                    imageVector = Icons.Default.PlayArrow,
                     contentDescription = "Resume",
                     modifier = Modifier.size(20.dp)
                 )

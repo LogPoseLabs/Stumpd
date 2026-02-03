@@ -19,6 +19,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import com.oreki.stumpd.BuildConfig
+import com.oreki.stumpd.data.update.AppUpdateManager
+import com.oreki.stumpd.data.update.UpdateInfo
+import com.oreki.stumpd.data.update.UpdateState
+import kotlinx.coroutines.launch
 
 class AboutActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,6 +44,15 @@ class AboutActivity : ComponentActivity() {
 @Composable
 fun AboutScreen() {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    
+    // Update manager
+    val updateManager = remember { AppUpdateManager(context) }
+    val updateState by updateManager.updateState.collectAsState()
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    var updateCheckMessage by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         topBar = {
@@ -54,6 +67,7 @@ fun AboutScreen() {
                     IconButton(
                         onClick = {
                             val intent = Intent(context, MainActivity::class.java)
+                            intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                             context.startActivity(intent)
                             (context as ComponentActivity).finish()
                         }
@@ -128,6 +142,59 @@ fun AboutScreen() {
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Check for Updates Button
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    isCheckingUpdate = true
+                                    updateCheckMessage = null
+                                    val result = updateManager.checkForUpdate()
+                                    isCheckingUpdate = false
+                                    if (result != null) {
+                                        updateInfo = result
+                                        showUpdateDialog = true
+                                    } else {
+                                        updateCheckMessage = "You're on the latest version!"
+                                    }
+                                }
+                            },
+                            enabled = !isCheckingUpdate,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondary
+                            )
+                        ) {
+                            if (isCheckingUpdate) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onSecondary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Checking...")
+                            } else {
+                                Icon(
+                                    Icons.Default.SystemUpdate,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Check for Updates")
+                            }
+                        }
+                        
+                        // Show message if already up to date
+                        updateCheckMessage?.let { message ->
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = message,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     }
@@ -423,5 +490,129 @@ fun AboutScreen() {
                 }
             }
         }
+    }
+    
+    // Update Dialog - placed outside Scaffold
+    if (showUpdateDialog && updateInfo != null) {
+        AlertDialog(
+            onDismissRequest = { 
+                if (!updateInfo!!.isForceUpdate && updateState !is UpdateState.Downloading) {
+                    showUpdateDialog = false
+                }
+            },
+            icon = {
+                when (updateState) {
+                    is UpdateState.Downloading -> {
+                        CircularProgressIndicator(
+                            progress = { (updateState as UpdateState.Downloading).progress / 100f },
+                            modifier = Modifier.size(48.dp),
+                            strokeWidth = 4.dp
+                        )
+                    }
+                    is UpdateState.Error -> {
+                        Icon(
+                            Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    else -> {
+                        Icon(
+                            Icons.Default.SystemUpdate,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            },
+            title = {
+                Text(
+                    when (updateState) {
+                        is UpdateState.Downloading -> "Downloading..."
+                        is UpdateState.ReadyToInstall -> "Ready to Install"
+                        is UpdateState.Installing -> "Installing..."
+                        is UpdateState.Error -> "Update Failed"
+                        else -> "Update Available"
+                    },
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    when (updateState) {
+                        is UpdateState.Downloading -> {
+                            Text("Downloading version ${updateInfo!!.latestVersionName}...")
+                            LinearProgressIndicator(
+                                progress = { (updateState as UpdateState.Downloading).progress / 100f },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Text(
+                                "${(updateState as UpdateState.Downloading).progress.toInt()}%",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        is UpdateState.Error -> {
+                            Text(
+                                (updateState as UpdateState.Error).message,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        else -> {
+                            Text("Current: v${BuildConfig.VERSION_NAME}")
+                            Text("Latest: v${updateInfo!!.latestVersionName}")
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                updateInfo!!.updateMessage,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                when (updateState) {
+                    is UpdateState.Downloading -> {
+                        TextButton(onClick = { updateManager.cancelDownload() }) {
+                            Text("Cancel")
+                        }
+                    }
+                    is UpdateState.Error -> {
+                        Button(onClick = {
+                            scope.launch {
+                                updateManager.downloadAndInstall(updateInfo!!)
+                            }
+                        }) {
+                            Text("Retry")
+                        }
+                    }
+                    is UpdateState.ReadyToInstall, is UpdateState.Installing -> {
+                        // No button needed
+                    }
+                    else -> {
+                        Button(onClick = {
+                            scope.launch {
+                                updateManager.downloadAndInstall(updateInfo!!)
+                            }
+                        }) {
+                            Icon(Icons.Default.Download, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Update Now")
+                        }
+                    }
+                }
+            },
+            dismissButton = {
+                if (!updateInfo!!.isForceUpdate && updateState !is UpdateState.Downloading) {
+                    TextButton(onClick = { showUpdateDialog = false }) {
+                        Text("Later")
+                    }
+                }
+            }
+        )
     }
 }

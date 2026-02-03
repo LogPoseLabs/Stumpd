@@ -12,6 +12,7 @@
 /captures
 .externalNativeBuild
 .cxx
+*.md
 local.properties
 
 # Firebase config (contains API keys - use GitHub Secrets instead)

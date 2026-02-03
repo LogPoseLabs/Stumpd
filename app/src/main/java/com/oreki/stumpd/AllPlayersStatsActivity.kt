@@ -251,7 +251,7 @@ fun AllPlayersStatsScreen(
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                         modifier = Modifier.height(IntrinsicSize.Min)
                     ) {
-                        Icon(Icons.Default.Home, contentDescription = "Group", modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Group, contentDescription = "Group", modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(selectedGroupName, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -260,7 +260,7 @@ fun AllPlayersStatsScreen(
                         onClick = { showPitchPicker = true },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                     ) {
-                        Icon(Icons.Default.Star, contentDescription = "Pitch", modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Terrain, contentDescription = "Pitch", modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(pitchTypeLabel, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -270,7 +270,7 @@ fun AllPlayersStatsScreen(
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                         modifier = Modifier.height(IntrinsicSize.Min)
                     ) {
-                        Icon(Icons.Default.List, contentDescription = "Filter", modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.FilterList, contentDescription = "Filter", modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(selectedFilter, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -279,7 +279,7 @@ fun AllPlayersStatsScreen(
                         onClick = { showSortDialog = true },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                     ) {
-                        Icon(Icons.Default.Settings, contentDescription = "Sort", modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Sort, contentDescription = "Sort", modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("Sort: $sortBy", fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }

@@ -52,8 +52,27 @@ fun MatchDetailScreen(matchId: String) {
     val repo = rememberMatchRepository()
 
     var matchData by remember { mutableStateOf<MatchHistory?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(matchId) { matchData = repo.getMatchWithStats(matchId) }
+    LaunchedEffect(matchId) { 
+        isLoading = true
+        matchData = repo.getMatchWithStats(matchId)
+        isLoading = false
+    }
+
+    if (isLoading) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator()
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Loading match...", fontSize = 14.sp)
+            }
+        }
+        return
+    }
 
     if (matchData == null) {
         Box(
@@ -62,11 +81,10 @@ fun MatchDetailScreen(matchId: String) {
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Match not found", fontSize = 18.sp)
+                Text("ID: $matchId", fontSize = 12.sp, color = Color.Gray)
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
                     onClick = {
-                        val intent = Intent(context, MatchHistoryActivity::class.java)
-                        context.startActivity(intent)
                         (context as ComponentActivity).finish()
                     }
                 ) {
@@ -81,15 +99,14 @@ fun MatchDetailScreen(matchId: String) {
     Scaffold(
         topBar = {
             StumpdTopBar(
-                title = "Match Scorecard",
+                title = "Match Summary",
                 subtitle = "${match.team1Name} vs ${match.team2Name}",
                 onBack = {
-                    val intent = Intent(context, MatchHistoryActivity::class.java)
-                    context.startActivity(intent)
                     (context as ComponentActivity).finish()
                 },
                 onHome = {
                     val intent = Intent(context, MainActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                     context.startActivity(intent)
                     (context as ComponentActivity).finish()
                 }

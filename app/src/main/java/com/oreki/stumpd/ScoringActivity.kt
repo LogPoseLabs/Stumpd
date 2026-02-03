@@ -2021,6 +2021,10 @@ fun ScoringScreen(
             firstInningsBowlingPlayers = firstInningsBowlingPlayersList,
             secondInningsBattingPlayers = secondInningsBattingPlayers,
             secondInningsBowlingPlayers = secondInningsBowlingPlayers,
+            firstInningsPartnerships = firstInningsPartnerships,
+            secondInningsPartnerships = partnerships, // Current innings partnerships
+            firstInningsFallOfWickets = firstInningsFallOfWickets,
+            secondInningsFallOfWickets = fallOfWickets, // Current innings FOW
             onNewMatch = {
                 val intent = android.content.Intent(context, MainActivity::class.java)
                 intent.flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -2028,12 +2032,9 @@ fun ScoringScreen(
                 (context as androidx.activity.ComponentActivity).finish()
             },
             onDismiss = {
+                // Navigation is handled inside the dialog with correct savedMatchId
+                // Just close the dialog here - actual navigation happens via View Details button
                 showMatchCompleteDialog = false
-
-                val intent = android.content.Intent(context, FullScorecardActivity::class.java)
-                intent.putExtra("match_id", matchId)
-                context.startActivity(intent)
-                (context as androidx.activity.ComponentActivity).finish()
             },
             matchSettings = matchSettings,
             groupId = groupId,
@@ -2086,6 +2087,7 @@ fun ScoringScreen(
                 Button(
                     onClick = {
                         val intent = android.content.Intent(context, MainActivity::class.java)
+                        intent.flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
                         context.startActivity(intent)
                         (context as androidx.activity.ComponentActivity).finish()
                     },
@@ -3299,7 +3301,7 @@ fun SwapStrikeButton(onSwap: () -> Unit) {
         )
     ) {
         Icon(
-            imageVector = Icons.Default.Refresh,
+            imageVector = Icons.Default.SwapHoriz,
             contentDescription = "Swap Strike",
             tint = MaterialTheme.colorScheme.onSecondaryContainer,
             modifier = Modifier.size(20.dp)
@@ -3619,6 +3621,10 @@ fun saveMatchToHistory(
     firstInningsBowlingStats: List<PlayerMatchStats> = emptyList(),
     secondInningsBattingStats: List<PlayerMatchStats> = emptyList(),
     secondInningsBowlingStats: List<PlayerMatchStats> = emptyList(),
+    firstInningsPartnerships: List<Partnership> = emptyList(),
+    secondInningsPartnerships: List<Partnership> = emptyList(),
+    firstInningsFallOfWickets: List<FallOfWicket> = emptyList(),
+    secondInningsFallOfWickets: List<FallOfWicket> = emptyList(),
     context: android.content.Context,
     matchSettings: MatchSettings,
     groupId: String,
@@ -3862,6 +3868,11 @@ fun saveMatchToHistory(
         groupId = groupId,
         groupName = groupName,
         shortPitch = matchSettings.shortPitch,
+        // Partnerships and Fall of Wickets
+        firstInningsPartnerships = firstInningsPartnerships,
+        secondInningsPartnerships = secondInningsPartnerships,
+        firstInningsFallOfWickets = firstInningsFallOfWickets,
+        secondInningsFallOfWickets = secondInningsFallOfWickets,
         // POTM from impacts
         playerOfTheMatchId = potm?.id,
         playerOfTheMatchName = potm?.name,
@@ -4963,6 +4974,10 @@ fun EnhancedMatchCompleteDialog(
     firstInningsBowlingPlayers: List<Player> = emptyList(),
     secondInningsBattingPlayers: List<Player> = emptyList(),
     secondInningsBowlingPlayers: List<Player> = emptyList(),
+    firstInningsPartnerships: List<Partnership> = emptyList(),
+    secondInningsPartnerships: List<Partnership> = emptyList(),
+    firstInningsFallOfWickets: List<FallOfWicket> = emptyList(),
+    secondInningsFallOfWickets: List<FallOfWicket> = emptyList(),
     onNewMatch: () -> Unit,
     onDismiss: () -> Unit,
     matchSettings: MatchSettings,
@@ -5013,6 +5028,7 @@ fun EnhancedMatchCompleteDialog(
     val finalGroupName = groupName ?: "Default"
 
     var isMatchSaved by remember { mutableStateOf(false) }
+    var savedMatchId by remember { mutableStateOf<String?>(null) }
 
     // Save history (tie-friendly placeholders)
     LaunchedEffect(Unit) {
@@ -5032,6 +5048,10 @@ fun EnhancedMatchCompleteDialog(
             firstInningsBowlingStats = firstInningsBowlingStats,
             secondInningsBattingStats = secondInningsBattingStats,
             secondInningsBowlingStats = secondInningsBowlingStats,
+            firstInningsPartnerships = firstInningsPartnerships,
+            secondInningsPartnerships = secondInningsPartnerships,
+            firstInningsFallOfWickets = firstInningsFallOfWickets,
+            secondInningsFallOfWickets = secondInningsFallOfWickets,
             context = context,
             matchSettings = matchSettings,
             groupId = finalGroupId,
@@ -5040,6 +5060,7 @@ fun EnhancedMatchCompleteDialog(
         )
         scope.launch {
             repo.saveMatch(match)
+            savedMatchId = match.id // Store the saved match ID for navigation
             inProgressManager.clearMatch() // Clear saved match since it's now completed
             
             // Clean up shared match from live matches
@@ -5062,7 +5083,16 @@ fun EnhancedMatchCompleteDialog(
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            // When clicking outside the dialog, navigate to scorecard if match is saved
+            if (isMatchSaved && savedMatchId != null) {
+                val intent = Intent(context, FullScorecardActivity::class.java)
+                intent.putExtra("match_id", savedMatchId)
+                context.startActivity(intent)
+                (context as ComponentActivity).finish()
+            }
+            onDismiss()
+        },
         title = {
             Text(
                 text = "🏆 Match Complete!",
@@ -5208,22 +5238,21 @@ fun EnhancedMatchCompleteDialog(
         dismissButton = {
             Button(
                 onClick = {
-                    if (isMatchSaved) {
+                    if (isMatchSaved && savedMatchId != null) {
                     val intent = Intent(context, FullScorecardActivity::class.java)
-                    intent.putExtra("match_id", matchId)
-                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    intent.putExtra("match_id", savedMatchId)
                     context.startActivity(intent)
                     (context as ComponentActivity).finish()
                     } else {
                         Toast.makeText(context, "Please wait, saving match...", Toast.LENGTH_SHORT).show()
                     }
                 },
-                enabled = isMatchSaved,
+                enabled = isMatchSaved && savedMatchId != null,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary
                 )
             ) {
-                if (isMatchSaved) {
+                if (isMatchSaved && savedMatchId != null) {
                     Icon(
                         Icons.AutoMirrored.Filled.List,
                         contentDescription = null,
@@ -6882,9 +6911,9 @@ fun FielderSelectionDialog(
                 ) {
                     Icon(
                         when (wicketType) {
-                            WicketType.CAUGHT -> Icons.Default.Person
-                            WicketType.STUMPED -> Icons.Default.Star
-                            else -> Icons.Default.Person
+                            WicketType.CAUGHT -> Icons.Default.SportsHandball
+                            WicketType.STUMPED -> Icons.Default.Bolt
+                            else -> Icons.Default.SportsHandball
                         },
                         contentDescription = null,
                         modifier = Modifier.padding(8.dp).size(20.dp),

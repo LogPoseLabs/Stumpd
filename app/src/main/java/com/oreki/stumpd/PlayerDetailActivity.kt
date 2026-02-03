@@ -243,7 +243,7 @@ fun PlayerDetailScreen(
                 modifier = Modifier.height(IntrinsicSize.Min)
             ) {
                 Icon(
-                    Icons.Default.Home,
+                    Icons.Default.Group,
                     contentDescription = "Group",
                     modifier = Modifier.size(16.dp)
                 )
@@ -262,7 +262,7 @@ fun PlayerDetailScreen(
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
             ) {
                 Icon(
-                    Icons.Default.Star,
+                    Icons.Default.Terrain,
                     contentDescription = "Pitch",
                     modifier = Modifier.size(16.dp)
                 )

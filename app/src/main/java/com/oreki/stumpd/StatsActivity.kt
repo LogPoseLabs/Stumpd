@@ -152,6 +152,7 @@ fun StatsScreen() {
                     subtitle = "${players.size} players • ${matches.size} matches\n$selectedGroupName",
                     onBack = {
                         val intent = Intent(context, MainActivity::class.java)
+                        intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                         context.startActivity(intent)
                         (context as ComponentActivity).finish()
                     }
@@ -183,7 +184,7 @@ fun StatsScreen() {
                             },
                             leadingIcon = {
                                 Icon(
-                                    Icons.Default.AccountCircle,
+                                    Icons.Default.Group,
                                     contentDescription = null,
                                     modifier = Modifier.size(18.dp)
                                 )
@@ -213,7 +214,7 @@ fun StatsScreen() {
                             },
                             leadingIcon = {
                                 Icon(
-                                    Icons.Default.Star,
+                                    Icons.Default.Terrain,
                                     contentDescription = null,
                                     modifier = Modifier.size(18.dp)
                                 )
@@ -295,6 +296,7 @@ fun StatsScreen() {
                         FilledTonalButton(
                             onClick = {
                                 val intent = Intent(context, MainActivity::class.java)
+                                intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                                 context.startActivity(intent)
                                 (context as ComponentActivity).finish()
                             }

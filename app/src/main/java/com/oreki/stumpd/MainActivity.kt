@@ -413,22 +413,52 @@ fun MainScreen() {
                 ) {
                     MenuCard(
                         title = "History",
-                        icon = Icons.Default.List,
+                        icon = Icons.Default.History,
                         description = "View past matches",
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.weight(1f)
                     ) {
                         context.startActivity(Intent(context, MatchHistoryActivity::class.java))
                     }
                     
                     MenuCard(
-                        title = "Statistics",
-                        icon = Icons.Default.Star,
-                        description = "Player & team stats",
+                        title = "Live Matches",
+                        icon = Icons.Default.LiveTv,
+                        description = "Watch ongoing",
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        context.startActivity(Intent(context, LiveMatchesActivity::class.java))
+                    }
+                }
+            }
+
+            // Section: Statistics
+            item {
+                Text(
+                    text = "Statistics",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+
+            item {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    MenuCard(
+                        title = "Player Stats",
+                        icon = Icons.Default.BarChart,
+                        description = "Performance analytics",
                         containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                         contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         context.startActivity(Intent(context, StatsActivity::class.java))
                     }
@@ -465,7 +495,7 @@ fun MainScreen() {
                     
                     MenuCard(
                         title = "Groups",
-                        icon = Icons.Default.AccountCircle,
+                        icon = Icons.Default.Group,
                         description = "Manage groups",
                         containerColor = MaterialTheme.colorScheme.secondaryContainer,
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -476,10 +506,10 @@ fun MainScreen() {
                 }
             }
 
-            // Section: Settings
+            // Section: Cloud & Data
             item {
                 Text(
-                    text = "Settings",
+                    text = "Cloud & Data",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -494,39 +524,20 @@ fun MainScreen() {
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     MenuCard(
-                        title = "Live Matches",
-                        icon = Icons.Default.LiveTv,
-                        description = "Watch ongoing matches",
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        context.startActivity(Intent(context, LiveMatchesActivity::class.java))
-                    }
-                    
-                    MenuCard(
                         title = "Cloud Sync",
                         icon = Icons.Default.Cloud,
-                        description = "Online backup & sync",
+                        description = "Backup & sync",
                         containerColor = MaterialTheme.colorScheme.primaryContainer,
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.weight(1f)
                     ) {
                         context.startActivity(Intent(context, EnhancedCloudSyncActivity::class.java))
                     }
-                }
-            }
-            
-            item {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+                    
                     MenuCard(
-                        title = "Settings",
-                        icon = Icons.Default.Settings,
-                        description = "App settings & data",
+                        title = "Data",
+                        icon = Icons.Default.Storage,
+                        description = "Import & export",
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                         contentColor = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f)
@@ -545,7 +556,7 @@ fun MainScreen() {
                     MenuCard(
                         title = "About",
                         icon = Icons.Default.Info,
-                        description = "App information",
+                        description = "App info & updates",
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                         contentColor = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.fillMaxWidth()

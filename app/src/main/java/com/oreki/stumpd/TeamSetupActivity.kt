@@ -293,6 +293,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                 subtitle = "Configure match settings and teams",
                 onBack = {
                     val intent = Intent(context, MainActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                     context.startActivity(intent)
                     (context as ComponentActivity).finish()
                 }
@@ -720,7 +721,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                                 shape = MaterialTheme.shapes.medium
                             ) {
                                 Icon(
-                                    Icons.Default.Refresh,
+                                    Icons.Default.History,
                                     contentDescription = null,
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -1610,7 +1611,7 @@ fun TossSelectionCard(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
-                            Icons.Default.Refresh,
+                            Icons.Default.Autorenew,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )

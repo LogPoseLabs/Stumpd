@@ -14,6 +14,7 @@ on:
         required: true
         default: 'v1.0.0'
 
+# Required permissions to create releases
 permissions:
   contents: write
 
@@ -63,12 +64,26 @@ jobs:
       - name: Get version info
         id: version
         run: |
-          VERSION_NAME=$(sed -n '/defaultConfig {/,/}/p' app/build.gradle.kts | grep 'versionName' | sed 's/.*"//;s/".*//')
-          VERSION_CODE=$(sed -n '/defaultConfig {/,/}/p' app/build.gradle.kts | grep 'versionCode' | sed 's/[^0-9]*//g')
-
+          # Extract versionName - looks for: versionName = "X.X.X" (where value starts with digit)
+          VERSION_NAME=$(grep -E 'versionName\s*=\s*"[0-9]' app/build.gradle.kts | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+          
+          # Extract versionCode - looks for: versionCode = N
+          VERSION_CODE=$(grep -E 'versionCode\s*=\s*[0-9]+' app/build.gradle.kts | head -1 | tr -d ' ' | cut -d'=' -f2)
+          
+          echo "Extracted: VERSION_NAME=$VERSION_NAME, VERSION_CODE=$VERSION_CODE"
+          
+          # Validate we got values
+          if [ -z "$VERSION_NAME" ]; then
+            echo "ERROR: Could not extract versionName"
+            exit 1
+          fi
+          if [ -z "$VERSION_CODE" ]; then
+            echo "ERROR: Could not extract versionCode"
+            exit 1
+          fi
+          
           echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
           echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION_NAME ($VERSION_CODE)"
 
       - name: Rename APK
         run: |
@@ -77,7 +92,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          name: Stumpd ${{ github.ref_name }}
+          name: Stumpd v${{ steps.version.outputs.version_name }}
           body: |
             ## Stumpd v${{ steps.version.outputs.version_name }}
             
