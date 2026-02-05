@@ -1,10 +1,12 @@
 package com.oreki.stumpd
 
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,10 +18,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.oreki.stumpd.data.local.entity.GroupEntity
+import com.oreki.stumpd.ui.components.DateFilterDialog
+import com.oreki.stumpd.ui.components.GroupFilterDropdown
+import com.oreki.stumpd.ui.components.filterMatchesByGroup
+import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import kotlinx.coroutines.launch
@@ -56,28 +64,46 @@ data class RecordEntry(
     val value: String,
     val holder: String,
     val matchInfo: String,
-    val matchDate: Long
+    val matchDate: Long,
+    val matchId: String? = null  // Added to enable navigation to match details
 )
+
+// Fielding filter options
+enum class FieldingFilter(val label: String) {
+    ALL("All"),
+    CATCHES("Catches"),
+    STUMPINGS("Stumpings"),
+    RUN_OUTS("Run Outs")
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun RecordsScreen(onBack: () -> Unit) {
     val matchRepo = rememberMatchRepository()
+    val groupRepo = rememberGroupRepository()
     val scope = rememberCoroutineScope()
 
     var isLoading by remember { mutableStateOf(true) }
     var allMatches by remember { mutableStateOf<List<MatchHistory>>(emptyList()) }
+    var groups by remember { mutableStateOf<List<GroupEntity>>(emptyList()) }
 
     // Selected category
     var selectedCategory by remember { mutableStateOf<RecordCategory>(RecordCategory.BattingRecords) }
     var records by remember { mutableStateOf<List<RecordEntry>>(emptyList()) }
+
+    // Group filter
+    var selectedGroupId by remember { mutableStateOf<String?>(null) }
+    var selectedGroupName by remember { mutableStateOf("All Groups") }
 
     // Date filter
     var selectedFilter by remember { mutableStateOf("All Time") }
     var showFilterDialog by remember { mutableStateOf(false) }
     var startDate by remember { mutableStateOf<LocalDate?>(null) }
     var endDate by remember { mutableStateOf<LocalDate?>(null) }
+
+    // Fielding filter (only used when Fielding tab is selected)
+    var fieldingFilter by remember { mutableStateOf(FieldingFilter.ALL) }
 
     val categories = listOf(
         RecordCategory.BattingRecords,
@@ -92,16 +118,18 @@ fun RecordsScreen(onBack: () -> Unit) {
         scope.launch {
             isLoading = true
             allMatches = matchRepo.getAllMatches()
+            groups = groupRepo.listGroups()
             isLoading = false
         }
     }
 
     // Calculate records when filter/category changes
-    LaunchedEffect(allMatches, selectedFilter, startDate, endDate, selectedCategory) {
+    LaunchedEffect(allMatches, selectedFilter, startDate, endDate, selectedCategory, selectedGroupId, fieldingFilter) {
         if (allMatches.isNotEmpty()) {
             scope.launch {
-                val filteredMatches = filterMatchesByDate(allMatches, selectedFilter, startDate, endDate)
-                records = calculateRecords(filteredMatches, selectedCategory)
+                val groupFiltered = filterMatchesByGroup(allMatches, selectedGroupId)
+                val dateFiltered = filterMatchesByDate(groupFiltered, selectedFilter, startDate, endDate)
+                records = calculateRecords(dateFiltered, selectedCategory, fieldingFilter)
             }
         }
     }
@@ -142,6 +170,19 @@ fun RecordsScreen(onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // Group filter
+            GroupFilterDropdown(
+                groups = groups,
+                selectedGroupId = selectedGroupId,
+                onGroupSelected = { id, name ->
+                    selectedGroupId = id
+                    selectedGroupName = name
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
             // Category tabs
             ScrollableTabRow(
                 selectedTabIndex = categories.indexOf(selectedCategory),
@@ -166,6 +207,24 @@ fun RecordsScreen(onBack: () -> Unit) {
                             }
                         }
                     )
+                }
+            }
+
+            // Fielding filter chips (only show when Fielding tab is selected)
+            if (selectedCategory is RecordCategory.FieldingRecords) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FieldingFilter.values().forEach { filter ->
+                        FilterChip(
+                            selected = fieldingFilter == filter,
+                            onClick = { fieldingFilter = filter },
+                            label = { Text(filter.label) }
+                        )
+                    }
                 }
             }
 
@@ -195,9 +254,13 @@ fun RecordsScreen(onBack: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            "Play more matches to see records",
+                            if (selectedCategory is RecordCategory.FieldingRecords)
+                                "Fielding stats require detailed match data"
+                            else
+                                "Play more matches to see records",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
@@ -232,8 +295,21 @@ fun RecordsScreen(onBack: () -> Unit) {
 
 @Composable
 fun RecordCard(record: RecordEntry) {
+    val context = LocalContext.current
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (record.matchId != null) {
+                    Modifier.clickable {
+                        val intent = Intent(context, MatchDetailActivity::class.java).apply {
+                            putExtra("MATCH_ID", record.matchId)
+                        }
+                        context.startActivity(intent)
+                    }
+                } else Modifier
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -260,14 +336,27 @@ fun RecordCard(record: RecordEntry) {
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    "${record.matchInfo} • ${java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(record.matchDate))}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${record.matchInfo} • ${java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(record.matchDate))}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (record.matchId != null) {
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            contentDescription = "View match",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
+
+            Spacer(modifier = Modifier.width(12.dp))
 
             Text(
                 record.value,
@@ -279,7 +368,141 @@ fun RecordCard(record: RecordEntry) {
     }
 }
 
-fun calculateRecords(matches: List<MatchHistory>, category: RecordCategory): List<RecordEntry> {
+// Helper data class for calculated batting stats from deliveries
+private data class CalculatedBattingStats(
+    val name: String,
+    val runs: Int,
+    val ballsFaced: Int,
+    val fours: Int,
+    val sixes: Int,
+    val isOut: Boolean
+)
+
+// Helper data class for calculated bowling stats from deliveries
+private data class CalculatedBowlingStats(
+    val name: String,
+    val wickets: Int,
+    val runsConceded: Int,
+    val ballsBowled: Int
+) {
+    val oversBowled: Double get() = ballsBowled / 6 + (ballsBowled % 6) / 10.0
+}
+
+// Calculate batting stats from ball-by-ball deliveries for a specific innings
+private fun calculateBattingFromDeliveries(deliveries: List<DeliveryUI>, inning: Int): List<CalculatedBattingStats> {
+    val inningsDeliveries = deliveries.filter { it.inning == inning }
+    val batterStats = mutableMapOf<String, MutableList<DeliveryUI>>()
+    val dismissedBatters = mutableSetOf<String>()
+
+    // Group deliveries by striker
+    inningsDeliveries.forEach { delivery ->
+        val striker = delivery.strikerName
+        if (striker.isNotBlank()) {
+            batterStats.getOrPut(striker) { mutableListOf() }.add(delivery)
+
+            // Check if this delivery was a wicket for this batter
+            val outcome = delivery.outcome.uppercase()
+            if (outcome == "W" || outcome.contains("W ") || outcome.startsWith("W(")) {
+                dismissedBatters.add(striker)
+            }
+        }
+    }
+
+    return batterStats.map { (name, balls) ->
+        var runs = 0
+        var fours = 0
+        var sixes = 0
+        var legalBalls = 0
+
+        balls.forEach { delivery ->
+            val outcome = delivery.outcome
+
+            // Count legal deliveries (exclude wides)
+            if (!outcome.contains("Wd", ignoreCase = true)) {
+                legalBalls++
+            }
+
+            // Count runs scored by the batter (not extras)
+            when {
+                outcome == "4" -> { runs += 4; fours++ }
+                outcome == "6" -> { runs += 6; sixes++ }
+                outcome == "0" || outcome == "W" -> { /* no runs */ }
+                outcome.contains("Wd", ignoreCase = true) -> { /* wide - not batter's runs */ }
+                outcome.contains("Nb", ignoreCase = true) -> {
+                    // No-ball: count runs if there are any
+                    val nbRuns = Regex("Nb\\+?(\\d+)").find(outcome)?.groupValues?.get(1)?.toIntOrNull()
+                        ?: outcome.filter { it.isDigit() }.toIntOrNull() ?: 0
+                    runs += nbRuns
+                    if (nbRuns == 4) fours++
+                    if (nbRuns == 6) sixes++
+                }
+                else -> {
+                    // Regular runs: 1, 2, 3, or runs from complex outcomes
+                    val runValue = outcome.filter { it.isDigit() }.take(1).toIntOrNull() ?: 0
+                    runs += runValue
+                }
+            }
+        }
+
+        CalculatedBattingStats(
+            name = name,
+            runs = runs,
+            ballsFaced = legalBalls,
+            fours = fours,
+            sixes = sixes,
+            isOut = name in dismissedBatters
+        )
+    }.filter { it.ballsFaced > 0 || it.runs > 0 }
+}
+
+// Calculate bowling stats from ball-by-ball deliveries for a specific innings
+private fun calculateBowlingFromDeliveries(deliveries: List<DeliveryUI>, inning: Int): List<CalculatedBowlingStats> {
+    val inningsDeliveries = deliveries.filter { it.inning == inning }
+    val bowlerStats = mutableMapOf<String, MutableList<DeliveryUI>>()
+
+    inningsDeliveries.forEach { delivery ->
+        val bowler = delivery.bowlerName
+        if (bowler.isNotBlank()) {
+            bowlerStats.getOrPut(bowler) { mutableListOf() }.add(delivery)
+        }
+    }
+
+    return bowlerStats.map { (name, balls) ->
+        var wickets = 0
+        var runsConceded = 0
+        var legalBalls = 0
+
+        balls.forEach { delivery ->
+            val outcome = delivery.outcome
+
+            // Count wickets (but not run outs - those aren't bowler's wickets)
+            if (outcome == "W" || (outcome.contains("W") && !outcome.contains("RO", ignoreCase = true))) {
+                wickets++
+            }
+
+            // Count legal deliveries
+            if (!outcome.contains("Wd", ignoreCase = true) && !outcome.contains("Nb", ignoreCase = true)) {
+                legalBalls++
+            }
+
+            // Count runs conceded
+            runsConceded += delivery.runs
+        }
+
+        CalculatedBowlingStats(
+            name = name,
+            wickets = wickets,
+            runsConceded = runsConceded,
+            ballsBowled = legalBalls
+        )
+    }.filter { it.ballsBowled > 0 }
+}
+
+fun calculateRecords(
+    matches: List<MatchHistory>,
+    category: RecordCategory,
+    fieldingFilter: FieldingFilter = FieldingFilter.ALL
+): List<RecordEntry> {
     val records = mutableListOf<RecordEntry>()
 
     when (category) {
@@ -292,78 +515,64 @@ fun calculateRecords(matches: List<MatchHistory>, category: RecordCategory): Lis
             var fastestFifty: RecordEntry? = null
 
             matches.forEach { match ->
-                val allBatters = match.firstInningsBatting + match.secondInningsBatting +
-                        match.team1Players + match.team2Players
+                // Try to use pre-computed stats first, fall back to calculating from deliveries
+                val hasBattingStats = match.firstInningsBatting.isNotEmpty() ||
+                        match.secondInningsBatting.isNotEmpty() ||
+                        match.team1Players.isNotEmpty() ||
+                        match.team2Players.isNotEmpty()
 
-                allBatters.distinctBy { "${it.name}_${it.runs}_${it.ballsFaced}_${match.id}" }.forEach { player ->
-                    if (player.runs > 0) {
-                        // Highest score
-                        if (highestScore == null || player.runs > (highestScore!!.value.substringBefore("*").substringBefore("(").toIntOrNull() ?: 0)) {
-                            val outIndicator = if (player.isOut) "" else "*"
-                            highestScore = RecordEntry(
-                                title = "Highest Individual Score",
-                                value = "${player.runs}$outIndicator",
-                                holder = player.name,
-                                matchInfo = "${match.team1Name} vs ${match.team2Name}",
-                                matchDate = match.matchDate
-                            )
+                if (hasBattingStats) {
+                    // Use existing stats
+                    val allBatters = match.firstInningsBatting + match.secondInningsBatting +
+                            match.team1Players + match.team2Players
+
+                    allBatters.distinctBy { "${it.name}_${it.runs}_${it.ballsFaced}_${match.id}" }.forEach { player ->
+                        processBattingRecord(
+                            name = player.name,
+                            runs = player.runs,
+                            ballsFaced = player.ballsFaced,
+                            fours = player.fours,
+                            sixes = player.sixes,
+                            isOut = player.isOut,
+                            match = match,
+                            highestScore = highestScore,
+                            highestStrikeRate = highestStrikeRate,
+                            mostSixes = mostSixes,
+                            mostFours = mostFours,
+                            fastestFifty = fastestFifty
+                        ).let { (hs, hsr, ms, mf, ff) ->
+                            highestScore = hs ?: highestScore
+                            highestStrikeRate = hsr ?: highestStrikeRate
+                            mostSixes = ms ?: mostSixes
+                            mostFours = mf ?: mostFours
+                            fastestFifty = ff ?: fastestFifty
                         }
+                    }
+                } else if (match.allDeliveries.isNotEmpty()) {
+                    // Calculate from ball-by-ball data
+                    val innings1Batting = calculateBattingFromDeliveries(match.allDeliveries, 1)
+                    val innings2Batting = calculateBattingFromDeliveries(match.allDeliveries, 2)
 
-                        // Highest strike rate (min 10 balls)
-                        if (player.ballsFaced >= 10) {
-                            val sr = (player.runs.toDouble() / player.ballsFaced) * 100
-                            val currentHighestSR = highestStrikeRate?.value?.toDoubleOrNull() ?: 0.0
-                            if (sr > currentHighestSR) {
-                                highestStrikeRate = RecordEntry(
-                                    title = "Highest Strike Rate (min 10 balls)",
-                                    value = String.format("%.1f", sr),
-                                    holder = "${player.name} (${player.runs} off ${player.ballsFaced})",
-                                    matchInfo = "${match.team1Name} vs ${match.team2Name}",
-                                    matchDate = match.matchDate
-                                )
-                            }
-                        }
-
-                        // Most sixes
-                        if (player.sixes > 0) {
-                            val currentMostSixes = mostSixes?.value?.toIntOrNull() ?: 0
-                            if (player.sixes > currentMostSixes) {
-                                mostSixes = RecordEntry(
-                                    title = "Most Sixes in an Innings",
-                                    value = "${player.sixes}",
-                                    holder = "${player.name} (${player.runs} runs)",
-                                    matchInfo = "${match.team1Name} vs ${match.team2Name}",
-                                    matchDate = match.matchDate
-                                )
-                            }
-                        }
-
-                        // Most fours
-                        if (player.fours > 0) {
-                            val currentMostFours = mostFours?.value?.toIntOrNull() ?: 0
-                            if (player.fours > currentMostFours) {
-                                mostFours = RecordEntry(
-                                    title = "Most Fours in an Innings",
-                                    value = "${player.fours}",
-                                    holder = "${player.name} (${player.runs} runs)",
-                                    matchInfo = "${match.team1Name} vs ${match.team2Name}",
-                                    matchDate = match.matchDate
-                                )
-                            }
-                        }
-
-                        // Fastest fifty
-                        if (player.runs >= 50) {
-                            val currentFastestFifty = fastestFifty?.value?.toIntOrNull() ?: Int.MAX_VALUE
-                            if (player.ballsFaced < currentFastestFifty) {
-                                fastestFifty = RecordEntry(
-                                    title = "Fastest Fifty",
-                                    value = "${player.ballsFaced}",
-                                    holder = "${player.name} (${player.runs} runs)",
-                                    matchInfo = "${match.team1Name} vs ${match.team2Name}",
-                                    matchDate = match.matchDate
-                                )
-                            }
+                    (innings1Batting + innings2Batting).forEach { player ->
+                        processBattingRecord(
+                            name = player.name,
+                            runs = player.runs,
+                            ballsFaced = player.ballsFaced,
+                            fours = player.fours,
+                            sixes = player.sixes,
+                            isOut = player.isOut,
+                            match = match,
+                            highestScore = highestScore,
+                            highestStrikeRate = highestStrikeRate,
+                            mostSixes = mostSixes,
+                            mostFours = mostFours,
+                            fastestFifty = fastestFifty
+                        ).let { (hs, hsr, ms, mf, ff) ->
+                            highestScore = hs ?: highestScore
+                            highestStrikeRate = hsr ?: highestStrikeRate
+                            mostSixes = ms ?: mostSixes
+                            mostFours = mf ?: mostFours
+                            fastestFifty = ff ?: fastestFifty
                         }
                     }
                 }
@@ -379,53 +588,52 @@ fun calculateRecords(matches: List<MatchHistory>, category: RecordCategory): Lis
             var mostMaidens: RecordEntry? = null
 
             matches.forEach { match ->
-                val allBowlers = match.firstInningsBowling + match.secondInningsBowling +
-                        match.team1Players + match.team2Players
+                val hasBowlingStats = match.firstInningsBowling.isNotEmpty() ||
+                        match.secondInningsBowling.isNotEmpty() ||
+                        match.team1Players.any { it.wickets > 0 || it.oversBowled > 0 } ||
+                        match.team2Players.any { it.wickets > 0 || it.oversBowled > 0 }
 
-                allBowlers.distinctBy { "${it.name}_${it.wickets}_${it.runsConceded}_${match.id}" }.forEach { player ->
-                    // Best bowling (most wickets, then fewer runs)
-                    if (player.wickets > 0) {
-                        val currentBest = bestBowlingFigures
-                        if (currentBest == null) {
-                            bestBowlingFigures = createBowlingRecord(player, match, "Best Bowling Figures")
-                        } else {
-                            val (currentW, currentR) = parseBowlingFigures(currentBest.value)
-                            if (player.wickets > currentW ||
-                                (player.wickets == currentW && player.runsConceded < currentR)) {
-                                bestBowlingFigures = createBowlingRecord(player, match, "Best Bowling Figures")
-                            }
+                if (hasBowlingStats) {
+                    val allBowlers = match.firstInningsBowling + match.secondInningsBowling +
+                            match.team1Players + match.team2Players
+
+                    allBowlers.distinctBy { "${it.name}_${it.wickets}_${it.runsConceded}_${match.id}" }.forEach { player ->
+                        processBowlingRecord(
+                            name = player.name,
+                            wickets = player.wickets,
+                            runsConceded = player.runsConceded,
+                            oversBowled = player.oversBowled,
+                            maidenOvers = player.maidenOvers,
+                            match = match,
+                            bestBowlingFigures = bestBowlingFigures,
+                            bestEconomy = bestEconomy,
+                            mostMaidens = mostMaidens
+                        ).let { (bbf, be, mm) ->
+                            bestBowlingFigures = bbf ?: bestBowlingFigures
+                            bestEconomy = be ?: bestEconomy
+                            mostMaidens = mm ?: mostMaidens
                         }
                     }
+                } else if (match.allDeliveries.isNotEmpty()) {
+                    // Calculate from ball-by-ball data
+                    val innings1Bowling = calculateBowlingFromDeliveries(match.allDeliveries, 1)
+                    val innings2Bowling = calculateBowlingFromDeliveries(match.allDeliveries, 2)
 
-                    // Best economy (min 2 overs)
-                    val ballsBowled = (player.oversBowled * 10).toInt().let {
-                        (it / 10) * 6 + (it % 10)
-                    }
-                    if (ballsBowled >= 12) { // At least 2 overs
-                        val economy = (player.runsConceded.toDouble() / ballsBowled) * 6
-                        val currentBestEconomy = bestEconomy?.value?.toDoubleOrNull() ?: Double.MAX_VALUE
-                        if (economy < currentBestEconomy) {
-                            bestEconomy = RecordEntry(
-                                title = "Best Economy Rate (min 2 overs)",
-                                value = String.format("%.2f", economy),
-                                holder = "${player.name} (${player.wickets}/${player.runsConceded})",
-                                matchInfo = "${match.team1Name} vs ${match.team2Name}",
-                                matchDate = match.matchDate
-                            )
-                        }
-                    }
-
-                    // Most maidens
-                    if (player.maidenOvers > 0) {
-                        val currentMostMaidens = mostMaidens?.value?.toIntOrNull() ?: 0
-                        if (player.maidenOvers > currentMostMaidens) {
-                            mostMaidens = RecordEntry(
-                                title = "Most Maiden Overs",
-                                value = "${player.maidenOvers}",
-                                holder = "${player.name} (${player.wickets}/${player.runsConceded})",
-                                matchInfo = "${match.team1Name} vs ${match.team2Name}",
-                                matchDate = match.matchDate
-                            )
+                    (innings1Bowling + innings2Bowling).forEach { player ->
+                        processBowlingRecord(
+                            name = player.name,
+                            wickets = player.wickets,
+                            runsConceded = player.runsConceded,
+                            oversBowled = player.oversBowled,
+                            maidenOvers = 0, // Can't easily calculate maidens from delivery data
+                            match = match,
+                            bestBowlingFigures = bestBowlingFigures,
+                            bestEconomy = bestEconomy,
+                            mostMaidens = mostMaidens
+                        ).let { (bbf, be, mm) ->
+                            bestBowlingFigures = bbf ?: bestBowlingFigures
+                            bestEconomy = be ?: bestEconomy
+                            mostMaidens = mm ?: mostMaidens
                         }
                     }
                 }
@@ -444,8 +652,8 @@ fun calculateRecords(matches: List<MatchHistory>, category: RecordCategory): Lis
                 val allPlayers = match.team1Players + match.team2Players
 
                 allPlayers.forEach { player ->
-                    // Most catches
-                    if (player.catches > 0) {
+                    // Most catches (show when filter is ALL or CATCHES)
+                    if ((fieldingFilter == FieldingFilter.ALL || fieldingFilter == FieldingFilter.CATCHES) && player.catches > 0) {
                         val currentMost = mostCatches?.value?.toIntOrNull() ?: 0
                         if (player.catches > currentMost) {
                             mostCatches = RecordEntry(
@@ -453,13 +661,14 @@ fun calculateRecords(matches: List<MatchHistory>, category: RecordCategory): Lis
                                 value = "${player.catches}",
                                 holder = player.name,
                                 matchInfo = "${match.team1Name} vs ${match.team2Name}",
-                                matchDate = match.matchDate
+                                matchDate = match.matchDate,
+                                matchId = match.id
                             )
                         }
                     }
 
-                    // Most run outs
-                    if (player.runOuts > 0) {
+                    // Most run outs (show when filter is ALL or RUN_OUTS)
+                    if ((fieldingFilter == FieldingFilter.ALL || fieldingFilter == FieldingFilter.RUN_OUTS) && player.runOuts > 0) {
                         val currentMost = mostRunOuts?.value?.toIntOrNull() ?: 0
                         if (player.runOuts > currentMost) {
                             mostRunOuts = RecordEntry(
@@ -467,13 +676,14 @@ fun calculateRecords(matches: List<MatchHistory>, category: RecordCategory): Lis
                                 value = "${player.runOuts}",
                                 holder = player.name,
                                 matchInfo = "${match.team1Name} vs ${match.team2Name}",
-                                matchDate = match.matchDate
+                                matchDate = match.matchDate,
+                                matchId = match.id
                             )
                         }
                     }
 
-                    // Most stumpings
-                    if (player.stumpings > 0) {
+                    // Most stumpings (show when filter is ALL or STUMPINGS)
+                    if ((fieldingFilter == FieldingFilter.ALL || fieldingFilter == FieldingFilter.STUMPINGS) && player.stumpings > 0) {
                         val currentMost = mostStumpings?.value?.toIntOrNull() ?: 0
                         if (player.stumpings > currentMost) {
                             mostStumpings = RecordEntry(
@@ -481,15 +691,21 @@ fun calculateRecords(matches: List<MatchHistory>, category: RecordCategory): Lis
                                 value = "${player.stumpings}",
                                 holder = player.name,
                                 matchInfo = "${match.team1Name} vs ${match.team2Name}",
-                                matchDate = match.matchDate
+                                matchDate = match.matchDate,
+                                matchId = match.id
                             )
                         }
                     }
                 }
             }
 
-            listOfNotNull(mostCatches, mostRunOuts, mostStumpings)
-                .let { records.addAll(it) }
+            // Add records based on filter
+            when (fieldingFilter) {
+                FieldingFilter.ALL -> listOfNotNull(mostCatches, mostRunOuts, mostStumpings)
+                FieldingFilter.CATCHES -> listOfNotNull(mostCatches)
+                FieldingFilter.STUMPINGS -> listOfNotNull(mostStumpings)
+                FieldingFilter.RUN_OUTS -> listOfNotNull(mostRunOuts)
+            }.let { records.addAll(it) }
         }
 
         is RecordCategory.PartnershipRecords -> {
@@ -506,7 +722,8 @@ fun calculateRecords(matches: List<MatchHistory>, category: RecordCategory): Lis
                             value = "${partnership.runs}",
                             holder = "${partnership.batsman1Name} & ${partnership.batsman2Name}",
                             matchInfo = "${match.team1Name} vs ${match.team2Name}",
-                            matchDate = match.matchDate
+                            matchDate = match.matchDate,
+                            matchId = match.id
                         )
                     }
                 }
@@ -533,7 +750,8 @@ fun calculateRecords(matches: List<MatchHistory>, category: RecordCategory): Lis
                         value = "${team1Score}/${match.firstInningsWickets}",
                         holder = match.team1Name,
                         matchInfo = "vs ${match.team2Name}",
-                        matchDate = match.matchDate
+                        matchDate = match.matchDate,
+                        matchId = match.id
                     )
                 }
                 if (team2Score > (highestTeamScore?.value?.substringBefore("/")?.toIntOrNull() ?: 0)) {
@@ -542,7 +760,8 @@ fun calculateRecords(matches: List<MatchHistory>, category: RecordCategory): Lis
                         value = "${team2Score}/${match.secondInningsWickets}",
                         holder = match.team2Name,
                         matchInfo = "vs ${match.team1Name}",
-                        matchDate = match.matchDate
+                        matchDate = match.matchDate,
+                        matchId = match.id
                     )
                 }
 
@@ -555,7 +774,8 @@ fun calculateRecords(matches: List<MatchHistory>, category: RecordCategory): Lis
                             value = "${team1Score}/${match.firstInningsWickets}",
                             holder = match.team1Name,
                             matchInfo = "vs ${match.team2Name}",
-                            matchDate = match.matchDate
+                            matchDate = match.matchDate,
+                            matchId = match.id
                         )
                     }
                 }
@@ -567,7 +787,8 @@ fun calculateRecords(matches: List<MatchHistory>, category: RecordCategory): Lis
                             value = "${team2Score}/${match.secondInningsWickets}",
                             holder = match.team2Name,
                             matchInfo = "vs ${match.team1Name}",
-                            matchDate = match.matchDate
+                            matchDate = match.matchDate,
+                            matchId = match.id
                         )
                     }
                 }
@@ -586,7 +807,8 @@ fun calculateRecords(matches: List<MatchHistory>, category: RecordCategory): Lis
                             value = "$runs runs",
                             holder = match.winnerTeam,
                             matchInfo = "${match.team1Name} vs ${match.team2Name}",
-                            matchDate = match.matchDate
+                            matchDate = match.matchDate,
+                            matchId = match.id
                         )
                     }
 
@@ -599,7 +821,8 @@ fun calculateRecords(matches: List<MatchHistory>, category: RecordCategory): Lis
                                 value = "$runs run${if (runs > 1) "s" else ""}",
                                 holder = "${match.winnerTeam} won",
                                 matchInfo = "${match.team1Name} vs ${match.team2Name}",
-                                matchDate = match.matchDate
+                                matchDate = match.matchDate,
+                                matchId = match.id
                             )
                         }
                     }
@@ -614,13 +837,203 @@ fun calculateRecords(matches: List<MatchHistory>, category: RecordCategory): Lis
     return records
 }
 
+// Helper function to process batting records
+private fun processBattingRecord(
+    name: String,
+    runs: Int,
+    ballsFaced: Int,
+    fours: Int,
+    sixes: Int,
+    isOut: Boolean,
+    match: MatchHistory,
+    highestScore: RecordEntry?,
+    highestStrikeRate: RecordEntry?,
+    mostSixes: RecordEntry?,
+    mostFours: RecordEntry?,
+    fastestFifty: RecordEntry?
+): Tuple5<RecordEntry?, RecordEntry?, RecordEntry?, RecordEntry?, RecordEntry?> {
+    var newHighestScore: RecordEntry? = null
+    var newHighestStrikeRate: RecordEntry? = null
+    var newMostSixes: RecordEntry? = null
+    var newMostFours: RecordEntry? = null
+    var newFastestFifty: RecordEntry? = null
+
+    if (runs > 0) {
+        // Highest score
+        if (highestScore == null || runs > (highestScore.value.substringBefore("*").substringBefore("(").toIntOrNull() ?: 0)) {
+            val outIndicator = if (isOut) "" else "*"
+            newHighestScore = RecordEntry(
+                title = "Highest Individual Score",
+                value = "$runs$outIndicator",
+                holder = name,
+                matchInfo = "${match.team1Name} vs ${match.team2Name}",
+                matchDate = match.matchDate,
+                matchId = match.id
+            )
+        }
+
+        // Highest strike rate (min 10 balls)
+        if (ballsFaced >= 10) {
+            val sr = (runs.toDouble() / ballsFaced) * 100
+            val currentHighestSR = highestStrikeRate?.value?.toDoubleOrNull() ?: 0.0
+            if (sr > currentHighestSR) {
+                newHighestStrikeRate = RecordEntry(
+                    title = "Highest Strike Rate (min 10 balls)",
+                    value = String.format("%.1f", sr),
+                    holder = "$name ($runs off $ballsFaced)",
+                    matchInfo = "${match.team1Name} vs ${match.team2Name}",
+                    matchDate = match.matchDate,
+                    matchId = match.id
+                )
+            }
+        }
+
+        // Most sixes
+        if (sixes > 0) {
+            val currentMostSixes = mostSixes?.value?.toIntOrNull() ?: 0
+            if (sixes > currentMostSixes) {
+                newMostSixes = RecordEntry(
+                    title = "Most Sixes in an Innings",
+                    value = "$sixes",
+                    holder = "$name ($runs runs)",
+                    matchInfo = "${match.team1Name} vs ${match.team2Name}",
+                    matchDate = match.matchDate,
+                    matchId = match.id
+                )
+            }
+        }
+
+        // Most fours
+        if (fours > 0) {
+            val currentMostFours = mostFours?.value?.toIntOrNull() ?: 0
+            if (fours > currentMostFours) {
+                newMostFours = RecordEntry(
+                    title = "Most Fours in an Innings",
+                    value = "$fours",
+                    holder = "$name ($runs runs)",
+                    matchInfo = "${match.team1Name} vs ${match.team2Name}",
+                    matchDate = match.matchDate,
+                    matchId = match.id
+                )
+            }
+        }
+
+        // Fastest fifty
+        if (runs >= 50) {
+            val currentFastestFifty = fastestFifty?.value?.toIntOrNull() ?: Int.MAX_VALUE
+            if (ballsFaced < currentFastestFifty) {
+                newFastestFifty = RecordEntry(
+                    title = "Fastest Fifty",
+                    value = "$ballsFaced",
+                    holder = "$name ($runs runs)",
+                    matchInfo = "${match.team1Name} vs ${match.team2Name}",
+                    matchDate = match.matchDate,
+                    matchId = match.id
+                )
+            }
+        }
+    }
+
+    return Tuple5(newHighestScore, newHighestStrikeRate, newMostSixes, newMostFours, newFastestFifty)
+}
+
+// Helper function to process bowling records
+private fun processBowlingRecord(
+    name: String,
+    wickets: Int,
+    runsConceded: Int,
+    oversBowled: Double,
+    maidenOvers: Int,
+    match: MatchHistory,
+    bestBowlingFigures: RecordEntry?,
+    bestEconomy: RecordEntry?,
+    mostMaidens: RecordEntry?
+): Triple<RecordEntry?, RecordEntry?, RecordEntry?> {
+    var newBestBowling: RecordEntry? = null
+    var newBestEconomy: RecordEntry? = null
+    var newMostMaidens: RecordEntry? = null
+
+    // Best bowling (most wickets, then fewer runs)
+    if (wickets > 0) {
+        val currentBest = bestBowlingFigures
+        if (currentBest == null) {
+            newBestBowling = RecordEntry(
+                title = "Best Bowling Figures",
+                value = "$wickets/$runsConceded",
+                holder = name,
+                matchInfo = "${match.team1Name} vs ${match.team2Name}",
+                matchDate = match.matchDate,
+                matchId = match.id
+            )
+        } else {
+            val (currentW, currentR) = parseBowlingFigures(currentBest.value)
+            if (wickets > currentW || (wickets == currentW && runsConceded < currentR)) {
+                newBestBowling = RecordEntry(
+                    title = "Best Bowling Figures",
+                    value = "$wickets/$runsConceded",
+                    holder = name,
+                    matchInfo = "${match.team1Name} vs ${match.team2Name}",
+                    matchDate = match.matchDate,
+                    matchId = match.id
+                )
+            }
+        }
+    }
+
+    // Best economy (min 2 overs)
+    val ballsBowled = (oversBowled * 10).toInt().let {
+        (it / 10) * 6 + (it % 10)
+    }
+    if (ballsBowled >= 12) { // At least 2 overs
+        val economy = (runsConceded.toDouble() / ballsBowled) * 6
+        val currentBestEconomy = bestEconomy?.value?.toDoubleOrNull() ?: Double.MAX_VALUE
+        if (economy < currentBestEconomy) {
+            newBestEconomy = RecordEntry(
+                title = "Best Economy Rate (min 2 overs)",
+                value = String.format("%.2f", economy),
+                holder = "$name ($wickets/$runsConceded)",
+                matchInfo = "${match.team1Name} vs ${match.team2Name}",
+                matchDate = match.matchDate,
+                matchId = match.id
+            )
+        }
+    }
+
+    // Most maidens
+    if (maidenOvers > 0) {
+        val currentMostMaidens = mostMaidens?.value?.toIntOrNull() ?: 0
+        if (maidenOvers > currentMostMaidens) {
+            newMostMaidens = RecordEntry(
+                title = "Most Maiden Overs",
+                value = "$maidenOvers",
+                holder = "$name ($wickets/$runsConceded)",
+                matchInfo = "${match.team1Name} vs ${match.team2Name}",
+                matchDate = match.matchDate,
+                matchId = match.id
+            )
+        }
+    }
+
+    return Triple(newBestBowling, newBestEconomy, newMostMaidens)
+}
+
+// Simple tuple class for returning multiple values
+private data class Tuple5<A, B, C, D, E>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D,
+    val fifth: E
+)
+
 private fun createBowlingRecord(player: PlayerMatchStats, match: MatchHistory, title: String): RecordEntry {
     return RecordEntry(
         title = title,
         value = "${player.wickets}/${player.runsConceded}",
         holder = player.name,
         matchInfo = "${match.team1Name} vs ${match.team2Name}",
-        matchDate = match.matchDate
+        matchDate = match.matchDate,
+        matchId = match.id
     )
 }
 

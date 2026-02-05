@@ -2,16 +2,21 @@ package com.oreki.stumpd.ui.components
 
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.oreki.stumpd.MatchHistory
+import com.oreki.stumpd.data.local.entity.GroupEntity
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /**
  * Reusable date filter dialog for statistics screens
@@ -36,18 +41,19 @@ fun DateFilterDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = currentFilter == filter,
-                            onClick = {
+                            .clickable {
                                 if (filter == "Custom") {
                                     showDatePicker = true
                                 } else {
                                     onFilterSelected(filter, null, null)
                                 }
                             }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = currentFilter == filter,
+                            onClick = null // Handled by row click
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(filter)
@@ -82,7 +88,9 @@ fun DateFilterDialog(
                             onFilterSelected("Custom", start, end)
                         }
                         showDatePicker = false
-                    }
+                    },
+                    enabled = dateRangePickerState.selectedStartDateMillis != null &&
+                            dateRangePickerState.selectedEndDateMillis != null
                 ) {
                     Text("OK")
                 }
@@ -95,9 +103,143 @@ fun DateFilterDialog(
         ) {
             DateRangePicker(
                 state = dateRangePickerState,
-                modifier = Modifier.height(500.dp)
+                modifier = Modifier.height(500.dp),
+                title = {
+                    Text(
+                        "Select Date Range",
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                },
+                headline = {
+                    val startDate = dateRangePickerState.selectedStartDateMillis?.let {
+                        Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
+                            .format(DateTimeFormatter.ofPattern("MMM dd, yyyy"))
+                    } ?: "Start"
+                    val endDate = dateRangePickerState.selectedEndDateMillis?.let {
+                        Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
+                            .format(DateTimeFormatter.ofPattern("MMM dd, yyyy"))
+                    } ?: "End"
+                    Text(
+                        "$startDate - $endDate",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
             )
         }
+    }
+}
+
+/**
+ * Reusable group filter dropdown for statistics screens
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GroupFilterDropdown(
+    groups: List<GroupEntity>,
+    selectedGroupId: String?,
+    onGroupSelected: (String?, String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedGroupName = if (selectedGroupId == null) {
+        "All Groups"
+    } else {
+        groups.find { it.id == selectedGroupId }?.name ?: "All Groups"
+    }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = modifier
+    ) {
+        OutlinedTextField(
+            value = selectedGroupName,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Group") },
+            leadingIcon = { Icon(Icons.Default.Groups, contentDescription = null) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            singleLine = true
+        )
+
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("All Groups") },
+                onClick = {
+                    onGroupSelected(null, "All Groups")
+                    expanded = false
+                }
+            )
+            groups.forEach { group ->
+                DropdownMenuItem(
+                    text = { Text(group.name) },
+                    onClick = {
+                        onGroupSelected(group.id, group.name)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Filter bar with both group and date filters
+ */
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+fun FilterBar(
+    groups: List<GroupEntity>,
+    selectedGroupId: String?,
+    selectedDateFilter: String,
+    onGroupSelected: (String?, String) -> Unit,
+    onDateFilterClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Group filter
+        GroupFilterDropdown(
+            groups = groups,
+            selectedGroupId = selectedGroupId,
+            onGroupSelected = onGroupSelected,
+            modifier = Modifier.weight(1f)
+        )
+
+        // Date filter button
+        OutlinedButton(
+            onClick = onDateFilterClick,
+            modifier = Modifier.height(56.dp)
+        ) {
+            Text(selectedDateFilter, maxLines = 1)
+        }
+    }
+}
+
+/**
+ * Filter matches by group
+ */
+fun filterMatchesByGroup(
+    matches: List<MatchHistory>,
+    groupId: String?
+): List<MatchHistory> {
+    return if (groupId == null) {
+        matches
+    } else {
+        matches.filter { it.groupId == groupId }
     }
 }
 

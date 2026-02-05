@@ -20,6 +20,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.oreki.stumpd.data.local.entity.GroupEntity
+import com.oreki.stumpd.ui.components.DateFilterDialog
+import com.oreki.stumpd.ui.components.GroupFilterDropdown
+import com.oreki.stumpd.ui.components.filterMatchesByGroup
+import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import kotlinx.coroutines.launch
@@ -60,11 +65,17 @@ data class CaptainStats(
 @Composable
 fun CaptainStatsScreen(onBack: () -> Unit) {
     val matchRepo = rememberMatchRepository()
+    val groupRepo = rememberGroupRepository()
     val scope = rememberCoroutineScope()
 
     var isLoading by remember { mutableStateOf(true) }
     var allMatches by remember { mutableStateOf<List<MatchHistory>>(emptyList()) }
+    var groups by remember { mutableStateOf<List<GroupEntity>>(emptyList()) }
     var captainStats by remember { mutableStateOf<List<CaptainStats>>(emptyList()) }
+
+    // Group filter
+    var selectedGroupId by remember { mutableStateOf<String?>(null) }
+    var selectedGroupName by remember { mutableStateOf("All Groups") }
 
     // Date filter
     var selectedFilter by remember { mutableStateOf("All Time") }
@@ -81,16 +92,18 @@ fun CaptainStatsScreen(onBack: () -> Unit) {
         scope.launch {
             isLoading = true
             allMatches = matchRepo.getAllMatches()
+            groups = groupRepo.listGroups()
             isLoading = false
         }
     }
 
     // Calculate stats when filter changes
-    LaunchedEffect(allMatches, selectedFilter, startDate, endDate, sortBy) {
+    LaunchedEffect(allMatches, selectedFilter, startDate, endDate, sortBy, selectedGroupId) {
         if (allMatches.isNotEmpty()) {
             scope.launch {
-                val filteredMatches = filterMatchesByDate(allMatches, selectedFilter, startDate, endDate)
-                captainStats = calculateCaptainStats(filteredMatches, sortBy)
+                val groupFiltered = filterMatchesByGroup(allMatches, selectedGroupId)
+                val dateFiltered = filterMatchesByDate(groupFiltered, selectedFilter, startDate, endDate)
+                captainStats = calculateCaptainStats(dateFiltered, sortBy)
             }
         }
     }
@@ -159,52 +172,70 @@ fun CaptainStatsScreen(onBack: () -> Unit) {
             )
         }
     ) { padding ->
-        if (isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-        } else if (captainStats.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.Star,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        "No captain data available",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        "Make sure to set captains when starting matches",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        } else {
-            LazyColumn(
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            // Group filter
+            GroupFilterDropdown(
+                groups = groups,
+                selectedGroupId = selectedGroupId,
+                onGroupSelected = { id, name ->
+                    selectedGroupId = id
+                    selectedGroupName = name
+                },
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(vertical = 16.dp)
-            ) {
-                items(captainStats.withIndex().toList()) { (index, stats) ->
-                    CaptainStatsCard(
-                        rank = index + 1,
-                        stats = stats
-                    )
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
+            if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else if (captainStats.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.Star,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            "No captain data available",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "Make sure to set captains when starting matches",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(vertical = 16.dp)
+                ) {
+                    items(captainStats.withIndex().toList()) { (index, stats) ->
+                        CaptainStatsCard(
+                            rank = index + 1,
+                            stats = stats
+                        )
+                    }
                 }
             }
         }

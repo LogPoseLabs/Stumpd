@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -18,6 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.oreki.stumpd.data.local.entity.GroupEntity
+import com.oreki.stumpd.ui.components.DateFilterDialog
+import com.oreki.stumpd.ui.components.GroupFilterDropdown
+import com.oreki.stumpd.ui.components.filterMatchesByGroup
+import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.history.rememberPlayerRepository
 import com.oreki.stumpd.ui.theme.StumpdTheme
@@ -70,17 +76,23 @@ data class HeadToHeadStats(
 fun HeadToHeadScreen(onBack: () -> Unit) {
     val matchRepo = rememberMatchRepository()
     val playerRepo = rememberPlayerRepository()
+    val groupRepo = rememberGroupRepository()
     val scope = rememberCoroutineScope()
 
     var isLoading by remember { mutableStateOf(true) }
     var allPlayers by remember { mutableStateOf<List<String>>(emptyList()) }
     var allMatches by remember { mutableStateOf<List<MatchHistory>>(emptyList()) }
+    var groups by remember { mutableStateOf<List<GroupEntity>>(emptyList()) }
 
     // Selection state
     var selectedBatsman by remember { mutableStateOf<String?>(null) }
     var selectedBowler by remember { mutableStateOf<String?>(null) }
     var showBatsmanDropdown by remember { mutableStateOf(false) }
     var showBowlerDropdown by remember { mutableStateOf(false) }
+
+    // Group filter
+    var selectedGroupId by remember { mutableStateOf<String?>(null) }
+    var selectedGroupName by remember { mutableStateOf("All Groups") }
 
     // Date filter
     var selectedFilter by remember { mutableStateOf("All Time") }
@@ -97,6 +109,7 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
         scope.launch {
             isLoading = true
             allMatches = matchRepo.getAllMatches()
+            groups = groupRepo.listGroups()
 
             // Extract unique player names from deliveries
             val playerNames = mutableSetOf<String>()
@@ -112,12 +125,13 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
     }
 
     // Calculate stats when selections change
-    LaunchedEffect(selectedBatsman, selectedBowler, selectedFilter, startDate, endDate) {
+    LaunchedEffect(selectedBatsman, selectedBowler, selectedFilter, startDate, endDate, selectedGroupId) {
         if (selectedBatsman != null && selectedBowler != null) {
             scope.launch {
-                val filteredMatches = filterMatchesByDate(allMatches, selectedFilter, startDate, endDate)
+                val groupFiltered = filterMatchesByGroup(allMatches, selectedGroupId)
+                val dateFiltered = filterMatchesByDate(groupFiltered, selectedFilter, startDate, endDate)
                 val (stats, details) = calculateHeadToHead(
-                    filteredMatches,
+                    dateFiltered,
                     selectedBatsman!!,
                     selectedBowler!!
                 )
@@ -158,157 +172,175 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
             )
         }
     ) { padding ->
-        if (isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-        } else {
-            LazyColumn(
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            // Group filter
+            GroupFilterDropdown(
+                groups = groups,
+                selectedGroupId = selectedGroupId,
+                onGroupSelected = { id, name ->
+                    selectedGroupId = id
+                    selectedGroupName = name
+                },
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // Player Selection
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                "Select Players",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            )
 
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            // Batsman dropdown
-                            ExposedDropdownMenuBox(
-                                expanded = showBatsmanDropdown,
-                                onExpandedChange = { showBatsmanDropdown = it }
-                            ) {
-                                OutlinedTextField(
-                                    value = selectedBatsman ?: "",
-                                    onValueChange = {},
-                                    readOnly = true,
-                                    label = { Text("Batsman") },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.SportsCricket, contentDescription = null)
-                                    },
-                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showBatsmanDropdown) },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .menuAnchor()
-                                )
-                                ExposedDropdownMenu(
-                                    expanded = showBatsmanDropdown,
-                                    onDismissRequest = { showBatsmanDropdown = false }
-                                ) {
-                                    allPlayers.forEach { player ->
-                                        DropdownMenuItem(
-                                            text = { Text(player) },
-                                            onClick = {
-                                                selectedBatsman = player
-                                                showBatsmanDropdown = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // VS indicator
-                            Text(
-                                "VS",
-                                modifier = Modifier.fillMaxWidth(),
-                                textAlign = TextAlign.Center,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // Bowler dropdown
-                            ExposedDropdownMenuBox(
-                                expanded = showBowlerDropdown,
-                                onExpandedChange = { showBowlerDropdown = it }
-                            ) {
-                                OutlinedTextField(
-                                    value = selectedBowler ?: "",
-                                    onValueChange = {},
-                                    readOnly = true,
-                                    label = { Text("Bowler") },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.Sports, contentDescription = null)
-                                    },
-                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showBowlerDropdown) },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .menuAnchor()
-                                )
-                                ExposedDropdownMenu(
-                                    expanded = showBowlerDropdown,
-                                    onDismissRequest = { showBowlerDropdown = false }
-                                ) {
-                                    allPlayers.forEach { player ->
-                                        DropdownMenuItem(
-                                            text = { Text(player) },
-                                            onClick = {
-                                                selectedBowler = player
-                                                showBowlerDropdown = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+            if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
                 }
-
-                // Stats Display
-                if (headToHeadStats != null && selectedBatsman != null && selectedBowler != null) {
-                    item {
-                        HeadToHeadStatsCard(stats = headToHeadStats!!)
-                    }
-
-                    // Match-by-match breakdown
-                    if (matchDetails.isNotEmpty()) {
-                        item {
-                            Text(
-                                "Match-by-Match Breakdown",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        items(matchDetails) { detail ->
-                            MatchHeadToHeadCard(detail = detail)
-                        }
-                    }
-                } else if (selectedBatsman != null && selectedBowler != null) {
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Player Selection
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.errorContainer
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
                             )
                         ) {
-                            Text(
-                                "No head-to-head data found between these players",
-                                modifier = Modifier.padding(16.dp),
-                                textAlign = TextAlign.Center,
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    "Select Players",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                // Batsman dropdown
+                                ExposedDropdownMenuBox(
+                                    expanded = showBatsmanDropdown,
+                                    onExpandedChange = { showBatsmanDropdown = it }
+                                ) {
+                                    OutlinedTextField(
+                                        value = selectedBatsman ?: "",
+                                        onValueChange = {},
+                                        readOnly = true,
+                                        label = { Text("Batsman") },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.SportsCricket, contentDescription = null)
+                                        },
+                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showBatsmanDropdown) },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .menuAnchor()
+                                    )
+                                    ExposedDropdownMenu(
+                                        expanded = showBatsmanDropdown,
+                                        onDismissRequest = { showBatsmanDropdown = false }
+                                    ) {
+                                        allPlayers.forEach { player ->
+                                            DropdownMenuItem(
+                                                text = { Text(player) },
+                                                onClick = {
+                                                    selectedBatsman = player
+                                                    showBatsmanDropdown = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // VS indicator
+                                Text(
+                                    "VS",
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.Center,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Bowler dropdown
+                                ExposedDropdownMenuBox(
+                                    expanded = showBowlerDropdown,
+                                    onExpandedChange = { showBowlerDropdown = it }
+                                ) {
+                                    OutlinedTextField(
+                                        value = selectedBowler ?: "",
+                                        onValueChange = {},
+                                        readOnly = true,
+                                        label = { Text("Bowler") },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.Sports, contentDescription = null)
+                                        },
+                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showBowlerDropdown) },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .menuAnchor()
+                                    )
+                                    ExposedDropdownMenu(
+                                        expanded = showBowlerDropdown,
+                                        onDismissRequest = { showBowlerDropdown = false }
+                                    ) {
+                                        allPlayers.forEach { player ->
+                                            DropdownMenuItem(
+                                                text = { Text(player) },
+                                                onClick = {
+                                                    selectedBowler = player
+                                                    showBowlerDropdown = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Stats Display
+                    if (headToHeadStats != null && selectedBatsman != null && selectedBowler != null) {
+                        item {
+                            HeadToHeadStatsCard(stats = headToHeadStats!!)
+                        }
+
+                        // Match-by-match breakdown
+                        if (matchDetails.isNotEmpty()) {
+                            item {
+                                Text(
+                                    "Match-by-Match Breakdown",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            items(matchDetails) { detail ->
+                                MatchHeadToHeadCard(detail = detail)
+                            }
+                        }
+                    } else if (selectedBatsman != null && selectedBowler != null) {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer
+                                )
+                            ) {
+                                Text(
+                                    "No head-to-head data found between these players",
+                                    modifier = Modifier.padding(16.dp),
+                                    textAlign = TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
                         }
                     }
                 }
@@ -681,18 +713,19 @@ fun DateFilterDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = currentFilter == filter,
-                            onClick = {
+                            .clickable {
                                 if (filter == "Custom") {
                                     showDatePicker = true
                                 } else {
                                     onFilterSelected(filter, null, null)
                                 }
                             }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = currentFilter == filter,
+                            onClick = null // Handled by row click
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(filter)
