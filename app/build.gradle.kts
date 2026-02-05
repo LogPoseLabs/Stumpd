@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -7,9 +10,41 @@ plugins {
     id("com.google.gms.google-services") // Firebase
 }
 
+// Load keystore properties from local file or environment variables (for CI)
+// Files are in app/ directory alongside google-services.json
+val keystorePropertiesFile = file("keystore.properties")
+val keystoreProperties = Properties()
+
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.oreki.stumpd"
     compileSdk = 35
+    
+    // Signing configuration - works on Mac, Windows, Linux
+    signingConfigs {
+        create("release") {
+            // Try local properties file first, then environment variables (CI)
+            // Files are in app/ directory alongside google-services.json
+            storeFile = file(
+                keystoreProperties.getProperty("storeFile") 
+                    ?: System.getenv("KEYSTORE_FILE") 
+                    ?: "release-keystore.jks"
+            )
+            storePassword = keystoreProperties.getProperty("storePassword") 
+                ?: System.getenv("KEYSTORE_PASSWORD") 
+                ?: ""
+            keyAlias = keystoreProperties.getProperty("keyAlias") 
+                ?: System.getenv("KEY_ALIAS") 
+                ?: "stumpd"
+            keyPassword = keystoreProperties.getProperty("keyPassword") 
+                ?: System.getenv("KEY_PASSWORD") 
+                ?: ""
+        }
+    }
+    
     applicationVariants.all {
         outputs.all {
             val variantName = name // e.g., debug, release
@@ -24,8 +59,8 @@ android {
         applicationId = "com.oreki.stumpd"
         minSdk = 24
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.0.5"
+        versionCode = 8
+        versionName = "1.0.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -34,8 +69,17 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Use release signing for debug builds too (for OTA update testing)
+            signingConfig = if (keystorePropertiesFile.exists() || System.getenv("KEYSTORE_PASSWORD") != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

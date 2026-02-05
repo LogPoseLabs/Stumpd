@@ -1,6 +1,8 @@
 *.iml
 .gradle
 /local.properties
+/.idea/*
+/.kotlin/*
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
@@ -12,13 +14,34 @@
 /captures
 .externalNativeBuild
 .cxx
-*.md
 local.properties
 
 # Firebase config (contains API keys - use GitHub Secrets instead)
 app/google-services.json
 
-# Signing keys
+# Signing keys and credentials (in app/ directory alongside google-services.json)
 *.jks
 *.keystore
 signing.properties
+keystore.properties
+app/keystore.properties
+
+# Implementation notes (keep locally, don't commit)
+# Only commit: README.md, DEVELOPMENT_WORKFLOW.md, FIREBASE_SETUP.md, QUICK_START.md
+*_FIX.md
+*_FIX_V2.md
+*_IMPLEMENTATION.md
+*_SUMMARY.md
+*_COMPLETE.md
+*_FEATURE.md
+*_GUIDE.md
+*_README.md
+CHECKLIST.md
+DATA_FLOW_DIAGRAMS.md
+MULTI_DEVICE_*.md
+PERMISSION_DENIED_FIX.md
+FIRESTORE_*.md
+MATCH_CLEANUP_SYSTEM.md
+IN_PROGRESS_MATCHES_IN_HISTORY.md
+FIREBASE_QUOTA_OPTIMIZATION.md
+INCREASED_AUTH_DELAY_FIX.md

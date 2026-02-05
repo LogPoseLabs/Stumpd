@@ -21,6 +21,8 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlin.coroutines.resume
 
 /**
@@ -134,6 +136,31 @@ class AppUpdateManager(private val context: Context) {
     }
     
     /**
+     * Check if app can install unknown apps
+     */
+    fun canInstallPackages(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.packageManager.canRequestPackageInstalls()
+        } else {
+            true
+        }
+    }
+    
+    /**
+     * Open settings to allow install from unknown sources
+     */
+    fun openInstallPermissionSettings() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val intent = Intent(
+                android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${context.packageName}")
+            )
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        }
+    }
+    
+    /**
      * Download and install the update
      */
     suspend fun downloadAndInstall(updateInfo: UpdateInfo) {
@@ -148,37 +175,63 @@ class AppUpdateManager(private val context: Context) {
                 val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                 
                 val fileName = "Stumpd-${updateInfo.latestVersionName}.apk"
-                val destinationFile = File(
-                    context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-                    "updates/$fileName"
-                )
                 
-                // Ensure directory exists
-                destinationFile.parentFile?.mkdirs()
+                Log.d(TAG, "Starting download from: ${updateInfo.downloadUrl}")
                 
-                // Delete if exists
-                if (destinationFile.exists()) {
-                    destinationFile.delete()
-                }
+                // GitHub releases use redirects - resolve the final URL first
+                val finalUrl = resolveRedirects(updateInfo.downloadUrl)
+                Log.d(TAG, "Final URL after redirects: $finalUrl")
                 
-                val request = DownloadManager.Request(Uri.parse(updateInfo.downloadUrl))
+                // Use setDestinationInExternalFilesDir for better compatibility
+                val request = DownloadManager.Request(Uri.parse(finalUrl))
                     .setTitle("Stumpd Update")
                     .setDescription("Downloading version ${updateInfo.latestVersionName}")
-                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-                    .setDestinationUri(Uri.fromFile(destinationFile))
+                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, "updates/$fileName")
                     .setAllowedOverMetered(true)
-                    .setAllowedOverRoaming(false)
+                    .setAllowedOverRoaming(true)
+                    .addRequestHeader("User-Agent", "Stumpd/${BuildConfig.VERSION_NAME} Android")
+                    .setMimeType("application/vnd.android.package-archive")
                 
                 downloadId = downloadManager.enqueue(request)
+                Log.d(TAG, "Download enqueued with ID: $downloadId")
                 
                 // Wait for download to complete
                 val success = waitForDownload(downloadManager, downloadId)
                 
-                if (success && destinationFile.exists()) {
-                    _updateState.value = UpdateState.ReadyToInstall(destinationFile)
-                    installApk(destinationFile)
+                if (success) {
+                    // Get the downloaded file path from DownloadManager
+                    val query = DownloadManager.Query().setFilterById(downloadId)
+                    val cursor = downloadManager.query(query)
+                    
+                    var downloadedFilePath: String? = null
+                    if (cursor.moveToFirst()) {
+                        val localUriIndex = cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
+                        if (localUriIndex >= 0) {
+                            val localUri = cursor.getString(localUriIndex)
+                            downloadedFilePath = Uri.parse(localUri).path
+                        }
+                    }
+                    cursor.close()
+                    
+                    if (downloadedFilePath != null) {
+                        val destinationFile = File(downloadedFilePath)
+                        if (destinationFile.exists()) {
+                            Log.d(TAG, "Download successful: ${destinationFile.absolutePath}")
+                            _updateState.value = UpdateState.ReadyToInstall(destinationFile)
+                            installApk(destinationFile)
+                        } else {
+                            Log.e(TAG, "Downloaded file not found at: $downloadedFilePath")
+                            _updateState.value = UpdateState.Error("Downloaded file not found")
+                        }
+                    } else {
+                        Log.e(TAG, "Could not get downloaded file path")
+                        _updateState.value = UpdateState.Error("Could not locate downloaded file")
+                    }
                 } else {
-                    _updateState.value = UpdateState.Error("Download failed")
+                    Log.e(TAG, "Download failed")
+                    Log.e(TAG, "URL was: ${updateInfo.downloadUrl}")
+                    _updateState.value = UpdateState.Error("Download failed. Check if the release exists.")
                 }
                 
             } catch (e: Exception) {
@@ -215,6 +268,22 @@ class AppUpdateManager(private val context: Context) {
                                 }
                             }
                             DownloadManager.STATUS_FAILED -> {
+                                val reasonIndex = cursor.getColumnIndex(DownloadManager.COLUMN_REASON)
+                                val reason = if (reasonIndex >= 0) cursor.getInt(reasonIndex) else -1
+                                val reasonText = when (reason) {
+                                    DownloadManager.ERROR_CANNOT_RESUME -> "Cannot resume download"
+                                    DownloadManager.ERROR_DEVICE_NOT_FOUND -> "Storage device not found"
+                                    DownloadManager.ERROR_FILE_ALREADY_EXISTS -> "File already exists"
+                                    DownloadManager.ERROR_FILE_ERROR -> "File error"
+                                    DownloadManager.ERROR_HTTP_DATA_ERROR -> "HTTP data error"
+                                    DownloadManager.ERROR_INSUFFICIENT_SPACE -> "Insufficient storage space"
+                                    DownloadManager.ERROR_TOO_MANY_REDIRECTS -> "Too many redirects"
+                                    DownloadManager.ERROR_UNHANDLED_HTTP_CODE -> "Unhandled HTTP code"
+                                    DownloadManager.ERROR_UNKNOWN -> "Unknown error"
+                                    404 -> "File not found (404) - Check if release exists"
+                                    else -> "Error code: $reason"
+                                }
+                                Log.e(TAG, "Download failed: $reasonText (code: $reason)")
                                 unregisterReceiver()
                                 if (continuation.isActive) {
                                     continuation.resume(false)
@@ -312,6 +381,55 @@ class AppUpdateManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start installation", e)
             _updateState.value = UpdateState.Error("Failed to start installation: ${e.message}")
+        }
+    }
+    
+    /**
+     * Resolve redirects and get the final URL.
+     * GitHub releases redirect to objects.githubusercontent.com
+     */
+    private fun resolveRedirects(urlString: String): String {
+        try {
+            var currentUrl = urlString
+            var redirectCount = 0
+            val maxRedirects = 10
+            
+            while (redirectCount < maxRedirects) {
+                val url = URL(currentUrl)
+                val connection = url.openConnection() as HttpURLConnection
+                connection.instanceFollowRedirects = false
+                connection.requestMethod = "HEAD"
+                connection.setRequestProperty("User-Agent", "Stumpd/${BuildConfig.VERSION_NAME} Android")
+                connection.connectTimeout = 10000
+                connection.readTimeout = 10000
+                
+                val responseCode = connection.responseCode
+                Log.d(TAG, "URL: $currentUrl -> Response: $responseCode")
+                
+                if (responseCode in 300..399) {
+                    val location = connection.getHeaderField("Location")
+                    if (location != null) {
+                        currentUrl = if (location.startsWith("http")) {
+                            location
+                        } else {
+                            // Handle relative redirects
+                            URL(url, location).toString()
+                        }
+                        redirectCount++
+                        connection.disconnect()
+                        continue
+                    }
+                }
+                
+                connection.disconnect()
+                return currentUrl
+            }
+            
+            Log.w(TAG, "Too many redirects, using original URL")
+            return urlString
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to resolve redirects: ${e.message}")
+            return urlString
         }
     }
     

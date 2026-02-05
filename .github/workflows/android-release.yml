@@ -43,23 +43,19 @@ jobs:
         run: |
           echo "$GOOGLE_SERVICES_JSON" | base64 -d > app/google-services.json
 
-      # For unsigned debug build (simpler, no signing needed)
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug
+      - name: Decode Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > app/release-keystore.jks
 
-      # For signed release build (requires signing setup - see comments below)
-      # - name: Decode Keystore
-      #   env:
-      #     KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-      #   run: |
-      #     echo "$KEYSTORE_BASE64" | base64 -d > app/release-keystore.jks
-      #
-      # - name: Build Release APK
-      #   env:
-      #     KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-      #     KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-      #     KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-      #   run: ./gradlew assembleRelease
+      - name: Build Release APK
+        env:
+          KEYSTORE_FILE: release-keystore.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
 
       - name: Get version info
         id: version
@@ -87,7 +83,7 @@ jobs:
 
       - name: Rename APK
         run: |
-          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Stumpd-${{ steps.version.outputs.version_name }}.apk
+          mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/Stumpd-${{ steps.version.outputs.version_name }}.apk
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -105,9 +101,9 @@ jobs:
             3. Install and enjoy!
             
             ---
-            Build: ${{ steps.version.outputs.version_code }}
+            Build: ${{ steps.version.outputs.version_code }} (Release signed)
           files: |
-            app/build/outputs/apk/debug/Stumpd-${{ steps.version.outputs.version_name }}.apk
+            app/build/outputs/apk/release/Stumpd-${{ steps.version.outputs.version_name }}.apk
           draft: false
           prerelease: false
         env:

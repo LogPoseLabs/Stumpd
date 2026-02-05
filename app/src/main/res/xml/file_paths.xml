@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <!-- For APK downloads during OTA updates -->
+    <!-- Path: /storage/emulated/0/Android/data/com.oreki.stumpd/files/Download/updates/ -->
     <external-files-path
         name="apk_downloads"
-        path="updates/" />
+        path="Download/updates/" />
+    
+    <!-- Also allow the root external files directory for flexibility -->
+    <external-files-path
+        name="external_files"
+        path="." />
     
     <cache-path
         name="apk_cache"

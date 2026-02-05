@@ -601,8 +601,19 @@ fun AboutScreen() {
                     }
                     else -> {
                         Button(onClick = {
-                            scope.launch {
-                                updateManager.downloadAndInstall(updateInfo!!)
+                            // Check if we can install packages first
+                            if (!updateManager.canInstallPackages()) {
+                                // Need to request permission
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "Please enable 'Install unknown apps' for Stumpd",
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                                updateManager.openInstallPermissionSettings()
+                            } else {
+                                scope.launch {
+                                    updateManager.downloadAndInstall(updateInfo!!)
+                                }
                             }
                         }) {
                             Icon(Icons.Default.Download, contentDescription = null)
