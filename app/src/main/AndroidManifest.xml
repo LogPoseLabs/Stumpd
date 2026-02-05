@@ -3,16 +3,16 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Permissions for backup/restore -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"
         tools:ignore="ScopedStorage" />
-    
+
     <!-- Internet permission for Firebase sync -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    
+
     <!-- Permission for OTA updates (installing APKs) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
@@ -88,13 +88,25 @@
         <activity android:name=".AllPlayersStatsActivity"
             android:exported="false" />
 
+        <activity android:name=".StatsHubActivity"
+            android:exported="false" />
+
+        <activity android:name=".HeadToHeadActivity"
+            android:exported="false" />
+
+        <activity android:name=".CaptainStatsActivity"
+            android:exported="false" />
+
+        <activity android:name=".RecordsActivity"
+            android:exported="false" />
+
         <activity android:name=".CloudSyncActivity"
             android:exported="false" />
-        
+
         <activity android:name=".LiveMatchesActivity"
             android:exported="false"
             android:theme="@style/Theme.Stumpd" />
-        
+
         <activity android:name=".SpectatorActivity"
             android:exported="false"
             android:theme="@style/Theme.Stumpd" />

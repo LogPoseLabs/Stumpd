@@ -24,14 +24,14 @@ import kotlinx.coroutines.launch
 
 /**
  * Complete sync manager for ALL data types
- * 
+ *
  * Handles:
  * - Matches (with stats, partnerships, fall of wickets, deliveries, impacts)
  * - Players
  * - Groups (with members, unavailable players, defaults)
  * - Automatic sync on network reconnection
  * - Manual sync on demand
- * 
+ *
  * Room Database = Source of truth (offline-first)
  * Firestore = Cloud backup + sync
  */
@@ -44,7 +44,7 @@ class CompleteSyncManager(
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val networkMonitor = NetworkMonitor(context)
-    
+
     // Firebase components
     private val authHelper = FirebaseAuthHelper()
     private val firestoreMatchDao = FirestoreMatchDao()
@@ -53,17 +53,17 @@ class CompleteSyncManager(
     private val firestoreInProgressMatchDao = FirestoreInProgressMatchDao()
     private val firestoreUserPreferencesDao = FirestoreUserPreferencesDao()
     private val firestoreGroupLastTeamsDao = FirestoreGroupLastTeamsDao()
-    
+
     private val _syncState = MutableStateFlow<SyncState>(SyncState.Idle)
     val syncState: StateFlow<SyncState> = _syncState.asStateFlow()
-    
+
     private val _syncMetadata = MutableStateFlow(
         SyncMetadata(deviceId = getDeviceId())
     )
     val syncMetadata: StateFlow<SyncMetadata> = _syncMetadata.asStateFlow()
-    
+
     private var isInitialized = false
-    
+
     companion object {
         private const val TAG = "CompleteSyncManager"
         private const val PREFS_NAME = "complete_sync_prefs"
@@ -75,16 +75,16 @@ class CompleteSyncManager(
         private const val KEY_USER_ID = "user_id"
         private const val KEY_AUTO_SYNC_ENABLED = "auto_sync_enabled"
     }
-    
+
     /**
      * Initialize the sync manager
      * Sets up authentication, network monitoring, and starts auto-sync
      */
     suspend fun initialize() {
         if (isInitialized) return
-        
+
         Log.d(TAG, "Initializing CompleteSyncManager")
-        
+
         // Ensure user is authenticated (creates anonymous account if needed)
         val userId = authHelper.ensureSignedIn()
         if (userId != null) {
@@ -94,7 +94,7 @@ class CompleteSyncManager(
         } else {
             Log.w(TAG, "Failed to authenticate - sync will be unavailable")
         }
-        
+
         // Monitor network state and sync changes incrementally when online
         // Only syncs data modified since last sync to save Firebase quota
         if (isAutoSyncEnabled()) {
@@ -109,7 +109,7 @@ class CompleteSyncManager(
                 }
             }
         }
-        
+
         // Note: Auto-download disabled to prevent overwriting local stats with empty cloud data
         // Users should manually use "Download All from Cloud" when they want to restore data
         // The incremental sync (below) handles regular syncing without overwriting
@@ -118,22 +118,22 @@ class CompleteSyncManager(
         //         downloadAllFromCloud()
         //     }
         // }
-        
+
         isInitialized = true
         Log.d(TAG, "CompleteSyncManager initialized successfully")
     }
-    
+
     /**
      * Sync a specific match immediately after saving
      */
     suspend fun syncMatch(match: MatchHistory): SyncResult {
         val userId = _syncMetadata.value.userId ?: return SyncResult.Offline
-        
+
         if (!networkMonitor.isCurrentlyOnline()) {
             Log.w(TAG, "Offline - match will sync later: ${match.id}")
             return SyncResult.Offline
         }
-        
+
         return try {
             Log.d(TAG, "Syncing match: ${match.team1Name} vs ${match.team2Name}")
             firestoreMatchDao.uploadCompleteMatch(userId, match)
@@ -144,7 +144,7 @@ class CompleteSyncManager(
             SyncResult.Failure("Failed to sync match", e)
         }
     }
-    
+
     /**
      * Incremental sync - only syncs data that changed since last sync
      * Called on network reconnect to minimize Firebase quota usage
@@ -152,17 +152,17 @@ class CompleteSyncManager(
      */
     private suspend fun syncIncrementalChanges() {
         val userId = _syncMetadata.value.userId ?: return
-        
+
         if (!networkMonitor.isCurrentlyOnline()) {
             return
         }
-        
+
         val currentTime = System.currentTimeMillis()
         var totalWrites = 0
-        
+
         try {
             Log.d(TAG, "=== Starting incremental sync (timestamp-based) ===")
-            
+
             // 1. Sync active in-progress match (always, for live spectators)
             val inProgressMatch = db.inProgressMatchDao().getLatest()
             if (inProgressMatch != null) {
@@ -170,12 +170,12 @@ class CompleteSyncManager(
                 firestoreInProgressMatchDao.uploadInProgressMatch(userId, inProgressMatch)
                 totalWrites++
             }
-            
+
             // 2. Sync completed matches added/modified since last sync (with stats)
             val lastMatchSync = getLastMatchSyncTimestamp()
             val matches = matchRepository.getAllMatchesWithStats()
             val newMatches = matches.filter { it.matchDate > lastMatchSync }
-            
+
             if (newMatches.isNotEmpty()) {
                 Log.d(TAG, "Syncing ${newMatches.size} new/modified matches (since ${lastMatchSync})")
                 newMatches.forEach { match ->
@@ -190,7 +190,7 @@ class CompleteSyncManager(
             } else {
                 Log.d(TAG, "No new matches to sync")
             }
-            
+
             // 3. Sync players (only if modified since last sync)
             // Since players don't have timestamps, we check if the list changed
             val lastPlayerSync = getLastPlayerSyncTimestamp()
@@ -203,7 +203,7 @@ class CompleteSyncManager(
                     saveLastPlayerSyncTimestamp(currentTime)
                 }
             }
-            
+
             // 4. Sync groups (only if modified since last sync)
             val lastGroupSync = getLastGroupSyncTimestamp()
             if (currentTime - lastGroupSync > 300000) { // 5 minutes threshold
@@ -212,13 +212,13 @@ class CompleteSyncManager(
                     Log.d(TAG, "Syncing ${groups.size} groups (periodic check)")
                     val allMembers = db.groupDao().getAllGroupMembers()
                     val allUnavailable = db.groupDao().getAllGroupUnavailablePlayers()
-                    
+
                     groups.forEach { group ->
                         try {
                             val members = allMembers.filter { it.groupId == group.id }
                             val unavailable = allUnavailable.filter { it.groupId == group.id }
                             val defaults = db.groupDao().getDefaults(group.id)
-                            
+
                             firestoreGroupDao.uploadGroup(userId, group, members, unavailable, defaults)
                             totalWrites++
                         } catch (e: Exception) {
@@ -228,51 +228,51 @@ class CompleteSyncManager(
                     saveLastGroupSyncTimestamp(currentTime)
                 }
             }
-            
+
             Log.d(TAG, "✅ Incremental sync complete: $totalWrites writes")
-            
+
         } catch (e: Exception) {
             Log.e(TAG, "Failed to sync incremental changes", e)
         }
     }
-    
+
     // Timestamp tracking helpers
     private fun getLastMatchSyncTimestamp(): Long {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getLong(KEY_LAST_MATCH_SYNC, 0L)
     }
-    
+
     private fun saveLastMatchSyncTimestamp(timestamp: Long) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putLong(KEY_LAST_MATCH_SYNC, timestamp)
             .apply()
     }
-    
+
     private fun getLastPlayerSyncTimestamp(): Long {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getLong(KEY_LAST_PLAYER_SYNC, 0L)
     }
-    
+
     private fun saveLastPlayerSyncTimestamp(timestamp: Long) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putLong(KEY_LAST_PLAYER_SYNC, timestamp)
             .apply()
     }
-    
+
     private fun getLastGroupSyncTimestamp(): Long {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getLong(KEY_LAST_GROUP_SYNC, 0L)
     }
-    
+
     private fun saveLastGroupSyncTimestamp(timestamp: Long) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putLong(KEY_LAST_GROUP_SYNC, timestamp)
             .apply()
     }
-    
+
     /**
      * @deprecated Use syncIncrementalChanges() instead for quota efficiency
      * Only syncs the active in-progress match
@@ -280,11 +280,11 @@ class CompleteSyncManager(
     @Deprecated("Use syncIncrementalChanges() instead")
     private suspend fun syncActiveMatchOnly() {
         val userId = _syncMetadata.value.userId ?: return
-        
+
         if (!networkMonitor.isCurrentlyOnline()) {
             return
         }
-        
+
         try {
             val inProgressMatch = db.inProgressMatchDao().getLatest()
             if (inProgressMatch != null) {
@@ -298,83 +298,92 @@ class CompleteSyncManager(
             Log.e(TAG, "Failed to sync active match", e)
         }
     }
-    
+
     /**
      * Sync all local data to Firestore
      * ⚠️ WARNING: This uploads ALL matches, players, and groups
      * Use sparingly to avoid hitting Firebase quota limits
      * Prefer incremental sync for automatic syncs
-     * 
+     *
      * This also updates all sync timestamps so future incremental
      * syncs won't re-upload this data
      */
     suspend fun syncAll(): SyncResult {
         val userId = _syncMetadata.value.userId ?: return SyncResult.Offline
-        
+
         if (!networkMonitor.isCurrentlyOnline()) {
             Log.w(TAG, "Cannot sync - device is offline")
             _syncState.value = SyncState.Offline
             return SyncResult.Offline
         }
-        
-        _syncState.value = SyncState.Syncing(0, 0)
-        
+
+        _syncState.value = SyncState.Syncing(0, 6, "Preparing to sync...")
+
         return try {
             Log.d(TAG, "Starting full sync to cloud...")
-            
+
             var totalSynced = 0
             val errors = mutableListOf<String>()
-            
+
             // 1. Sync all matches (with stats included for proper subcollection upload)
+            Log.d(TAG, "Step 1/6: Syncing matches...")
+            _syncState.value = SyncState.Syncing(0, 6, "Uploading matches...")
             try {
                 val matches = matchRepository.getAllMatchesWithStats()
                 Log.d(TAG, "Syncing ${matches.size} matches...")
-                
+
                 matches.forEachIndexed { index, match ->
+                    _syncState.value = SyncState.Syncing(0, 6, "Uploading match ${index + 1}/${matches.size}...")
                     try {
                         firestoreMatchDao.uploadCompleteMatch(userId, match)
                         totalSynced++
-                        _syncState.value = SyncState.Syncing(totalSynced, matches.size)
                     } catch (e: Exception) {
                         errors.add("Match ${match.id}: ${e.message}")
                         Log.e(TAG, "Failed to sync match: ${match.id}", e)
                     }
                 }
-                
-                Log.d(TAG, "Matches synced: $totalSynced/${matches.size}")
+
+                Log.d(TAG, "Matches synced: ${matches.size}")
             } catch (e: Exception) {
                 errors.add("Failed to fetch matches: ${e.message}")
                 Log.e(TAG, "Failed to fetch matches", e)
             }
-            
+            _syncState.value = SyncState.Syncing(1, 6, "Matches uploaded")
+
             // 2. Sync all players
+            Log.d(TAG, "Step 2/6: Syncing players...")
+            _syncState.value = SyncState.Syncing(1, 6, "Uploading players...")
             try {
                 val players = db.playerDao().list()
                 Log.d(TAG, "Syncing ${players.size} players...")
-                
+
                 firestorePlayerDao.uploadPlayers(userId, players)
                 totalSynced += players.size
-                
+
                 Log.d(TAG, "Players synced: ${players.size}")
             } catch (e: Exception) {
                 errors.add("Failed to sync players: ${e.message}")
                 Log.e(TAG, "Failed to sync players", e)
             }
-            
+            _syncState.value = SyncState.Syncing(2, 6, "Players uploaded")
+
             // 3. Sync all groups with their members and settings
+            Log.d(TAG, "Step 3/6: Syncing groups...")
+            _syncState.value = SyncState.Syncing(2, 6, "Uploading groups...")
             try {
                 val groups = db.groupDao().getAllGroups()
                 Log.d(TAG, "Syncing ${groups.size} groups...")
-                
+
                 val allMembers = db.groupDao().getAllGroupMembers()
                 val allUnavailable = db.groupDao().getAllGroupUnavailablePlayers()
-                
-                groups.forEach { group ->
+
+                groups.forEachIndexed { index, group ->
+                    _syncState.value = SyncState.Syncing(2, 6, "Uploading group ${index + 1}/${groups.size}...")
                     try {
                         val members = allMembers.filter { it.groupId == group.id }
                         val unavailable = allUnavailable.filter { it.groupId == group.id }
                         val defaults = db.groupDao().getDefaults(group.id)
-                        
+
                         firestoreGroupDao.uploadGroup(userId, group, members, unavailable, defaults)
                         totalSynced++
                     } catch (e: Exception) {
@@ -382,14 +391,17 @@ class CompleteSyncManager(
                         Log.e(TAG, "Failed to sync group: ${group.id}", e)
                     }
                 }
-                
+
                 Log.d(TAG, "Groups synced: ${groups.size}")
             } catch (e: Exception) {
                 errors.add("Failed to sync groups: ${e.message}")
                 Log.e(TAG, "Failed to sync groups", e)
             }
-            
+            _syncState.value = SyncState.Syncing(3, 6, "Groups uploaded")
+
             // 4. Sync in-progress matches (ongoing games)
+            Log.d(TAG, "Step 4/6: Syncing in-progress matches...")
+            _syncState.value = SyncState.Syncing(3, 6, "Uploading live match data...")
             try {
                 val inProgressMatch = db.inProgressMatchDao().getLatest()
                 if (inProgressMatch != null) {
@@ -402,8 +414,11 @@ class CompleteSyncManager(
                 errors.add("Failed to sync in-progress match: ${e.message}")
                 Log.e(TAG, "Failed to sync in-progress match", e)
             }
-            
+            _syncState.value = SyncState.Syncing(4, 6, "Live match data uploaded")
+
             // 5. Sync user preferences (app settings)
+            Log.d(TAG, "Step 5/6: Syncing preferences...")
+            _syncState.value = SyncState.Syncing(4, 6, "Uploading preferences...")
             try {
                 val preferences = db.userPreferencesDao().getAll()
                 if (preferences.isNotEmpty()) {
@@ -416,8 +431,11 @@ class CompleteSyncManager(
                 errors.add("Failed to sync preferences: ${e.message}")
                 Log.e(TAG, "Failed to sync preferences", e)
             }
-            
+            _syncState.value = SyncState.Syncing(5, 6, "Preferences uploaded")
+
             // 6. Sync group last teams configurations
+            Log.d(TAG, "Step 6/6: Syncing group last teams...")
+            _syncState.value = SyncState.Syncing(5, 6, "Uploading team configurations...")
             try {
                 val groupLastTeams = db.groupDao().getAllGroupLastTeams()
                 if (groupLastTeams.isNotEmpty()) {
@@ -430,7 +448,8 @@ class CompleteSyncManager(
                 errors.add("Failed to sync group last teams: ${e.message}")
                 Log.e(TAG, "Failed to sync group last teams", e)
             }
-            
+            _syncState.value = SyncState.Syncing(6, 6, "Finalizing...")
+
             // Update metadata and timestamps
             val currentTime = System.currentTimeMillis()
             _syncMetadata.value = _syncMetadata.value.copy(
@@ -439,33 +458,33 @@ class CompleteSyncManager(
                 pendingUploads = 0
             )
             saveLastSyncTimestamp()
-            
+
             // Update incremental sync timestamps (all data is now synced)
             saveLastMatchSyncTimestamp(currentTime)
             saveLastPlayerSyncTimestamp(currentTime)
             saveLastGroupSyncTimestamp(currentTime)
-            
+
             _syncState.value = if (errors.isEmpty()) {
                 SyncState.Success(totalSynced)
             } else {
                 SyncState.Error("Partial sync - ${errors.size} errors", null)
             }
-            
+
             Log.d(TAG, "Full sync completed - $totalSynced items synced, ${errors.size} errors")
-            
+
             if (errors.isEmpty()) {
                 SyncResult.Success(totalSynced)
             } else {
                 SyncResult.PartialSuccess(totalSynced, errors.size, errors)
             }
-            
+
         } catch (e: Exception) {
             Log.e(TAG, "Full sync failed catastrophically", e)
             _syncState.value = SyncState.Error("Sync failed: ${e.message}", e)
             SyncResult.Failure("Full sync failed", e)
         }
     }
-    
+
     /**
      * Launch syncAll in the manager's internal scope
      * This survives UI navigation - use from Composables/Activities
@@ -475,7 +494,7 @@ class CompleteSyncManager(
             syncAll()
         }
     }
-    
+
     /**
      * Launch downloadAllFromCloud in the manager's internal scope
      * This survives UI navigation - use from Composables/Activities
@@ -485,45 +504,50 @@ class CompleteSyncManager(
             downloadAllFromCloud()
         }
     }
-    
+
     /**
      * Download all data from Firestore and update local database
      * Use this to restore data on a new device or recover from local data loss
      */
     suspend fun downloadAllFromCloud(): SyncResult {
         val userId = _syncMetadata.value.userId ?: return SyncResult.Offline
-        
+
         if (!networkMonitor.isCurrentlyOnline()) {
             return SyncResult.Offline
         }
-        
+
         return try {
             Log.d(TAG, "Downloading all data from cloud...")
-            _syncState.value = SyncState.Syncing(0, 6) // 6 steps: matches, players, groups, in-progress, prefs, last teams
-            
+            _syncState.value = SyncState.Syncing(0, 6, "Preparing to download...")
+
             var totalDownloaded = 0
-            
+
             // 1. Download all matches
             Log.d(TAG, "Step 1/6: Downloading matches...")
+            _syncState.value = SyncState.Syncing(0, 6, "Downloading matches...")
             val matches = firestoreMatchDao.downloadAllMatches(userId)
             Log.d(TAG, "Step 1/6: Downloaded ${matches.size} matches from cloud")
-            _syncState.value = SyncState.Syncing(1, 6)
-            
-            matches.forEach { match ->
+            _syncState.value = SyncState.Syncing(1, 6, "Saving ${matches.size} matches...")
+
+            matches.forEachIndexed { index, match ->
                 try {
                     matchRepository.saveMatch(match)
                     totalDownloaded++
+                    if (matches.size > 5 && index % 5 == 0) {
+                        _syncState.value = SyncState.Syncing(1, 6, "Saving match ${index + 1}/${matches.size}...")
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to save match locally: ${match.id}", e)
                 }
             }
-            
+
             // 2. Download all players
             Log.d(TAG, "Step 2/6: Downloading players...")
+            _syncState.value = SyncState.Syncing(1, 6, "Downloading players...")
             val players = firestorePlayerDao.downloadAllPlayers(userId)
             Log.d(TAG, "Step 2/6: Downloaded ${players.size} players from cloud")
-            _syncState.value = SyncState.Syncing(2, 6)
-            
+            _syncState.value = SyncState.Syncing(2, 6, "Saving ${players.size} players...")
+
             if (players.isNotEmpty()) {
                 try {
                     db.playerDao().upsert(players)
@@ -532,43 +556,46 @@ class CompleteSyncManager(
                     Log.e(TAG, "Failed to save players locally", e)
                 }
             }
-            
+
             // 3. Download only groups where this device is a member
             Log.d(TAG, "Step 3/6: Downloading groups...")
+            _syncState.value = SyncState.Syncing(2, 6, "Downloading groups...")
             val groupsData = firestoreGroupDao.downloadMyGroups(userId)
             Log.d(TAG, "Step 3/6: Downloaded ${groupsData.size} groups for this device from cloud")
-            _syncState.value = SyncState.Syncing(3, 6)
-            
-            groupsData.forEach { groupData ->
+            _syncState.value = SyncState.Syncing(3, 6, "Saving ${groupsData.size} groups...")
+
+            groupsData.forEachIndexed { index, groupData ->
+                _syncState.value = SyncState.Syncing(3, 6, "Saving group ${index + 1}/${groupsData.size}...")
                 try {
                     db.groupDao().upsertGroup(groupData.group)
-                    
+
                     // Clear existing members before inserting
                     db.groupDao().clearMembers(groupData.group.id)
                     groupData.members.forEach { member ->
                         db.groupDao().upsertMembers(listOf(member))
                     }
-                    
+
                     groupData.unavailable.forEach { unavailable ->
                         db.groupDao().markPlayerUnavailable(unavailable)
                     }
-                    
+
                     groupData.defaults?.let { defaults ->
                         db.groupDao().upsertDefaults(defaults)
                     }
-                    
+
                     totalDownloaded++
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to save group locally: ${groupData.group.id}", e)
                 }
             }
-            
+
             // 4. Download in-progress matches
             Log.d(TAG, "Step 4/6: Downloading in-progress matches...")
+            _syncState.value = SyncState.Syncing(3, 6, "Downloading live match data...")
             val inProgressMatches = firestoreInProgressMatchDao.downloadAllInProgressMatches(userId)
             Log.d(TAG, "Step 4/6: Downloaded ${inProgressMatches.size} in-progress matches from cloud")
-            _syncState.value = SyncState.Syncing(4, 6)
-            
+            _syncState.value = SyncState.Syncing(4, 6, "Saving live match data...")
+
             inProgressMatches.forEach { match ->
                 try {
                     db.inProgressMatchDao().upsert(match)
@@ -577,13 +604,14 @@ class CompleteSyncManager(
                     Log.e(TAG, "Failed to save in-progress match locally: ${match.matchId}", e)
                 }
             }
-            
+
             // 5. Download user preferences
             Log.d(TAG, "Step 5/6: Downloading user preferences...")
+            _syncState.value = SyncState.Syncing(4, 6, "Downloading preferences...")
             val preferences = firestoreUserPreferencesDao.downloadAllPreferences(userId)
             Log.d(TAG, "Step 5/6: Downloaded ${preferences.size} user preferences from cloud")
-            _syncState.value = SyncState.Syncing(5, 6)
-            
+            _syncState.value = SyncState.Syncing(5, 6, "Saving preferences...")
+
             preferences.forEach { pref ->
                 try {
                     db.userPreferencesDao().upsert(pref)
@@ -592,13 +620,14 @@ class CompleteSyncManager(
                     Log.e(TAG, "Failed to save preference locally: ${pref.key}", e)
                 }
             }
-            
+
             // 6. Download group last teams
             Log.d(TAG, "Step 6/6: Downloading group last teams...")
+            _syncState.value = SyncState.Syncing(5, 6, "Downloading team configurations...")
             val groupLastTeams = firestoreGroupLastTeamsDao.downloadAllGroupLastTeams(userId)
             Log.d(TAG, "Step 6/6: Downloaded ${groupLastTeams.size} group last teams from cloud")
-            _syncState.value = SyncState.Syncing(6, 6)
-            
+            _syncState.value = SyncState.Syncing(6, 6, "Saving team configurations...")
+
             groupLastTeams.forEach { lastTeams ->
                 try {
                     db.groupDao().upsertLastTeams(lastTeams)
@@ -607,18 +636,19 @@ class CompleteSyncManager(
                     Log.e(TAG, "Failed to save group last teams locally: ${lastTeams.groupId}", e)
                 }
             }
-            
+
             Log.d(TAG, "Cloud download completed - $totalDownloaded items")
+            _syncState.value = SyncState.Syncing(6, 6, "Download complete!")
             _syncState.value = SyncState.Success(totalDownloaded)
             SyncResult.Success(totalDownloaded)
-            
+
         } catch (e: Exception) {
             Log.e(TAG, "Failed to download from cloud", e)
             _syncState.value = SyncState.Error("Download failed: ${e.message}", e)
             SyncResult.Failure("Download failed", e)
         }
     }
-    
+
     /**
      * Enable or disable auto-sync
      */
@@ -627,7 +657,7 @@ class CompleteSyncManager(
         prefs.edit().putBoolean(KEY_AUTO_SYNC_ENABLED, enabled).apply()
         Log.d(TAG, "Auto-sync ${if (enabled) "enabled" else "disabled"}")
     }
-    
+
     /**
      * Check if auto-sync is enabled
      */
@@ -635,12 +665,12 @@ class CompleteSyncManager(
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.getBoolean(KEY_AUTO_SYNC_ENABLED, true) // Default: enabled
     }
-    
+
     /**
      * Get current user ID
      */
     fun getUserId(): String? = _syncMetadata.value.userId
-    
+
     /**
      * Sign out and clear sync data
      */
@@ -649,28 +679,28 @@ class CompleteSyncManager(
         _syncMetadata.value = _syncMetadata.value.copy(userId = null)
         Log.d(TAG, "Signed out successfully")
     }
-    
+
     // ========== Private Helper Methods ==========
-    
+
     private fun getDeviceId(): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         var deviceId = prefs.getString(KEY_DEVICE_ID, null)
-        
+
         if (deviceId == null) {
             deviceId = java.util.UUID.randomUUID().toString()
             prefs.edit().putString(KEY_DEVICE_ID, deviceId).apply()
         }
-        
+
         return deviceId
     }
-    
+
     private fun saveLastSyncTimestamp() {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit()
             .putLong(KEY_LAST_SYNC, System.currentTimeMillis())
             .apply()
     }
-    
+
     private fun saveUserId(userId: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_USER_ID, userId).apply()

@@ -75,20 +75,20 @@ fun MainScreen() {
     val matchRepo = rememberMatchRepository()
     val playerRepo = rememberPlayerRepository()
     val scope = rememberCoroutineScope()
-    
+
     // Load groups and stats
     var groups by remember { mutableStateOf<List<GroupEntity>>(emptyList()) }
     var selectedGroup by remember { mutableStateOf<GroupEntity?>(null) }
     var expanded by remember { mutableStateOf(false) }
     var matchCount by remember { mutableStateOf(0) }
     var playerCount by remember { mutableStateOf(0) }
-    
+
     // OTA Update state
     val updateManager = remember { AppUpdateManager(context) }
     val updateState by updateManager.updateState.collectAsState()
     var showUpdateDialog by remember { mutableStateOf(false) }
     var pendingUpdateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
-    
+
     // Check for updates on startup
     LaunchedEffect(Unit) {
         val updateInfo = updateManager.checkForUpdate()
@@ -97,18 +97,18 @@ fun MainScreen() {
             showUpdateDialog = true
         }
     }
-    
+
     LaunchedEffect(Unit) {
         groups = groupRepo.listGroups()
         // Get default group from Room DB
         val savedGroupId = groupRepo.getDefaultGroupId()
         selectedGroup = groups.firstOrNull { it.id == savedGroupId }
-        
+
         // Note: Legacy shared_matches cleanup disabled - using group-based restriction now
         // The old MatchSharingManager used a separate shared_matches collection
         // which is no longer needed with the new memberDeviceIds-based access control
     }
-    
+
     // Function to refresh stats
     fun refreshStats() {
         scope.launch {
@@ -117,7 +117,7 @@ fun MainScreen() {
                 // Filter matches by selected group using Room DB
                 val groupMatches = matchRepo.getAllMatches(groupId = currentGroup.id)
                 matchCount = groupMatches.size
-                
+
                 // Get players in this group
                 val groupPlayers = groupRepo.getMembers(currentGroup.id)
                 playerCount = groupPlayers.size
@@ -125,19 +125,19 @@ fun MainScreen() {
                 // Show all matches and players if no group is selected
                 val allMatches = matchRepo.getAllMatches(groupId = null)
                 matchCount = allMatches.size
-                
+
                 // Get all players from Room DB
                 val allPlayers = playerRepo.getAllPlayers()
                 playerCount = allPlayers.size
             }
         }
     }
-    
+
     // Update stats whenever selectedGroup changes
     LaunchedEffect(selectedGroup) {
         refreshStats()
     }
-    
+
     // Refresh stats when screen resumes (coming back from other screens)
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -163,7 +163,7 @@ fun MainScreen() {
         UpdateDialog(
             updateInfo = pendingUpdateInfo!!,
             updateState = updateState,
-            onDismiss = { 
+            onDismiss = {
                 if (!pendingUpdateInfo!!.isForceUpdate) {
                     showUpdateDialog = false
                 }
@@ -178,7 +178,7 @@ fun MainScreen() {
             }
         )
     }
-    
+
     // Force update blocking overlay
     if (pendingUpdateInfo?.isForceUpdate == true && !showUpdateDialog) {
         // Re-show dialog if force update is required
@@ -246,7 +246,7 @@ fun MainScreen() {
                     )
                 }
             }
-            
+
             // Quick Stats Card with Group Filter
             item {
                 Card(
@@ -266,30 +266,30 @@ fun MainScreen() {
                                 label = "Matches",
                                 icon = Icons.Default.Star
                             )
-                            
+
                             VerticalDivider(
                                 modifier = Modifier.height(48.dp),
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f)
                             )
-                            
+
                             QuickStatItem(
                                 value = playerCount.toString(),
                                 label = "Players",
                                 icon = Icons.Default.Person
                             )
-                            
+
                             VerticalDivider(
                                 modifier = Modifier.height(48.dp),
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f)
                             )
-                            
+
                             QuickStatItem(
                                 value = groups.size.toString(),
                                 label = "Groups",
                                 icon = Icons.Default.AccountCircle
                             )
                         }
-                        
+
                         // Compact Group Selection (only if groups exist)
                         if (groups.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(16.dp))
@@ -297,7 +297,7 @@ fun MainScreen() {
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f)
                             )
                             Spacer(modifier = Modifier.height(12.dp))
-                            
+
                             ExposedDropdownMenuBox(
                                 expanded = expanded,
                                 onExpandedChange = { expanded = !expanded },
@@ -342,7 +342,7 @@ fun MainScreen() {
                                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                                             )
                                         }
-                                        
+
                                         Icon(
                                             Icons.Default.ArrowDropDown,
                                             contentDescription = "Select group",
@@ -351,7 +351,7 @@ fun MainScreen() {
                                         )
                                     }
                                 }
-                                
+
                                 ExposedDropdownMenu(
                                     expanded = expanded,
                                     onDismissRequest = { expanded = false }
@@ -369,9 +369,9 @@ fun MainScreen() {
                                             }
                                         }
                                     )
-                                    
+
                                     HorizontalDivider()
-                                    
+
                                     groups.forEach { group ->
                                         DropdownMenuItem(
                                             text = { Text(group.name) },
@@ -387,6 +387,68 @@ fun MainScreen() {
                                             }
                                         )
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Get Started Card (only shown when no groups exist)
+            if (groups.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        ),
+                        elevation = CardDefaults.cardElevation(2.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                Icons.Default.GroupAdd,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Get Started with Groups",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Create a group to organize players, or join an existing group with an invite code",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        context.startActivity(Intent(context, GroupManagementActivity::class.java))
+                                    }
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Create Group")
+                                }
+                                Button(
+                                    onClick = {
+                                        context.startActivity(Intent(context, GroupManagementActivity::class.java))
+                                    }
+                                ) {
+                                    Icon(Icons.Default.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Join Group")
                                 }
                             }
                         }
@@ -421,7 +483,7 @@ fun MainScreen() {
                     ) {
                         context.startActivity(Intent(context, MatchHistoryActivity::class.java))
                     }
-                    
+
                     MenuCard(
                         title = "Live Matches",
                         icon = Icons.Default.LiveTv,
@@ -453,14 +515,14 @@ fun MainScreen() {
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     MenuCard(
-                        title = "Player Stats",
-                        icon = Icons.Default.BarChart,
-                        description = "Performance analytics",
+                        title = "Statistics Hub",
+                        icon = Icons.Default.Insights,
+                        description = "Rankings, records & head-to-head",
                         containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                         contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        context.startActivity(Intent(context, StatsActivity::class.java))
+                        context.startActivity(Intent(context, StatsHubActivity::class.java))
                     }
                 }
             }
@@ -492,7 +554,7 @@ fun MainScreen() {
                     ) {
                         context.startActivity(Intent(context, AddPlayerActivity::class.java))
                     }
-                    
+
                     MenuCard(
                         title = "Groups",
                         icon = Icons.Default.Group,
@@ -533,7 +595,7 @@ fun MainScreen() {
                     ) {
                         context.startActivity(Intent(context, EnhancedCloudSyncActivity::class.java))
                     }
-                    
+
                     MenuCard(
                         title = "Data",
                         icon = Icons.Default.Storage,
@@ -546,7 +608,7 @@ fun MainScreen() {
                     }
                 }
             }
-            
+
             item {
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
@@ -587,7 +649,7 @@ fun MainScreen() {
                     )
                 }
             }
-            
+
             // Bottom spacing for FAB
             item {
                 Spacer(modifier = Modifier.height(80.dp))
@@ -660,7 +722,7 @@ fun MenuCard(
                 modifier = Modifier.size(28.dp),
                 tint = contentColor
             )
-            
+
             Column {
                 Text(
                     text = title,
@@ -691,7 +753,7 @@ fun UpdateDialog(
     onCancel: () -> Unit
 ) {
     AlertDialog(
-        onDismissRequest = { 
+        onDismissRequest = {
             if (!updateInfo.isForceUpdate && updateState !is UpdateState.Downloading) {
                 onDismiss()
             }
@@ -793,14 +855,14 @@ fun UpdateDialog(
                                 )
                             }
                         }
-                        
+
                         HorizontalDivider()
-                        
+
                         Text(
                             updateInfo.updateMessage,
                             style = MaterialTheme.typography.bodyMedium
                         )
-                        
+
                         if (updateInfo.isForceUpdate) {
                             Surface(
                                 color = MaterialTheme.colorScheme.errorContainer,

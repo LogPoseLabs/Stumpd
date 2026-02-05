@@ -1,19 +1,15 @@
+# IDE and build
 *.iml
-.gradle
-/local.properties
-/.idea/*
-/.kotlin/*
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
+.gradle/
+.idea/
+.kotlin/
 /build
 /captures
 .externalNativeBuild
 .cxx
+
+# System files
+.DS_Store
 local.properties
 
 # Firebase config (contains API keys - use GitHub Secrets instead)

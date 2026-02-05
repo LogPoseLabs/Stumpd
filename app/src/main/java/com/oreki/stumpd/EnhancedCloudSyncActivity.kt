@@ -19,7 +19,7 @@ import com.oreki.stumpd.data.sync.SyncState
 
 /**
  * Enhanced Cloud Sync Activity
- * 
+ *
  * Features:
  * - Anonymous mode (no login required)
  * - Group invite code sharing
@@ -27,10 +27,10 @@ import com.oreki.stumpd.data.sync.SyncState
  * - Manual sync controls
  */
 class EnhancedCloudSyncActivity : ComponentActivity() {
-    
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         setContent {
             MaterialTheme {
                 EnhancedCloudSyncScreen()
@@ -45,11 +45,11 @@ fun EnhancedCloudSyncScreen() {
     val context = LocalContext.current
     val app = context.applicationContext as StumpdApplication
     val syncManager = app.syncManager
-    
+
     val syncState by syncManager.syncState.collectAsState()
     val syncMetadata by syncManager.syncMetadata.collectAsState()
-    
-    
+
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -103,7 +103,7 @@ fun EnhancedCloudSyncScreen() {
                             )
                         }
                     }
-                    
+
                     Text(
                         text = "Data syncs automatically with group members via invite codes",
                         style = MaterialTheme.typography.bodySmall,
@@ -111,7 +111,7 @@ fun EnhancedCloudSyncScreen() {
                     )
                 }
             }
-            
+
             // Sync Status Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -142,26 +142,43 @@ fun EnhancedCloudSyncScreen() {
                             },
                             contentDescription = null
                         )
-                        
-                        Text(
-                            text = when (val state = syncState) {
-                                is SyncState.Idle -> "Ready to sync"
-                                is SyncState.Syncing -> "Syncing... (${state.progress}/${state.total})"
-                                is SyncState.Success -> "Synced ${state.itemsSynced} items"
-                                is SyncState.Error -> "Sync error"
-                                is SyncState.Offline -> "Offline"
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
+
+                        Column {
+                            val state = syncState
+                            Text(
+                                text = when (state) {
+                                    is SyncState.Idle -> "Ready to sync"
+                                    is SyncState.Syncing -> "Syncing... (${state.progress}/${state.total})"
+                                    is SyncState.Success -> "Synced ${state.itemsSynced} items"
+                                    is SyncState.Error -> "Sync error"
+                                    is SyncState.Offline -> "Offline"
+                                },
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            // Show detailed message when syncing
+                            if (state is SyncState.Syncing) {
+                                Text(
+                                    text = state.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
-                    
-                    if (syncState is SyncState.Syncing) {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+
+                    val currentSyncState = syncState
+                    if (currentSyncState is SyncState.Syncing) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { currentSyncState.progress.toFloat() / currentSyncState.total.coerceAtLeast(1).toFloat() },
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
             }
-            
+
             // Group Sharing Info Card
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(
@@ -183,12 +200,12 @@ fun EnhancedCloudSyncScreen() {
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    
+
                     Text(
                         text = "Share your group's data with members:",
                         style = MaterialTheme.typography.bodyMedium
                     )
-                    
+
                     Column(modifier = Modifier.padding(start = 8.dp)) {
                         Text("1. Go to your Group settings", style = MaterialTheme.typography.bodySmall)
                         Text("2. Share the invite code with friends", style = MaterialTheme.typography.bodySmall)
@@ -197,7 +214,7 @@ fun EnhancedCloudSyncScreen() {
                     }
                 }
             }
-            
+
             // Sync Actions
             // Note: Using launchXxx() methods so sync survives navigation away from this screen
             Column(
@@ -215,7 +232,7 @@ fun EnhancedCloudSyncScreen() {
                     Spacer(Modifier.width(8.dp))
                     Text("Upload All to Cloud")
                 }
-                
+
                 OutlinedButton(
                     onClick = {
                         syncManager.launchDownloadAllFromCloud()

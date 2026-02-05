@@ -5,7 +5,11 @@ package com.oreki.stumpd.data.sync
  */
 sealed class SyncState {
     object Idle : SyncState()
-    data class Syncing(val progress: Int = 0, val total: Int = 0) : SyncState()
+    data class Syncing(
+        val progress: Int = 0,
+        val total: Int = 0,
+        val message: String = "Syncing..."
+    ) : SyncState()
     data class Success(val itemsSynced: Int) : SyncState()
     data class Error(val message: String, val error: Throwable? = null) : SyncState()
     object Offline : SyncState()
