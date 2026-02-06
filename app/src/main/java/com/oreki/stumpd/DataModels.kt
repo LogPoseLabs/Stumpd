@@ -222,6 +222,8 @@ data class PlayerMatchStats(
     val dismissalType: String? = null,
     val bowlerName: String? = null,
     val fielderName: String? = null,
+    val battingPosition: Int = 0,
+    val bowlingPosition: Int = 0,
 ) {
     val strikeRate: Double
         get() = if (ballsFaced > 0) (runs.toDouble() / ballsFaced) * 100 else 0.0

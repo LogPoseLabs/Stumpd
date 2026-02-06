@@ -36,7 +36,9 @@ fun PlayerMatchStatsEntity.toDomain(): PlayerMatchStats {
         stumpings = this.stumpings,
         dismissalType = this.dismissalType,
         bowlerName = this.bowlerName,
-        fielderName = this.fielderName
+        fielderName = this.fielderName,
+        battingPosition = this.battingPosition,
+        bowlingPosition = this.bowlingPosition
     )
 }
 

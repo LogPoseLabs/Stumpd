@@ -284,3 +284,17 @@ fun filterMatchesByDate(
         else -> matches // "All Time"
     }
 }
+
+/**
+ * Filter matches by pitch type
+ */
+fun filterMatchesByPitchType(
+    matches: List<MatchHistory>,
+    pitchType: Boolean?
+): List<MatchHistory> {
+    return if (pitchType == null) {
+        matches
+    } else {
+        matches.filter { it.shortPitch == pitchType }
+    }
+}

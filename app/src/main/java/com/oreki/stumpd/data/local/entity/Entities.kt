@@ -157,7 +157,9 @@ data class PlayerMatchStatsEntity(
     val stumpings: Int = 0,
     val dismissalType: String? = null,
     val bowlerName: String? = null,
-    val fielderName: String? = null
+    val fielderName: String? = null,
+    val battingPosition: Int = 0,
+    val bowlingPosition: Int = 0
 )
 
 @Entity(

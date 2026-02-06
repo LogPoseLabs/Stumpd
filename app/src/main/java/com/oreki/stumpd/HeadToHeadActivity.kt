@@ -18,11 +18,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.oreki.stumpd.data.local.entity.GroupEntity
 import com.oreki.stumpd.ui.components.DateFilterDialog
 import com.oreki.stumpd.ui.components.GroupFilterDropdown
 import com.oreki.stumpd.ui.components.filterMatchesByGroup
+import com.oreki.stumpd.ui.components.filterMatchesByPitchType
 import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.history.rememberPlayerRepository
@@ -100,9 +102,16 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
     var startDate by remember { mutableStateOf<LocalDate?>(null) }
     var endDate by remember { mutableStateOf<LocalDate?>(null) }
 
+    // Pitch type filter
+    var selectedPitchType by remember { mutableStateOf<Boolean?>(false) } // Default to Long Pitch
+    var showPitchPicker by remember { mutableStateOf(false) }
+
     // Results
     var headToHeadStats by remember { mutableStateOf<HeadToHeadStats?>(null) }
     var matchDetails by remember { mutableStateOf<List<MatchHeadToHeadDetail>>(emptyList()) }
+
+    // Filtered players based on group selection
+    var filteredPlayers by remember { mutableStateOf<List<String>>(emptyList()) }
 
     // Load data
     LaunchedEffect(Unit) {
@@ -120,16 +129,40 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
                 }
             }
             allPlayers = playerNames.sorted()
+            filteredPlayers = allPlayers
             isLoading = false
         }
     }
 
+    // Update filtered players when group changes
+    LaunchedEffect(selectedGroupId, allMatches) {
+        if (allMatches.isNotEmpty()) {
+            val matchesForGroup = filterMatchesByGroup(allMatches, selectedGroupId)
+            val playerNames = mutableSetOf<String>()
+            matchesForGroup.forEach { match ->
+                match.allDeliveries.forEach { delivery ->
+                    if (delivery.strikerName.isNotBlank()) playerNames.add(delivery.strikerName)
+                    if (delivery.bowlerName.isNotBlank()) playerNames.add(delivery.bowlerName)
+                }
+            }
+            filteredPlayers = playerNames.sorted()
+            // Clear selections if they're no longer valid
+            if (selectedBatsman != null && selectedBatsman !in filteredPlayers) {
+                selectedBatsman = null
+            }
+            if (selectedBowler != null && selectedBowler !in filteredPlayers) {
+                selectedBowler = null
+            }
+        }
+    }
+
     // Calculate stats when selections change
-    LaunchedEffect(selectedBatsman, selectedBowler, selectedFilter, startDate, endDate, selectedGroupId) {
+    LaunchedEffect(selectedBatsman, selectedBowler, selectedFilter, startDate, endDate, selectedGroupId, selectedPitchType) {
         if (selectedBatsman != null && selectedBowler != null) {
             scope.launch {
                 val groupFiltered = filterMatchesByGroup(allMatches, selectedGroupId)
-                val dateFiltered = filterMatchesByDate(groupFiltered, selectedFilter, startDate, endDate)
+                val pitchFiltered = filterMatchesByPitchType(groupFiltered, selectedPitchType)
+                val dateFiltered = filterMatchesByDate(pitchFiltered, selectedFilter, startDate, endDate)
                 val (stats, details) = calculateHeadToHead(
                     dateFiltered,
                     selectedBatsman!!,
@@ -177,18 +210,42 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Group filter
-            GroupFilterDropdown(
-                groups = groups,
-                selectedGroupId = selectedGroupId,
-                onGroupSelected = { id, name ->
-                    selectedGroupId = id
-                    selectedGroupName = name
-                },
+            // Filter row: Group + Pitch Type
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            )
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                GroupFilterDropdown(
+                    groups = groups,
+                    selectedGroupId = selectedGroupId,
+                    onGroupSelected = { id, name ->
+                        selectedGroupId = id
+                        selectedGroupName = name
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+
+                val pitchLabel = when (selectedPitchType) {
+                    true -> "Short"
+                    false -> "Long"
+                    null -> "All Pitches"
+                }
+                FilledTonalButton(
+                    onClick = { showPitchPicker = true },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Terrain,
+                        contentDescription = "Pitch",
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(pitchLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
 
             if (isLoading) {
                 Box(
@@ -243,7 +300,7 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
                                         expanded = showBatsmanDropdown,
                                         onDismissRequest = { showBatsmanDropdown = false }
                                     ) {
-                                        allPlayers.forEach { player ->
+                                        filteredPlayers.forEach { player ->
                                             DropdownMenuItem(
                                                 text = { Text(player) },
                                                 onClick = {
@@ -291,7 +348,7 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
                                         expanded = showBowlerDropdown,
                                         onDismissRequest = { showBowlerDropdown = false }
                                     ) {
-                                        allPlayers.forEach { player ->
+                                        filteredPlayers.forEach { player ->
                                             DropdownMenuItem(
                                                 text = { Text(player) },
                                                 onClick = {
@@ -359,6 +416,74 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
                 showFilterDialog = false
             },
             onDismiss = { showFilterDialog = false }
+        )
+    }
+
+    // Pitch Type Picker Dialog
+    if (showPitchPicker) {
+        AlertDialog(
+            onDismissRequest = { showPitchPicker = false },
+            title = { Text("Filter by Pitch Type") },
+            text = {
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedPitchType = null
+                                showPitchPicker = false
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedPitchType == null,
+                            onClick = null
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("All Pitches")
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedPitchType = true
+                                showPitchPicker = false
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedPitchType == true,
+                            onClick = null
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Short Pitch")
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedPitchType = false
+                                showPitchPicker = false
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedPitchType == false,
+                            onClick = null
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Long Pitch")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPitchPicker = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 }

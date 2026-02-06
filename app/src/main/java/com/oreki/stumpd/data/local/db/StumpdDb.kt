@@ -161,7 +161,7 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
                 PRIMARY KEY(groupId, playerId)
             )
         """.trimIndent())
-        
+
         // Create index for efficient queries
         database.execSQL("""
             CREATE INDEX IF NOT EXISTS index_group_unavailable_players_playerId 
@@ -179,7 +179,7 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
                 value TEXT NOT NULL
             )
         """.trimIndent())
-        
+
         // We could migrate existing SharedPreferences data here if needed
         // For now, users will just need to re-select their default group
     }
@@ -200,7 +200,7 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
         database.execSQL(
             "ALTER TABLE player_match_stats ADD COLUMN threes INTEGER NOT NULL DEFAULT 0"
         )
-        
+
         // Add run breakdown columns to player_impacts table (correct table name)
         database.execSQL(
             "ALTER TABLE player_impacts ADD COLUMN dots INTEGER NOT NULL DEFAULT 0"
@@ -235,12 +235,12 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
                 PRIMARY KEY(matchId, innings, partnershipNumber)
             )
         """.trimIndent())
-        
+
         database.execSQL("""
             CREATE INDEX IF NOT EXISTS index_partnerships_matchId 
             ON partnerships(matchId)
         """.trimIndent())
-        
+
         // Create fall_of_wickets table
         database.execSQL("""
             CREATE TABLE IF NOT EXISTS fall_of_wickets (
@@ -256,7 +256,7 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
                 PRIMARY KEY(matchId, innings, wicketNumber)
             )
         """.trimIndent())
-        
+
         database.execSQL("""
             CREATE INDEX IF NOT EXISTS index_fall_of_wickets_matchId 
             ON fall_of_wickets(matchId)
@@ -283,7 +283,7 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
         // Add invite code columns to groups table
         database.execSQL("ALTER TABLE groups ADD COLUMN inviteCode TEXT")
         database.execSQL("ALTER TABLE groups ADD COLUMN isOwner INTEGER NOT NULL DEFAULT 1")
-        
+
         // Create joined_groups table for tracking groups joined via invite codes
         database.execSQL("""
             CREATE TABLE IF NOT EXISTS joined_groups (
@@ -293,7 +293,7 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
                 joinedAt INTEGER NOT NULL
             )
         """.trimIndent())
-        
+
         // Create index for invite code lookups
         database.execSQL("""
             CREATE INDEX IF NOT EXISTS index_joined_groups_inviteCode 
@@ -309,6 +309,14 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
     }
 }
 
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // Add batting/bowling position columns to preserve order
+        database.execSQL("ALTER TABLE player_match_stats ADD COLUMN battingPosition INTEGER NOT NULL DEFAULT 0")
+        database.execSQL("ALTER TABLE player_match_stats ADD COLUMN bowlingPosition INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 @Database(
     entities = [
         PlayerEntity::class, TeamEntity::class, TeamPlayerX::class,
@@ -320,7 +328,7 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
         PartnershipEntity::class, FallOfWicketEntity::class,
         JoinedGroupEntity::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -343,7 +351,7 @@ abstract class StumpdDb : RoomDatabase() {
                     context.applicationContext,
                     StumpdDb::class.java,
                     "stumpd.db"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                     .build().also { INSTANCE = it }
             }
     }

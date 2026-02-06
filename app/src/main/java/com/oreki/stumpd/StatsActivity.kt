@@ -81,7 +81,7 @@ fun StatsScreen() {
     var selectedGroupName by remember { mutableStateOf(if (defaultGroupId != null) "" else "All Groups") }
     var showGroupPicker by remember { mutableStateOf(false) }
 
-    var selectedPitchType by remember { mutableStateOf<Boolean?>(null) }
+    var selectedPitchType by remember { mutableStateOf<Boolean?>(false) }
     var showPitchPicker by remember { mutableStateOf(false) }
     var showDateRangePicker by remember { mutableStateOf(false) }
     var groups by remember { mutableStateOf<List<PlayerGroup>>(emptyList()) }

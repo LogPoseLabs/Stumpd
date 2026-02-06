@@ -30,7 +30,7 @@ class MatchRepository(
     private val context: Context
 ) {
     private val gson = GsonProvider.get()
-    
+
     private companion object {
         const val TAG = "MatchRepository"
     }
@@ -44,7 +44,7 @@ class MatchRepository(
             val matchEntity = convertMatchToEntity(match)
             val statsEntities = convertStatsToEntities(match)
             val impactEntities = convertImpactsToEntities(match)
-            
+
             Log.d(TAG, "Saving match: ${match.team1Name} vs ${match.team2Name}, " +
                     "stats: ${statsEntities.size}, impacts: ${impactEntities.size}, " +
                     "batting1: ${match.firstInningsBatting.size}, bowling1: ${match.firstInningsBowling.size}, " +
@@ -53,7 +53,7 @@ class MatchRepository(
             db.withTransaction {
                 db.matchDao().insertFullMatch(matchEntity, statsEntities, impactEntities)
             }
-            
+
             Log.d(TAG, "Saved match: ${match.team1Name} vs ${match.team2Name}")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save match: ${match.id}", e)
@@ -93,39 +93,94 @@ class MatchRepository(
     }
 
     /**
-     * Converts player match stats to entities for database storage
+     * Converts player match stats to entities for database storage.
+     * Merges batting + bowling stats for the same player into a single entity
+     * to avoid data overwrite (since primary key is matchId+playerId+team).
+     * Also assigns battingPosition/bowlingPosition to preserve list order.
      */
     private fun convertStatsToEntities(match: MatchHistory): List<PlayerMatchStatsEntity> {
+        data class StatsKey(val playerId: String, val team: String)
+
+        // Track batting positions (1-indexed; 0 = did not bat)
+        val battingPositions = mutableMapOf<StatsKey, Int>()
+        match.firstInningsBatting.forEachIndexed { index, stat ->
+            battingPositions[StatsKey(stat.id, stat.team)] = index + 1
+        }
+        match.secondInningsBatting.forEachIndexed { index, stat ->
+            battingPositions[StatsKey(stat.id, stat.team)] = index + 1
+        }
+
+        // Track bowling positions (1-indexed; 0 = did not bowl)
+        val bowlingPositions = mutableMapOf<StatsKey, Int>()
+        match.firstInningsBowling.forEachIndexed { index, stat ->
+            bowlingPositions[StatsKey(stat.id, stat.team)] = index + 1
+        }
+        match.secondInningsBowling.forEachIndexed { index, stat ->
+            bowlingPositions[StatsKey(stat.id, stat.team)] = index + 1
+        }
+
+        // Concatenate all stats and group by (playerId, team) to merge duplicates
         val allStats = match.firstInningsBatting + match.firstInningsBowling +
                 match.secondInningsBatting + match.secondInningsBowling
+        val grouped = allStats.groupBy { StatsKey(it.id, it.team) }
 
-        return allStats.map { stat ->
+        return grouped.map { (key, playerStats) ->
+            // Merge all entries for this player: take max of numerics, OR of booleans,
+            // first non-null of nullable strings
+            val merged = playerStats.reduce { acc, stat ->
+                acc.copy(
+                    runs = maxOf(acc.runs, stat.runs),
+                    ballsFaced = maxOf(acc.ballsFaced, stat.ballsFaced),
+                    dots = maxOf(acc.dots, stat.dots),
+                    singles = maxOf(acc.singles, stat.singles),
+                    twos = maxOf(acc.twos, stat.twos),
+                    threes = maxOf(acc.threes, stat.threes),
+                    fours = maxOf(acc.fours, stat.fours),
+                    sixes = maxOf(acc.sixes, stat.sixes),
+                    wickets = maxOf(acc.wickets, stat.wickets),
+                    runsConceded = maxOf(acc.runsConceded, stat.runsConceded),
+                    oversBowled = maxOf(acc.oversBowled, stat.oversBowled),
+                    maidenOvers = maxOf(acc.maidenOvers, stat.maidenOvers),
+                    isOut = acc.isOut || stat.isOut,
+                    isRetired = acc.isRetired || stat.isRetired,
+                    isJoker = acc.isJoker || stat.isJoker,
+                    catches = maxOf(acc.catches, stat.catches),
+                    runOuts = maxOf(acc.runOuts, stat.runOuts),
+                    stumpings = maxOf(acc.stumpings, stat.stumpings),
+                    dismissalType = acc.dismissalType ?: stat.dismissalType,
+                    bowlerName = acc.bowlerName ?: stat.bowlerName,
+                    fielderName = acc.fielderName ?: stat.fielderName
+                )
+            }
+
             PlayerMatchStatsEntity(
                 matchId = match.id,
-                playerId = stat.id,
-                name = stat.name,
-                team = stat.team,
-                runs = stat.runs,
-                ballsFaced = stat.ballsFaced,
-                dots = stat.dots,
-                singles = stat.singles,
-                twos = stat.twos,
-                threes = stat.threes,
-                fours = stat.fours,
-                sixes = stat.sixes,
-                wickets = stat.wickets,
-                runsConceded = stat.runsConceded,
-                oversBowled = stat.oversBowled,
-                maidenOvers = stat.maidenOvers,
-                isOut = stat.isOut,
-                isRetired = stat.isRetired,
-                isJoker = stat.isJoker,
-                catches = stat.catches,
-                runOuts = stat.runOuts,
-                stumpings = stat.stumpings,
-                dismissalType = stat.dismissalType,
-                bowlerName = stat.bowlerName,
-                fielderName = stat.fielderName
+                playerId = merged.id,
+                name = merged.name,
+                team = merged.team,
+                runs = merged.runs,
+                ballsFaced = merged.ballsFaced,
+                dots = merged.dots,
+                singles = merged.singles,
+                twos = merged.twos,
+                threes = merged.threes,
+                fours = merged.fours,
+                sixes = merged.sixes,
+                wickets = merged.wickets,
+                runsConceded = merged.runsConceded,
+                oversBowled = merged.oversBowled,
+                maidenOvers = merged.maidenOvers,
+                isOut = merged.isOut,
+                isRetired = merged.isRetired,
+                isJoker = merged.isJoker,
+                catches = merged.catches,
+                runOuts = merged.runOuts,
+                stumpings = merged.stumpings,
+                dismissalType = merged.dismissalType,
+                bowlerName = merged.bowlerName,
+                fielderName = merged.fielderName,
+                battingPosition = battingPositions[key] ?: 0,
+                bowlingPosition = bowlingPositions[key] ?: 0
             )
         }
     }
@@ -229,7 +284,7 @@ class MatchRepository(
             val userPreferences = db.userPreferencesDao().getAll()
             val partnerships = db.partnershipDao().getAllPartnerships()
             val fallOfWickets = db.fallOfWicketDao().getAllFallOfWickets()
-            
+
             val backup = CompleteBackup(
                 matches = matches,
                 matchStats = matchStats,
@@ -244,19 +299,19 @@ class MatchRepository(
                 partnerships = partnerships,
                 fallOfWickets = fallOfWickets
             )
-            
+
             // Try to save to Downloads folder for easier access
             val downloadsPath = android.os.Environment.getExternalStoragePublicDirectory(
                 android.os.Environment.DIRECTORY_DOWNLOADS
             )
-            
+
             val path = if (downloadsPath != null && downloadsPath.exists()) {
                 downloadsPath
             } else {
                 // Fallback to app's external files directory
                 context.getExternalFilesDir(null)
             }
-            
+
             if (path == null) {
                 Log.e(Constants.LOG_TAG_EXPORT, "External storage not available")
                 return@withContext null
@@ -264,15 +319,15 @@ class MatchRepository(
 
             val file = java.io.File(path, finalFileName)
             file.writeText(gson.toJson(backup))
-            
+
             Log.d(Constants.LOG_TAG_EXPORT, "Exported complete backup to ${file.absolutePath}:\n" +
-                "- ${backup.matches.size} matches\n" +
-                "- ${backup.matchStats.size} player stats\n" +
-                "- ${backup.playerImpacts.size} player impacts\n" +
-                "- ${backup.players.size} players\n" +
-                "- ${backup.groups.size} groups\n" +
-                "- ${backup.groupMembers.size} group members\n" +
-                "- ${backup.groupLastTeams.size} last teams")
+                    "- ${backup.matches.size} matches\n" +
+                    "- ${backup.matchStats.size} player stats\n" +
+                    "- ${backup.playerImpacts.size} player impacts\n" +
+                    "- ${backup.players.size} players\n" +
+                    "- ${backup.groups.size} groups\n" +
+                    "- ${backup.groupMembers.size} group members\n" +
+                    "- ${backup.groupLastTeams.size} last teams")
             file.absolutePath
         } catch (e: Exception) {
             Log.e(Constants.LOG_TAG_EXPORT, "Failed to export matches", e)
@@ -300,29 +355,29 @@ class MatchRepository(
             // Get only matches for this group
             val matches = db.matchDao().list(groupId, Constants.MAX_MATCHES_EXPORT)
             val matchIds = matches.map { it.id }
-            
+
             // Get stats and impacts only for these matches
             val matchStats = db.matchDao().getStatsForMatches(matchIds)
             val playerImpacts = db.matchDao().getImpactsForMatches(matchIds)
-            
+
             // Get only players who participated in these matches
             val playerIds = matchStats.map { it.playerId }.distinct()
             val players = db.playerDao().list().filter { it.id in playerIds }
-            
+
             // Get group and its related data
             val groups = db.groupDao().getAllGroups().filter { it.id == groupId }
             val groupDefaults = db.groupDao().getAllGroupDefaults().filter { it.groupId == groupId }
             val groupMembers = db.groupDao().getAllGroupMembers().filter { it.groupId == groupId }
             val groupLastTeams = db.groupDao().getAllGroupLastTeams().filter { it.groupId == groupId }
             val groupUnavailablePlayers = db.groupDao().getAllGroupUnavailablePlayers().filter { it.groupId == groupId }
-            
+
             // User preferences are global, include all for group backup too
             val userPreferences = db.userPreferencesDao().getAll()
-            
+
             // Get partnerships and fall of wickets for these matches
             val partnerships = db.partnershipDao().getPartnershipsForMatches(matchIds)
             val fallOfWickets = db.fallOfWicketDao().getFallOfWicketsForMatches(matchIds)
-            
+
             val backup = CompleteBackup(
                 matches = matches,
                 matchStats = matchStats,
@@ -337,18 +392,18 @@ class MatchRepository(
                 partnerships = partnerships,
                 fallOfWickets = fallOfWickets
             )
-            
+
             // Try to save to Downloads folder
             val downloadsPath = android.os.Environment.getExternalStoragePublicDirectory(
                 android.os.Environment.DIRECTORY_DOWNLOADS
             )
-            
+
             val path = if (downloadsPath != null && downloadsPath.exists()) {
                 downloadsPath
             } else {
                 context.getExternalFilesDir(null)
             }
-            
+
             if (path == null) {
                 Log.e(Constants.LOG_TAG_EXPORT, "External storage not available")
                 return@withContext null
@@ -356,12 +411,12 @@ class MatchRepository(
 
             val file = java.io.File(path, finalFileName)
             file.writeText(gson.toJson(backup))
-            
+
             Log.d(Constants.LOG_TAG_EXPORT, "Exported group backup to ${file.absolutePath}:\n" +
-                "- ${backup.matches.size} matches\n" +
-                "- ${backup.matchStats.size} player stats\n" +
-                "- ${backup.players.size} players\n" +
-                "- ${backup.groups.size} groups")
+                    "- ${backup.matches.size} matches\n" +
+                    "- ${backup.matchStats.size} player stats\n" +
+                    "- ${backup.players.size} players\n" +
+                    "- ${backup.groups.size} groups")
             file.absolutePath
         } catch (e: Exception) {
             Log.e(Constants.LOG_TAG_EXPORT, "Failed to export group data", e)
@@ -384,11 +439,11 @@ class MatchRepository(
             }
 
             val json = file.readText()
-            
+
             // Try to parse as complete backup first
             try {
                 val backup = gson.fromJson(json, CompleteBackup::class.java)
-                
+
                 db.withTransaction {
                     // Import all data
                     if (backup.players.isNotEmpty()) {
@@ -428,7 +483,7 @@ class MatchRepository(
                         db.fallOfWicketDao().insertFallOfWickets(backup.fallOfWickets)
                     }
                 }
-                
+
                 Log.d(Constants.LOG_TAG_IMPORT, "Imported complete backup: ${backup.matches.size} matches, ${backup.matchStats.size} stats, ${backup.players.size} players, ${backup.groups.size} groups, ${backup.groupMembers.size} group members, ${backup.groupUnavailablePlayers.size} unavailable players, ${backup.userPreferences.size} preferences, ${backup.partnerships.size} partnerships, ${backup.fallOfWickets.size} fall of wickets")
                 return@withContext true
             } catch (e: Exception) {
@@ -437,9 +492,9 @@ class MatchRepository(
                 val type = com.google.gson.reflect.TypeToken.getParameterized(
                     List::class.java, MatchEntity::class.java
                 ).type
-                
+
                 val matches: List<MatchEntity> = gson.fromJson(json, type)
-                
+
                 Log.d(Constants.LOG_TAG_IMPORT, "Imported ${matches.size} matches (legacy format with reconstruction)")
                 return@withContext true
             }
@@ -473,7 +528,7 @@ class MatchRepository(
             val matchEntity = db.matchDao().getById(id) ?: return@withContext null
             val stats = db.matchDao().statsForMatch(id)
             val impacts = db.matchDao().impactsForMatch(id)
-            
+
             // Load partnerships and fall of wickets
             val firstInningsPartnerships = db.partnershipDao().getPartnershipsForInnings(id, 1)
             val secondInningsPartnerships = db.partnershipDao().getPartnershipsForInnings(id, 2)
@@ -483,20 +538,20 @@ class MatchRepository(
             val team1 = matchEntity.team1Name
             val team2 = matchEntity.team2Name
 
-            // Partition stats by team and activity type
-            val firstBat = stats.filter { 
+            // Partition stats by team and activity type, sorted by position
+            val firstBat = stats.filter {
                 it.team == team1 && hasBattingStats(it)
-            }.map { it.toPlayerMatchStats() }
-            val firstBowl = stats.filter { 
+            }.sortedBy { it.battingPosition }.map { it.toPlayerMatchStats() }
+            val firstBowl = stats.filter {
                 it.team == team2 && hasBowlingStats(it)
-            }.map { it.toPlayerMatchStats() }
-            
-            val secondBat = stats.filter { 
+            }.sortedBy { it.bowlingPosition }.map { it.toPlayerMatchStats() }
+
+            val secondBat = stats.filter {
                 it.team == team2 && hasBattingStats(it)
-            }.map { it.toPlayerMatchStats() }
-            val secondBowl = stats.filter { 
+            }.sortedBy { it.battingPosition }.map { it.toPlayerMatchStats() }
+            val secondBowl = stats.filter {
                 it.team == team1 && hasBowlingStats(it)
-            }.map { it.toPlayerMatchStats() }
+            }.sortedBy { it.bowlingPosition }.map { it.toPlayerMatchStats() }
 
             matchEntity.toDomain().copy(
                 firstInningsBatting = firstBat,
@@ -521,7 +576,7 @@ class MatchRepository(
     private fun hasBattingStats(stats: PlayerMatchStatsEntity): Boolean {
         return stats.runs > 0 || stats.ballsFaced > 0 || stats.fours > 0 || stats.sixes > 0 || stats.isOut
     }
-    
+
     /**
      * Checks if a player stats entity has bowling activity
      */
@@ -557,7 +612,9 @@ class MatchRepository(
             stumpings = stumpings,
             dismissalType = dismissalType,
             bowlerName = bowlerName,
-            fielderName = fielderName
+            fielderName = fielderName,
+            battingPosition = battingPosition,
+            bowlingPosition = bowlingPosition
         )
     }
 
@@ -581,7 +638,7 @@ class MatchRepository(
             oversBowled = oversBowled
         )
     }
-    
+
     /**
      * Converts PartnershipEntity to domain model
      */
@@ -596,7 +653,7 @@ class MatchRepository(
             isActive = isActive
         )
     }
-    
+
     /**
      * Converts FallOfWicketEntity to domain model
      */
@@ -613,7 +670,7 @@ class MatchRepository(
     }
 
     /**
-     * Retrieves all matches with their stats
+     * Retrieves all matches with their stats properly separated by innings
      * @param groupId Optional group ID to filter by
      * @param limit Maximum number of matches to return
      * @return List of matches with stats included
@@ -629,13 +686,28 @@ class MatchRepository(
                 val stats = db.matchDao().statsForMatch(matchEntity.id)
 
                 if (stats.isNotEmpty()) {
+                    val team1 = matchEntity.team1Name
+                    val team2 = matchEntity.team2Name
+
+                    val firstBat = stats.filter {
+                        it.team == team1 && hasBattingStats(it)
+                    }.sortedBy { it.battingPosition }.map { it.toPlayerMatchStats() }
+                    val firstBowl = stats.filter {
+                        it.team == team2 && hasBowlingStats(it)
+                    }.sortedBy { it.bowlingPosition }.map { it.toPlayerMatchStats() }
+
+                    val secondBat = stats.filter {
+                        it.team == team2 && hasBattingStats(it)
+                    }.sortedBy { it.battingPosition }.map { it.toPlayerMatchStats() }
+                    val secondBowl = stats.filter {
+                        it.team == team1 && hasBowlingStats(it)
+                    }.sortedBy { it.bowlingPosition }.map { it.toPlayerMatchStats() }
+
                     matchEntity.toDomain().copy(
-                        firstInningsBatting = stats.map { it.toPlayerMatchStats() },
-                        // Note: Not separating bowling to avoid double counting
-                        // Full separation is done in getMatchWithStats()
-                        firstInningsBowling = emptyList(),
-                        secondInningsBatting = emptyList(),
-                        secondInningsBowling = emptyList()
+                        firstInningsBatting = firstBat,
+                        firstInningsBowling = firstBowl,
+                        secondInningsBatting = secondBat,
+                        secondInningsBowling = secondBowl
                     )
                 } else {
                     matchEntity.toDomain()
@@ -665,7 +737,7 @@ class MatchRepository(
             val type = com.google.gson.reflect.TypeToken.getParameterized(
                 List::class.java, MatchHistory::class.java
             ).type
-            
+
             val legacyMatches: List<MatchHistory> = gson.fromJson(json, type)
 
             if (legacyMatches.isEmpty()) {
@@ -679,10 +751,10 @@ class MatchRepository(
                 createGroupsFromLegacy(uniqueGroups)
                 createPlayersFromLegacy(uniquePlayerNames)
                 val successCount = importLegacyMatchData(legacyMatches)
-                
-                Log.d(Constants.LOG_TAG_IMPORT, 
+
+                Log.d(Constants.LOG_TAG_IMPORT,
                     "Imported $successCount/${legacyMatches.size} legacy matches, " +
-                    "${uniqueGroups.size} groups, ${uniquePlayerNames.size} players"
+                            "${uniqueGroups.size} groups, ${uniquePlayerNames.size} players"
                 )
             }
 
@@ -794,4 +866,3 @@ class MatchRepository(
         return successCount
     }
 }
-

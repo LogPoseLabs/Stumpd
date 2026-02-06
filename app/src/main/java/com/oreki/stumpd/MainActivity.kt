@@ -189,23 +189,26 @@ fun MainScreen() {
 
     Scaffold(
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = {
-                    val intent = Intent(context, TeamSetupActivity::class.java)
-                    selectedGroup?.let { intent.putExtra("default_group_id", it.id) }
-                    context.startActivity(intent)
-                },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                elevation = FloatingActionButtonDefaults.elevation(8.dp)
-            ) {
-                Icon(Icons.Default.PlayArrow, contentDescription = "Start Match")
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = "Start Match",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+            // Only show Start Match when the selected group is owned by this user
+            if (selectedGroup?.isOwner == true) {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        val intent = Intent(context, TeamSetupActivity::class.java)
+                        selectedGroup?.let { intent.putExtra("default_group_id", it.id) }
+                        context.startActivity(intent)
+                    },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    elevation = FloatingActionButtonDefaults.elevation(8.dp)
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = "Start Match")
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "Start Match",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
     ) { paddingValues ->

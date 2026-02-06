@@ -49,7 +49,7 @@ class PlayerDetailActivity : ComponentActivity() {
         val filterGroupName = intent.getStringExtra("filter_group_name") ?: "All Groups"
         val filterPitchType = if (intent.hasExtra("filter_pitch_type")) {
             intent.getBooleanExtra("filter_pitch_type", false)
-        } else null
+        } else false
         val filterDate = intent.getStringExtra("filter_date") ?: "All Time"
 
         setContent {

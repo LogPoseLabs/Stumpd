@@ -50,7 +50,7 @@ class AllPlayersStatsActivity : ComponentActivity() {
         val filterGroupName = intent.getStringExtra("filter_group_name") ?: if (defaultGroupId != null) "" else "All Groups"
         val filterPitchType = if (intent.hasExtra("filter_pitch_type")) {
             intent.getBooleanExtra("filter_pitch_type", false)
-        } else null
+        } else false // Default to long pitch
         val filterDate = intent.getStringExtra("filter_date") ?: "All Time"
         
         setContent {

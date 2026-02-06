@@ -110,7 +110,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
     var powerplayOversText by rememberSaveable { mutableStateOf(matchSettings.powerplayOvers.toString()) }
     var jokerMaxOversText by rememberSaveable { mutableStateOf(matchSettings.jokerMaxOvers.toString()) }
 
-    var showGroupPicker by remember { mutableStateOf(false) }
+    // Group picker removed - group is always passed from home screen
     val groupRepo = rememberGroupRepository()
     val playerRepo = rememberPlayerRepository()
     val matchRepo = rememberMatchRepository()
@@ -131,7 +131,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
             selectedGroup = groups.firstOrNull { it.id == defaultGroupId }
         }
     }
-    
+
     // Load players when group selection changes - filter based on group restrictions
     LaunchedEffect(selectedGroup) {
         allPlayers = if (selectedGroup != null) {
@@ -143,7 +143,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
             playerRepo.getAllPlayers().associate { it.id to it.name }
         }
     }
-    
+
     // Load default settings when group changes
     LaunchedEffect(selectedGroup) {
         selectedGroup?.let { group ->
@@ -152,7 +152,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
             val restored = gd?.matchSettingsJson?.let { json ->
                 gson.fromJson(json, MatchSettings::class.java)
             } ?: matchSettings
-            
+
             // Apply settings and update all text fields
             matchSettings = restored.copy(shortPitch = gd?.shortPitch ?: restored.shortPitch)
             oversText = matchSettings.totalOvers.toString()
@@ -334,15 +334,21 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
-                        
+
                         Row(
                             Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
+                            Icon(
+                                Icons.Default.Group,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
                                 Text(
-                                    text = "Current Group",
+                                    text = "Group",
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -350,18 +356,8 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                                     text = selectedGroup?.name ?: "No group selected",
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Medium,
-                                    color = if (selectedGroup != null)
-                                        MaterialTheme.colorScheme.onSurface
-                                    else
-                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
-                            }
-                            FilledTonalButton(
-                                onClick = { showGroupPicker = true }
-                            ) {
-                                Icon(Icons.Default.Edit, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(if (selectedGroup == null) "Select" else "Change")
                             }
                         }
                     }
@@ -402,7 +398,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                             )
                         }
-                        
+
                         // Quick presets
                         Spacer(Modifier.height(8.dp))
                         FlowRow(
@@ -554,7 +550,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                             }
                         }
                     )
-                    
+
                     // Only show double runs option when powerplay is enabled
                     if (matchSettings.powerplayOvers > 0) {
                         SwitchSettingRow(
@@ -664,7 +660,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
-                            
+
                             // Use Last Teams Button
                             OutlinedButton(
                                 onClick = {
@@ -923,12 +919,12 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
 
                             if (jokerPlayer == null) {
                                 FilledTonalButton(
-                                    onClick = { 
+                                    onClick = {
                                         if (selectedGroup == null) {
                                             Toast.makeText(context, "Select a group first", Toast.LENGTH_SHORT).show()
                                         } else {
                                             showJokerDialog = true
-                                        } 
+                                        }
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
@@ -963,11 +959,11 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                                             )
                                         }
                                         Row {
-                                            TextButton(onClick = { showJokerDialog = true }) { 
-                                                Text("Change", fontSize = 13.sp) 
+                                            TextButton(onClick = { showJokerDialog = true }) {
+                                                Text("Change", fontSize = 13.sp)
                                             }
-                                            TextButton(onClick = { jokerPlayer = null }) { 
-                                                Text("Remove", fontSize = 13.sp) 
+                                            TextButton(onClick = { jokerPlayer = null }) {
+                                                Text("Remove", fontSize = 13.sp)
                                             }
                                         }
                                     }
@@ -977,7 +973,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                     }
                 }
             }
-            
+
             // Toss Section
             if (team1.players.isNotEmpty() && team2.players.isNotEmpty()) {
                 item {
@@ -1060,7 +1056,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                                         intent.putExtra("team1_name", team1.name)
                                         intent.putExtra("team2_name", team2.name)
                                         intent.putExtra("joker_name", jokerPlayer?.name ?: "")
-                                        
+
                                         // Extract and pass captain names
                                         val team1Captain = extractCaptainFromTeamName(team1.name) ?: ""
                                         val team2Captain = extractCaptainFromTeamName(team2.name) ?: ""
@@ -1133,41 +1129,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                 allowedIds.value = emptySet()
             }
         }
-        if (showGroupPicker) {
-            val groupsState = remember { mutableStateListOf<GroupEntity>() }
-            LaunchedEffect(showGroupPicker) { if (showGroupPicker) { groupsState.clear(); groupsState.addAll(groups) } }
-            AlertDialog(
-                onDismissRequest = { showGroupPicker = false },
-                title = { Text("Choose Group") },
-                text = {
-
-                    if (groups.isEmpty()) {
-                        Column {
-                            Text("No groups yet.")
-                        }
-                    } else {
-                        LazyColumn(Modifier.height(300.dp)) {
-                            items(groups) { g ->
-                                ListItem(
-                                    headlineContent = { Text(g.name) },
-                                    supportingContent = {
-                                        // If GroupEntity no longer has playerIds, show a neutral line instead:
-                                        Text("Tap to select", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    },
-                                    modifier = Modifier.clickable {
-                                        // Set selected group - settings will load automatically via LaunchedEffect
-                                        selectedGroup = g
-                                        showGroupPicker = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-                },
-                confirmButton = {},
-                dismissButton = { TextButton(onClick = { showGroupPicker = false }) { Text("Close") } }
-            )
-        }
+        // Group picker dialog removed - group is passed from home screen
         // Team 1 multi-add
         if (showTeam1Dialog) {
             val occupied = (team1.players + team2.players).map { it.id.value }.toSet() +
@@ -1212,20 +1174,20 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
 // Joker single-select (filtered by group)
         if (showJokerDialog) {
             val occupied = (team1.players + team2.players).map { it.id.value }.toSet()
-            
+
             AlertDialog(
                 onDismissRequest = { showJokerDialog = false },
                 title = { Text("Select Joker") },
                 text = {
                     LazyColumn(Modifier.height(400.dp)) {
-                        val availablePlayers = allPlayers.filter { (id, _) -> 
+                        val availablePlayers = allPlayers.filter { (id, _) ->
                             // Only show players that are:
                             // 1. In the allowed group (if group is selected)
                             // 2. Not already in either team
-                            (allowedIds.value.isEmpty() || allowedIds.value.contains(id)) && 
-                            !occupied.contains(id)
+                            (allowedIds.value.isEmpty() || allowedIds.value.contains(id)) &&
+                                    !occupied.contains(id)
                         }
-                        
+
                         if (availablePlayers.isEmpty()) {
                             item {
                                 Text(
@@ -1263,7 +1225,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
             )
         }
     }
-    
+
 }
 
 @Composable
@@ -1286,9 +1248,9 @@ fun SettingsSection(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onToggle() },
-                color = if (isExpanded) 
+                color = if (isExpanded)
                     MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                else 
+                else
                     Color.Transparent
             ) {
                 Row(
@@ -1305,16 +1267,16 @@ fun SettingsSection(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Icon(
-                        imageVector = if (isExpanded) 
-                            Icons.Default.KeyboardArrowUp 
-                        else 
+                        imageVector = if (isExpanded)
+                            Icons.Default.KeyboardArrowUp
+                        else
                             Icons.Default.KeyboardArrowDown,
                         contentDescription = if (isExpanded) "Collapse" else "Expand",
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
             }
-            
+
             // Content
             AnimatedVisibility(visible = isExpanded) {
                 Column(
@@ -1371,7 +1333,7 @@ fun SettingDropdownRow(
     onValueChange: (Int) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
-    
+
     Column {
         Row(
             Modifier.fillMaxWidth(),
@@ -1379,7 +1341,7 @@ fun SettingDropdownRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            
+
             ExposedDropdownMenuBox(
                 expanded = expanded,
                 onExpandedChange = { expanded = !expanded }
@@ -1412,7 +1374,7 @@ fun SettingDropdownRow(
                         )
                     }
                 }
-                
+
                 ExposedDropdownMenu(
                     expanded = expanded,
                     onDismissRequest = { expanded = false }
@@ -1487,11 +1449,11 @@ fun TossSelectionCard(
         if (isFlipping) {
             rotationAngle += 1800f // 5 full rotations for dramatic effect
             kotlinx.coroutines.delay(2000) // 2 seconds of flipping
-            
+
             // Determine coin side (Heads or Tails)
             val result = listOf("Heads", "Tails").random()
             coinSide = result
-            
+
             // Just show the result, don't auto-select
             isFlipping = false
         }
@@ -1546,7 +1508,7 @@ fun TossSelectionCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(Modifier.height(12.dp))
-                    
+
                     // Coin animation
                     Box(
                         modifier = Modifier
@@ -1581,9 +1543,9 @@ fun TossSelectionCard(
                             }
                         }
                     }
-                    
+
                     Spacer(Modifier.height(16.dp))
-                    
+
                     // Show coin result
                     if (coinSide != null) {
                         Surface(
@@ -1600,7 +1562,7 @@ fun TossSelectionCard(
                         }
                         Spacer(Modifier.height(12.dp))
                     }
-                    
+
                     Button(
                         onClick = {
                             if (!isFlipping) {
@@ -1755,7 +1717,7 @@ fun EnhancedTeamCard(
                 Spacer(modifier = Modifier.height(16.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Spacer(modifier = Modifier.height(12.dp))
-                
+
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1764,12 +1726,12 @@ fun EnhancedTeamCard(
                         InputChip(
                             selected = false,
                             onClick = {},
-                            label = { 
+                            label = {
                                 Text(
                                     player.name,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium
-                                ) 
+                                )
                             },
                             leadingIcon = {
                                 Icon(

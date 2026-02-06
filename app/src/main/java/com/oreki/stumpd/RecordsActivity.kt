@@ -27,6 +27,7 @@ import com.oreki.stumpd.data.local.entity.GroupEntity
 import com.oreki.stumpd.ui.components.DateFilterDialog
 import com.oreki.stumpd.ui.components.GroupFilterDropdown
 import com.oreki.stumpd.ui.components.filterMatchesByGroup
+import com.oreki.stumpd.ui.components.filterMatchesByPitchType
 import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.theme.StumpdTheme
@@ -102,6 +103,10 @@ fun RecordsScreen(onBack: () -> Unit) {
     var startDate by remember { mutableStateOf<LocalDate?>(null) }
     var endDate by remember { mutableStateOf<LocalDate?>(null) }
 
+    // Pitch type filter
+    var selectedPitchType by remember { mutableStateOf<Boolean?>(false) } // Default to Long Pitch
+    var showPitchPicker by remember { mutableStateOf(false) }
+
     // Fielding filter (only used when Fielding tab is selected)
     var fieldingFilter by remember { mutableStateOf(FieldingFilter.ALL) }
 
@@ -117,18 +122,19 @@ fun RecordsScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         scope.launch {
             isLoading = true
-            allMatches = matchRepo.getAllMatches()
+            allMatches = matchRepo.getAllMatchesWithStats()
             groups = groupRepo.listGroups()
             isLoading = false
         }
     }
 
     // Calculate records when filter/category changes
-    LaunchedEffect(allMatches, selectedFilter, startDate, endDate, selectedCategory, selectedGroupId, fieldingFilter) {
+    LaunchedEffect(allMatches, selectedFilter, startDate, endDate, selectedCategory, selectedGroupId, fieldingFilter, selectedPitchType) {
         if (allMatches.isNotEmpty()) {
             scope.launch {
                 val groupFiltered = filterMatchesByGroup(allMatches, selectedGroupId)
-                val dateFiltered = filterMatchesByDate(groupFiltered, selectedFilter, startDate, endDate)
+                val pitchFiltered = filterMatchesByPitchType(groupFiltered, selectedPitchType)
+                val dateFiltered = filterMatchesByDate(pitchFiltered, selectedFilter, startDate, endDate)
                 records = calculateRecords(dateFiltered, selectedCategory, fieldingFilter)
             }
         }
@@ -170,18 +176,44 @@ fun RecordsScreen(onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Group filter
-            GroupFilterDropdown(
-                groups = groups,
-                selectedGroupId = selectedGroupId,
-                onGroupSelected = { id, name ->
-                    selectedGroupId = id
-                    selectedGroupName = name
-                },
+            // Filter row: Group + Pitch Type
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            )
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Group filter
+                GroupFilterDropdown(
+                    groups = groups,
+                    selectedGroupId = selectedGroupId,
+                    onGroupSelected = { id, name ->
+                        selectedGroupId = id
+                        selectedGroupName = name
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Pitch type filter button
+                val pitchLabel = when (selectedPitchType) {
+                    true -> "Short"
+                    false -> "Long"
+                    null -> "All Pitches"
+                }
+                FilledTonalButton(
+                    onClick = { showPitchPicker = true },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Terrain,
+                        contentDescription = "Pitch",
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(pitchLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
 
             // Category tabs
             ScrollableTabRow(
@@ -291,6 +323,74 @@ fun RecordsScreen(onBack: () -> Unit) {
             onDismiss = { showFilterDialog = false }
         )
     }
+
+    // Pitch Type Picker Dialog
+    if (showPitchPicker) {
+        AlertDialog(
+            onDismissRequest = { showPitchPicker = false },
+            title = { Text("Filter by Pitch Type") },
+            text = {
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedPitchType = null
+                                showPitchPicker = false
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedPitchType == null,
+                            onClick = null
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("All Pitches")
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedPitchType = true
+                                showPitchPicker = false
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedPitchType == true,
+                            onClick = null
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Short Pitch")
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedPitchType = false
+                                showPitchPicker = false
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedPitchType == false,
+                            onClick = null
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Long Pitch")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPitchPicker = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -304,7 +404,7 @@ fun RecordCard(record: RecordEntry) {
                 if (record.matchId != null) {
                     Modifier.clickable {
                         val intent = Intent(context, MatchDetailActivity::class.java).apply {
-                            putExtra("MATCH_ID", record.matchId)
+                            putExtra("match_id", record.matchId)
                         }
                         context.startActivity(intent)
                     }
@@ -649,7 +749,11 @@ fun calculateRecords(
             var mostStumpings: RecordEntry? = null
 
             matches.forEach { match ->
-                val allPlayers = match.team1Players + match.team2Players
+                // Use all available player stats - innings-separated stats have fielding data
+                val allPlayers = (match.firstInningsBatting + match.firstInningsBowling +
+                        match.secondInningsBatting + match.secondInningsBowling +
+                        match.team1Players + match.team2Players)
+                    .distinctBy { "${it.name}_${match.id}" }
 
                 allPlayers.forEach { player ->
                     // Most catches (show when filter is ALL or CATCHES)
