@@ -151,6 +151,24 @@ service cloud.firestore {
     match /users/{userId}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+    
+    // ========== SHARED MATCHES (Live Match Sharing) ==========
+    match /shared_matches/{shareCode} {
+      // Anyone authenticated can read (to join via share code)
+      allow read: if request.auth != null;
+      
+      // Create: Must set yourself as owner
+      allow create: if request.auth != null 
+                    && request.resource.data.ownerId == request.auth.uid;
+      
+      // Update: Only owner (for viewCount, isActive toggling)
+      allow update: if request.auth != null 
+                    && resource.data.ownerId == request.auth.uid;
+      
+      // Delete: Only owner
+      allow delete: if request.auth != null 
+                    && resource.data.ownerId == request.auth.uid;
+    }
   }
 }
 ```

@@ -2,6 +2,7 @@ package com.oreki.stumpd.data.mappers
 
 import android.util.Log
 import com.oreki.stumpd.*
+import com.oreki.stumpd.domain.model.*
 import com.oreki.stumpd.data.local.entity.GroupDefaultEntity
 import com.oreki.stumpd.data.local.entity.GroupEntity
 import com.oreki.stumpd.data.util.GsonProvider

@@ -1,10 +1,8 @@
 package com.oreki.stumpd.data.repository
 
+import com.oreki.stumpd.data.manager.*
+import com.oreki.stumpd.domain.model.*
 import android.util.Log
-import com.oreki.stumpd.MatchHistory
-import com.oreki.stumpd.MatchPerformance
-import com.oreki.stumpd.PlayerDetailedStats
-import com.oreki.stumpd.PlayerMatchStats
 import com.oreki.stumpd.data.local.db.StumpdDb
 import com.oreki.stumpd.data.local.entity.PlayerEntity
 import com.oreki.stumpd.data.local.entity.PlayerMatchStatsEntity
@@ -171,17 +169,13 @@ class PlayerRepository(private val db: StumpdDb) {
      * Converts match stats from domain to entity format
      */
     private fun convertMatchStatsToEntities(match: MatchHistory): List<PlayerMatchStatsEntity> {
-        val allStats = match.firstInningsBatting + 
-                      match.firstInningsBowling + 
-                      match.secondInningsBatting + 
-                      match.secondInningsBowling
-        
-        return allStats.map { stat ->
-            PlayerMatchStatsEntity(
-                matchId = match.id,
+        fun toEntity(stat: PlayerMatchStats, matchId: String, role: String): PlayerMatchStatsEntity {
+            return PlayerMatchStatsEntity(
+                matchId = matchId,
                 playerId = stat.id,
                 name = stat.name,
                 team = stat.team,
+                role = role,
                 runs = stat.runs,
                 ballsFaced = stat.ballsFaced,
                 dots = stat.dots,
@@ -202,9 +196,18 @@ class PlayerRepository(private val db: StumpdDb) {
                 stumpings = stat.stumpings,
                 dismissalType = stat.dismissalType,
                 bowlerName = stat.bowlerName,
-                fielderName = stat.fielderName
+                fielderName = stat.fielderName,
+                battingPosition = stat.battingPosition,
+                bowlingPosition = stat.bowlingPosition
             )
         }
+
+        val entities = mutableListOf<PlayerMatchStatsEntity>()
+        match.firstInningsBatting.forEach { entities.add(toEntity(it, match.id, "BAT")) }
+        match.secondInningsBatting.forEach { entities.add(toEntity(it, match.id, "BAT")) }
+        match.firstInningsBowling.forEach { entities.add(toEntity(it, match.id, "BOWL")) }
+        match.secondInningsBowling.forEach { entities.add(toEntity(it, match.id, "BOWL")) }
+        return entities
     }
 
     /**
@@ -250,66 +253,71 @@ class PlayerRepository(private val db: StumpdDb) {
     }
 
     /**
-     * Adds a new performance record for a player
+     * Adds a new performance record for a player.
+     * Role-aware: only counts batting stats from BAT entities and bowling stats from BOWL entities
+     * to prevent double-counting when Player objects accumulate stats across innings.
      */
     private fun addNewPerformance(
         stats: PlayerDetailedStats,
         entity: PlayerMatchStatsEntity,
         match: MatchHistory
     ) {
-        // Update career totals
-        stats.totalRuns += entity.runs
-        stats.totalBallsFaced += entity.ballsFaced
-        stats.totalDots += entity.dots
-        stats.totalSingles += entity.singles
-        stats.totalTwos += entity.twos
-        stats.totalThrees += entity.threes
-        stats.totalFours += entity.fours
-        stats.totalSixes += entity.sixes
-        stats.totalWickets += entity.wickets
-        stats.totalRunsConceded += entity.runsConceded
-        stats.totalBallsBowled += entity.oversBowled.oversToBalls()
-        stats.totalMaidenOvers += entity.maidenOvers
+        val isBat = entity.role == "BAT"
+        val isBowl = entity.role == "BOWL"
+
+        // Update career totals — only count stats relevant to the entity's role
+        if (isBat) {
+            stats.totalRuns += entity.runs
+            stats.totalBallsFaced += entity.ballsFaced
+            stats.totalDots += entity.dots
+            stats.totalSingles += entity.singles
+            stats.totalTwos += entity.twos
+            stats.totalThrees += entity.threes
+            stats.totalFours += entity.fours
+            stats.totalSixes += entity.sixes
+            if (entity.isOut) stats.timesOut++ else stats.notOuts++
+            if (entity.runs > stats.highestScore) {
+                stats.highestScore = entity.runs
+            }
+        }
+        if (isBowl) {
+            stats.totalWickets += entity.wickets
+            stats.totalRunsConceded += entity.runsConceded
+            stats.totalBallsBowled += entity.oversBowled.oversToBalls()
+            stats.totalMaidenOvers += entity.maidenOvers
+            if (entity.wickets > 0) {
+                if (entity.wickets > stats.bestBowlingWickets ||
+                    (entity.wickets == stats.bestBowlingWickets && entity.runsConceded < stats.bestBowlingRuns)) {
+                    stats.bestBowlingWickets = entity.wickets
+                    stats.bestBowlingRuns = entity.runsConceded
+                }
+            }
+        }
+        // Fielding stats — count from whichever role has them (typically BOWL = fielding team)
         stats.totalCatches += entity.catches
         stats.totalRunOuts += entity.runOuts
         stats.totalStumpings += entity.stumpings
-
-        if (entity.isOut) stats.timesOut++ else stats.notOuts++
-        
-        // Track highest score
-        if (entity.runs > stats.highestScore) {
-            stats.highestScore = entity.runs
-        }
-        
-        // Track best bowling
-        if (entity.wickets > 0) {
-            if (entity.wickets > stats.bestBowlingWickets || 
-                (entity.wickets == stats.bestBowlingWickets && entity.runsConceded < stats.bestBowlingRuns)) {
-                stats.bestBowlingWickets = entity.wickets
-                stats.bestBowlingRuns = entity.runsConceded
-            }
-        }
 
         // Increment match count if this is the first performance for this match
         if (stats.matchPerformances.none { it.matchId == match.id }) {
             stats.totalMatches++
         }
 
-        // Add the performance
+        // Add the performance — store only role-appropriate stats
         stats.matchPerformances.add(
             MatchPerformance(
                 matchId = match.id,
                 matchDate = match.matchDate,
                 opposingTeam = if (entity.team == match.team1Name) match.team2Name else match.team1Name,
                 myTeam = entity.team,
-                runs = entity.runs,
-                ballsFaced = entity.ballsFaced,
-                fours = entity.fours,
-                sixes = entity.sixes,
-                isOut = entity.isOut,
-                wickets = entity.wickets,
-                runsConceded = entity.runsConceded,
-                ballsBowled = entity.oversBowled.oversToBalls(),
+                runs = if (isBat) entity.runs else 0,
+                ballsFaced = if (isBat) entity.ballsFaced else 0,
+                fours = if (isBat) entity.fours else 0,
+                sixes = if (isBat) entity.sixes else 0,
+                isOut = if (isBat) entity.isOut else false,
+                wickets = if (isBowl) entity.wickets else 0,
+                runsConceded = if (isBowl) entity.runsConceded else 0,
+                ballsBowled = if (isBowl) entity.oversBowled.oversToBalls() else 0,
                 catches = entity.catches,
                 runOuts = entity.runOuts,
                 stumpings = entity.stumpings,
@@ -322,63 +330,67 @@ class PlayerRepository(private val db: StumpdDb) {
     }
 
     /**
-     * Merges stats into an existing performance record
+     * Merges stats into an existing performance record.
+     * Role-aware: only merges stats appropriate to the entity's role.
      */
     private fun mergeExistingPerformance(
         stats: PlayerDetailedStats,
         entity: PlayerMatchStatsEntity,
         existing: MatchPerformance
     ) {
-        // Update career totals
-        stats.totalRuns += entity.runs
-        stats.totalBallsFaced += entity.ballsFaced
-        stats.totalDots += entity.dots
-        stats.totalSingles += entity.singles
-        stats.totalTwos += entity.twos
-        stats.totalThrees += entity.threes
-        stats.totalFours += entity.fours
-        stats.totalSixes += entity.sixes
-        stats.totalWickets += entity.wickets
-        stats.totalRunsConceded += entity.runsConceded
-        stats.totalBallsBowled += entity.oversBowled.oversToBalls()
-        stats.totalMaidenOvers += entity.maidenOvers
-        stats.totalCatches += entity.catches
-        stats.totalRunOuts += entity.runOuts
-        stats.totalStumpings += entity.stumpings
+        val isBat = entity.role == "BAT"
+        val isBowl = entity.role == "BOWL"
 
-        if (entity.isOut && !existing.isOut) stats.timesOut++
-        
-        // Update highest score
-        val totalRunsForPlayer = existing.runs + entity.runs
-        if (totalRunsForPlayer > stats.highestScore) {
-            stats.highestScore = totalRunsForPlayer
-        }
-        
-        // Update best bowling
-        val totalWicketsForPlayer = existing.wickets + entity.wickets
-        val totalRunsConcededForPlayer = existing.runsConceded + entity.runsConceded
-        if (totalWicketsForPlayer > 0) {
-            if (totalWicketsForPlayer > stats.bestBowlingWickets || 
-                (totalWicketsForPlayer == stats.bestBowlingWickets && totalRunsConcededForPlayer < stats.bestBowlingRuns)) {
-                stats.bestBowlingWickets = totalWicketsForPlayer
-                stats.bestBowlingRuns = totalRunsConcededForPlayer
+        // Update career totals — only count stats relevant to this role
+        if (isBat) {
+            stats.totalRuns += entity.runs
+            stats.totalBallsFaced += entity.ballsFaced
+            stats.totalDots += entity.dots
+            stats.totalSingles += entity.singles
+            stats.totalTwos += entity.twos
+            stats.totalThrees += entity.threes
+            stats.totalFours += entity.fours
+            stats.totalSixes += entity.sixes
+            if (entity.isOut && !existing.isOut) stats.timesOut++
+            val newRuns = existing.runs + entity.runs
+            if (newRuns > stats.highestScore) {
+                stats.highestScore = newRuns
             }
         }
+        if (isBowl) {
+            stats.totalWickets += entity.wickets
+            stats.totalRunsConceded += entity.runsConceded
+            stats.totalBallsBowled += entity.oversBowled.oversToBalls()
+            stats.totalMaidenOvers += entity.maidenOvers
+            val totalWicketsForPlayer = existing.wickets + entity.wickets
+            val totalRunsConcededForPlayer = existing.runsConceded + entity.runsConceded
+            if (totalWicketsForPlayer > 0) {
+                if (totalWicketsForPlayer > stats.bestBowlingWickets ||
+                    (totalWicketsForPlayer == stats.bestBowlingWickets && totalRunsConcededForPlayer < stats.bestBowlingRuns)) {
+                    stats.bestBowlingWickets = totalWicketsForPlayer
+                    stats.bestBowlingRuns = totalRunsConcededForPlayer
+                }
+            }
+        }
+        // Fielding: only add if existing doesn't already have them (avoid doubling from corrupted data)
+        if (existing.catches == 0) stats.totalCatches += entity.catches
+        if (existing.runOuts == 0) stats.totalRunOuts += entity.runOuts
+        if (existing.stumpings == 0) stats.totalStumpings += entity.stumpings
 
-        // Update the existing performance
+        // Update the existing performance — merge only role-appropriate stats
         val index = stats.matchPerformances.indexOf(existing)
         stats.matchPerformances[index] = existing.copy(
-            runs = existing.runs + entity.runs,
-            ballsFaced = existing.ballsFaced + entity.ballsFaced,
-            fours = existing.fours + entity.fours,
-            sixes = existing.sixes + entity.sixes,
-            wickets = existing.wickets + entity.wickets,
-            runsConceded = existing.runsConceded + entity.runsConceded,
-            ballsBowled = existing.ballsBowled + entity.oversBowled.oversToBalls(),
-            catches = existing.catches + entity.catches,
-            runOuts = existing.runOuts + entity.runOuts,
-            stumpings = existing.stumpings + entity.stumpings,
-            isOut = existing.isOut || entity.isOut
+            runs = existing.runs + (if (isBat) entity.runs else 0),
+            ballsFaced = existing.ballsFaced + (if (isBat) entity.ballsFaced else 0),
+            fours = existing.fours + (if (isBat) entity.fours else 0),
+            sixes = existing.sixes + (if (isBat) entity.sixes else 0),
+            wickets = existing.wickets + (if (isBowl) entity.wickets else 0),
+            runsConceded = existing.runsConceded + (if (isBowl) entity.runsConceded else 0),
+            ballsBowled = existing.ballsBowled + (if (isBowl) entity.oversBowled.oversToBalls() else 0),
+            catches = if (existing.catches == 0) entity.catches else existing.catches,
+            runOuts = if (existing.runOuts == 0) entity.runOuts else existing.runOuts,
+            stumpings = if (existing.stumpings == 0) entity.stumpings else existing.stumpings,
+            isOut = existing.isOut || (isBat && entity.isOut)
         )
     }
 

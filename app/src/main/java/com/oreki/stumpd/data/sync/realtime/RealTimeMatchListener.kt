@@ -2,7 +2,7 @@ package com.oreki.stumpd.data.sync.realtime
 
 import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
-import com.oreki.stumpd.MatchHistory
+import com.oreki.stumpd.domain.model.MatchHistory
 import com.oreki.stumpd.data.local.entity.InProgressMatchEntity
 import com.oreki.stumpd.data.sync.FirebaseConfig
 import com.oreki.stumpd.data.sync.firebase.FirestoreMatchDao

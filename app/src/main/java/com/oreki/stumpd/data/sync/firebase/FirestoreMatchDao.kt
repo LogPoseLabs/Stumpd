@@ -3,24 +3,21 @@ package com.oreki.stumpd.data.sync.firebase
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
-import com.oreki.stumpd.FallOfWicket
-import com.oreki.stumpd.MatchHistory
-import com.oreki.stumpd.Partnership
-import com.oreki.stumpd.PlayerMatchStats
+import com.oreki.stumpd.domain.model.*
 import com.oreki.stumpd.data.sync.FirebaseConfig
 import kotlinx.coroutines.tasks.await
 
 /**
  * Complete Firebase Firestore data access layer for matches
  * Handles all match data including stats, partnerships, fall of wickets, and deliveries
- *
+ * 
  * DATA IS GLOBAL - All users can see all matches
  * ownerId field tracks who created the match for edit permissions
  */
 class FirestoreMatchDao(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) {
-
+    
     /**
      * Upload a complete match with ALL related data
      * @param ownerId The user who created/owns this match
@@ -28,60 +25,81 @@ class FirestoreMatchDao(
     suspend fun uploadCompleteMatch(ownerId: String, match: MatchHistory) {
         // 1. Upload main match document
         uploadMatchMetadata(ownerId, match)
-
+        
         // 2. Upload all player stats
         uploadMatchStats(match)
-
+        
         // 3. Upload partnerships
         uploadPartnerships(match)
-
+        
         // 4. Upload fall of wickets
         uploadFallOfWickets(match)
-
+        
         // 5. Upload ball-by-ball deliveries
         uploadDeliveries(match)
-
+        
         // 6. Upload player impacts
         uploadPlayerImpacts(match)
     }
-
+    
     /**
      * Download a complete match with ALL related data
      * @param matchId The match ID to download
      */
     suspend fun downloadCompleteMatch(matchId: String): MatchHistory? {
         val matchMetadata = downloadMatchMetadata(matchId) ?: return null
-
+        
         val stats = downloadMatchStats(matchId)
         val partnerships = downloadPartnerships(matchId)
         val fallOfWickets = downloadFallOfWickets(matchId)
         val deliveries = downloadDeliveries(matchId)
         val impacts = downloadPlayerImpacts(matchId)
-
+        
         android.util.Log.d("FirestoreMatchDao", "Downloaded match ${matchId}: " +
                 "stats=${stats.size}, partnerships=${partnerships.size}, impacts=${impacts.size}, " +
                 "team1=${matchMetadata.team1Name}, team2=${matchMetadata.team2Name}")
-
+        
         if (stats.isNotEmpty()) {
             android.util.Log.d("FirestoreMatchDao", "Stats teams: ${stats.map { it.team }.distinct()}")
         }
-
-        // Separate stats by innings and role
-        val firstInningsBatting = stats.filter { it.team == matchMetadata.team1Name }
-        val firstInningsBowling = stats.filter { it.team == matchMetadata.team2Name }
-        val secondInningsBatting = stats.filter { it.team == matchMetadata.team2Name }
-        val secondInningsBowling = stats.filter { it.team == matchMetadata.team1Name }
-
+        
+        // Separate stats by team and role
+        val hasRoles = stats.any { it.role.isNotEmpty() }
+        
+        val firstInningsBatting: List<PlayerMatchStats>
+        val firstInningsBowling: List<PlayerMatchStats>
+        val secondInningsBatting: List<PlayerMatchStats>
+        val secondInningsBowling: List<PlayerMatchStats>
+        
+        if (hasRoles) {
+            // New format: use explicit role to separate batting/bowling
+            firstInningsBatting = stats.filter { it.team == matchMetadata.team1Name && it.role == "BAT" }
+                .sortedBy { it.battingPosition }
+            firstInningsBowling = stats.filter { it.team == matchMetadata.team2Name && it.role == "BOWL" }
+                .sortedBy { it.bowlingPosition }
+            secondInningsBatting = stats.filter { it.team == matchMetadata.team2Name && it.role == "BAT" }
+                .sortedBy { it.battingPosition }
+            secondInningsBowling = stats.filter { it.team == matchMetadata.team1Name && it.role == "BOWL" }
+                .sortedBy { it.bowlingPosition }
+        } else {
+            // Legacy format: no role info, fall back to team-only filtering
+            // (duplicates across batting/bowling, but convertStatsToEntities handles it on re-save)
+            firstInningsBatting = stats.filter { it.team == matchMetadata.team1Name }
+            firstInningsBowling = stats.filter { it.team == matchMetadata.team2Name }
+            secondInningsBatting = stats.filter { it.team == matchMetadata.team2Name }
+            secondInningsBowling = stats.filter { it.team == matchMetadata.team1Name }
+        }
+        
         // Split partnerships by innings (you may need to track innings in Partnership model)
         val halfPoint = partnerships.size / 2
         val firstInningsPartnerships = partnerships.take(halfPoint)
         val secondInningsPartnerships = partnerships.drop(halfPoint)
-
+        
         // Split fall of wickets similarly
         val fowHalfPoint = fallOfWickets.size / 2
         val firstInningsFow = fallOfWickets.take(fowHalfPoint)
         val secondInningsFow = fallOfWickets.drop(fowHalfPoint)
-
+        
         return matchMetadata.copy(
             firstInningsBatting = firstInningsBatting,
             firstInningsBowling = firstInningsBowling,
@@ -93,18 +111,18 @@ class FirestoreMatchDao(
             secondInningsFallOfWickets = secondInningsFow,
             allDeliveries = deliveries,
             playerImpacts = impacts,
-            team1Players = firstInningsBatting + firstInningsBowling,
-            team2Players = secondInningsBatting + secondInningsBowling
+            team1Players = firstInningsBatting + secondInningsBowling,
+            team2Players = firstInningsBowling + secondInningsBatting
         )
     }
-
+    
     /**
      * Download a complete match - legacy method for compatibility
      */
     suspend fun downloadCompleteMatch(userId: String, matchId: String): MatchHistory? {
         return downloadCompleteMatch(matchId)
     }
-
+    
     /**
      * Download all matches (GLOBAL - returns all matches from all users)
      */
@@ -113,7 +131,7 @@ class FirestoreMatchDao(
             .collection(FirebaseConfig.COLLECTION_MATCHES)
             .get()
             .await()
-
+        
         return querySnapshot.documents.mapNotNull { doc ->
             try {
                 downloadCompleteMatch(doc.id)
@@ -122,47 +140,47 @@ class FirestoreMatchDao(
             }
         }
     }
-
+    
     /**
      * Download all matches - legacy method for compatibility
      */
     suspend fun downloadAllMatches(userId: String): List<MatchHistory> {
         return downloadAllMatches()
     }
-
+    
     /**
      * Delete a match and all related data
      */
     suspend fun deleteMatch(matchId: String) {
         val batch = firestore.batch()
-
+        
         // Delete main match
         val matchRef = firestore
             .collection(FirebaseConfig.COLLECTION_MATCHES)
             .document(matchId)
         batch.delete(matchRef)
-
+        
         // Delete all subcollections (stats, partnerships, etc.)
         // Note: Firestore doesn't auto-delete subcollections, but for a free tier,
         // we'll leave them orphaned or delete manually if needed
-
+        
         batch.commit().await()
     }
-
+    
     /**
      * Delete a match - legacy method for compatibility
      */
     suspend fun deleteMatch(userId: String, matchId: String) {
         deleteMatch(matchId)
     }
-
+    
     // ========== Private Helper Methods ==========
-
+    
     private suspend fun uploadMatchMetadata(ownerId: String, match: MatchHistory) {
         val docRef = firestore
             .collection(FirebaseConfig.COLLECTION_MATCHES)
             .document(match.id)
-
+        
         val data = mapOf(
             "id" to match.id,
             "team1Name" to match.team1Name,
@@ -189,27 +207,29 @@ class FirestoreMatchDao(
             FirebaseConfig.FIELD_UPDATED_AT to System.currentTimeMillis(),
             FirebaseConfig.FIELD_CREATED_AT to match.matchDate
         )
-
+        
         docRef.set(data, SetOptions.merge()).await()
     }
-
+    
     private suspend fun uploadMatchStats(match: MatchHistory) {
         val allStats = match.firstInningsBatting + match.firstInningsBowling +
                 match.secondInningsBatting + match.secondInningsBowling
-
+        
         val batch = firestore.batch()
-
-        allStats.forEachIndexed { index, stat ->
+        
+        allStats.forEach { stat ->
+            // Deterministic doc ID using role instead of index (no orphan docs)
             val docRef = firestore
                 .collection(FirebaseConfig.COLLECTION_MATCHES)
                 .document(match.id)
                 .collection("stats")
-                .document("${stat.id}_${stat.team}_$index")
-
+                .document("${stat.id}_${stat.team}_${stat.role}")
+            
             val data = mapOf(
                 "playerId" to stat.id,
                 "name" to stat.name,
                 "team" to stat.team,
+                "role" to stat.role,
                 "runs" to stat.runs,
                 "ballsFaced" to stat.ballsFaced,
                 "dots" to stat.dots,
@@ -234,27 +254,27 @@ class FirestoreMatchDao(
                 "battingPosition" to stat.battingPosition,
                 "bowlingPosition" to stat.bowlingPosition
             )
-
+            
             batch.set(docRef, data, SetOptions.merge())
         }
-
+        
         batch.commit().await()
     }
-
+    
     private suspend fun uploadPartnerships(match: MatchHistory) {
         val allPartnerships = match.firstInningsPartnerships + match.secondInningsPartnerships
-
+        
         if (allPartnerships.isEmpty()) return
-
+        
         val batch = firestore.batch()
-
+        
         allPartnerships.forEachIndexed { index, partnership ->
             val docRef = firestore
                 .collection(FirebaseConfig.COLLECTION_MATCHES)
                 .document(match.id)
                 .collection("partnerships")
                 .document("partnership_$index")
-
+            
             val data = mapOf(
                 "batsman1Name" to partnership.batsman1Name,
                 "batsman2Name" to partnership.batsman2Name,
@@ -265,27 +285,27 @@ class FirestoreMatchDao(
                 "isActive" to partnership.isActive,
                 "index" to index
             )
-
+            
             batch.set(docRef, data, SetOptions.merge())
         }
-
+        
         batch.commit().await()
     }
-
+    
     private suspend fun uploadFallOfWickets(match: MatchHistory) {
         val allWickets = match.firstInningsFallOfWickets + match.secondInningsFallOfWickets
-
+        
         if (allWickets.isEmpty()) return
-
+        
         val batch = firestore.batch()
-
+        
         allWickets.forEach { wicket ->
             val docRef = firestore
                 .collection(FirebaseConfig.COLLECTION_MATCHES)
                 .document(match.id)
                 .collection("fall_of_wickets")
                 .document("wicket_${wicket.wicketNumber}")
-
+            
             val data = mapOf(
                 "batsmanName" to wicket.batsmanName,
                 "runs" to wicket.runs,
@@ -295,27 +315,27 @@ class FirestoreMatchDao(
                 "bowlerName" to wicket.bowlerName,
                 "fielderName" to wicket.fielderName
             )
-
+            
             batch.set(docRef, data, SetOptions.merge())
         }
-
+        
         batch.commit().await()
     }
-
+    
     private suspend fun uploadDeliveries(match: MatchHistory) {
         if (match.allDeliveries.isEmpty()) return
-
+        
         // For large delivery lists, use batches of 500 (Firestore limit)
         match.allDeliveries.chunked(500).forEach { chunk ->
             val batch = firestore.batch()
-
+            
             chunk.forEachIndexed { index, delivery ->
                 val docRef = firestore
                     .collection(FirebaseConfig.COLLECTION_MATCHES)
                     .document(match.id)
                     .collection("deliveries")
                     .document("delivery_${delivery.inning}_${delivery.over}_${delivery.ballInOver}")
-
+                
                 val data = mapOf(
                     "inning" to delivery.inning,
                     "over" to delivery.over,
@@ -327,26 +347,26 @@ class FirestoreMatchDao(
                     "bowlerName" to delivery.bowlerName,
                     "runs" to delivery.runs
                 )
-
+                
                 batch.set(docRef, data, SetOptions.merge())
             }
-
+            
             batch.commit().await()
         }
     }
-
+    
     private suspend fun uploadPlayerImpacts(match: MatchHistory) {
         if (match.playerImpacts.isEmpty()) return
-
+        
         val batch = firestore.batch()
-
+        
         match.playerImpacts.forEach { impact ->
             val docRef = firestore
                 .collection(FirebaseConfig.COLLECTION_MATCHES)
                 .document(match.id)
                 .collection("impacts")
                 .document(impact.id)
-
+            
             val data = mapOf(
                 "id" to impact.id,
                 "name" to impact.name,
@@ -362,26 +382,26 @@ class FirestoreMatchDao(
                 "runsConceded" to impact.runsConceded,
                 "oversBowled" to impact.oversBowled
             )
-
+            
             batch.set(docRef, data, SetOptions.merge())
         }
-
+        
         batch.commit().await()
     }
-
+    
     // ========== Download Methods ==========
-
+    
     private suspend fun downloadMatchMetadata(matchId: String): MatchHistory? {
         val docRef = firestore
             .collection(FirebaseConfig.COLLECTION_MATCHES)
             .document(matchId)
-
+        
         val snapshot = docRef.get().await()
         return if (snapshot.exists()) {
             firestoreToMatch(snapshot)
         } else null
     }
-
+    
     private suspend fun downloadMatchStats(matchId: String): List<PlayerMatchStats> {
         val querySnapshot = firestore
             .collection(FirebaseConfig.COLLECTION_MATCHES)
@@ -389,7 +409,7 @@ class FirestoreMatchDao(
             .collection("stats")
             .get()
             .await()
-
+        
         return querySnapshot.documents.mapNotNull { doc ->
             try {
                 firestoreToPlayerMatchStats(doc)
@@ -398,7 +418,7 @@ class FirestoreMatchDao(
             }
         }
     }
-
+    
     private suspend fun downloadPartnerships(matchId: String): List<Partnership> {
         val querySnapshot = firestore
             .collection(FirebaseConfig.COLLECTION_MATCHES)
@@ -406,7 +426,7 @@ class FirestoreMatchDao(
             .collection("partnerships")
             .get()
             .await()
-
+        
         return querySnapshot.documents.mapNotNull { doc ->
             try {
                 Partnership(
@@ -423,7 +443,7 @@ class FirestoreMatchDao(
             }
         }.sortedBy { doc -> doc.batsman1Name } // Maintain order
     }
-
+    
     private suspend fun downloadFallOfWickets(matchId: String): List<FallOfWicket> {
         val querySnapshot = firestore
             .collection(FirebaseConfig.COLLECTION_MATCHES)
@@ -431,7 +451,7 @@ class FirestoreMatchDao(
             .collection("fall_of_wickets")
             .get()
             .await()
-
+        
         return querySnapshot.documents.mapNotNull { doc ->
             try {
                 FallOfWicket(
@@ -448,18 +468,18 @@ class FirestoreMatchDao(
             }
         }.sortedBy { it.wicketNumber }
     }
-
-    private suspend fun downloadDeliveries(matchId: String): List<com.oreki.stumpd.DeliveryUI> {
+    
+    private suspend fun downloadDeliveries(matchId: String): List<DeliveryUI> {
         val querySnapshot = firestore
             .collection(FirebaseConfig.COLLECTION_MATCHES)
             .document(matchId)
             .collection("deliveries")
             .get()
             .await()
-
+        
         return querySnapshot.documents.mapNotNull { doc ->
             try {
-                com.oreki.stumpd.DeliveryUI(
+                DeliveryUI(
                     inning = doc.getLong("inning")?.toInt() ?: 0,
                     over = doc.getLong("over")?.toInt() ?: 0,
                     ballInOver = doc.getLong("ballInOver")?.toInt() ?: 0,
@@ -475,18 +495,18 @@ class FirestoreMatchDao(
             }
         }.sortedWith(compareBy({ it.inning }, { it.over }, { it.ballInOver }))
     }
-
-    private suspend fun downloadPlayerImpacts(matchId: String): List<com.oreki.stumpd.PlayerImpact> {
+    
+    private suspend fun downloadPlayerImpacts(matchId: String): List<PlayerImpact> {
         val querySnapshot = firestore
             .collection(FirebaseConfig.COLLECTION_MATCHES)
             .document(matchId)
             .collection("impacts")
             .get()
             .await()
-
+        
         return querySnapshot.documents.mapNotNull { doc ->
             try {
-                com.oreki.stumpd.PlayerImpact(
+                PlayerImpact(
                     id = doc.getString("id") ?: "",
                     name = doc.getString("name") ?: "",
                     team = doc.getString("team") ?: "",
@@ -506,7 +526,7 @@ class FirestoreMatchDao(
             }
         }
     }
-
+    
     private fun firestoreToMatch(doc: DocumentSnapshot): MatchHistory {
         return MatchHistory(
             id = doc.getString("id") ?: doc.id,
@@ -532,7 +552,7 @@ class FirestoreMatchDao(
             playerOfTheMatchSummary = doc.getString("playerOfTheMatchSummary")
         )
     }
-
+    
     private fun firestoreToPlayerMatchStats(doc: DocumentSnapshot): PlayerMatchStats {
         return PlayerMatchStats(
             id = doc.getString("playerId") ?: "",
@@ -560,7 +580,8 @@ class FirestoreMatchDao(
             bowlerName = doc.getString("bowlerName"),
             fielderName = doc.getString("fielderName"),
             battingPosition = doc.getLong("battingPosition")?.toInt() ?: 0,
-            bowlingPosition = doc.getLong("bowlingPosition")?.toInt() ?: 0
+            bowlingPosition = doc.getLong("bowlingPosition")?.toInt() ?: 0,
+            role = doc.getString("role") ?: "" // empty for legacy Firestore data
         )
     }
 }

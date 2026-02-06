@@ -2,7 +2,7 @@ package com.oreki.stumpd.data.models
 
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import com.oreki.stumpd.Player
+import com.oreki.stumpd.domain.model.*
 
 /**
  * Helper functions to convert between match state and MatchInProgress
@@ -75,7 +75,7 @@ fun createMatchInProgress(
     powerplayRunsInnings2: Int = 0,
     powerplayDoublingDoneInnings1: Boolean = false,
     powerplayDoublingDoneInnings2: Boolean = false,
-    allDeliveries: List<com.oreki.stumpd.DeliveryUI> = emptyList(),
+    allDeliveries: List<DeliveryUI> = emptyList(),
     gson: Gson
 ): MatchInProgress {
     return MatchInProgress(

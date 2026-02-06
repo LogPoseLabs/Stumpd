@@ -1,5 +1,6 @@
 package com.oreki.stumpd
 
+import com.oreki.stumpd.domain.model.*
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity

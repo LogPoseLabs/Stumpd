@@ -1,5 +1,7 @@
 package com.oreki.stumpd
 
+import com.oreki.stumpd.domain.model.*
+import com.oreki.stumpd.ui.scoring.ScoringActivity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -46,6 +48,10 @@ import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.history.rememberPlayerRepository
 import com.oreki.stumpd.ui.theme.Label
+import com.oreki.stumpd.viewmodel.TeamSetupViewModel
+import com.oreki.stumpd.viewmodel.TeamSetupViewModelFactory
+import com.oreki.stumpd.viewmodel.ToastEvent
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 
 // Result class for better handling
@@ -71,7 +77,9 @@ class TeamSetupActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    TeamSetupScreen(defaultGroupId = defaultGroupId)
+                    val factory = TeamSetupViewModelFactory(application, defaultGroupId)
+                    val vm: TeamSetupViewModel = viewModel(factory = factory)
+                    TeamSetupScreen(vm = vm)
                 }
             }
         }
@@ -80,210 +88,25 @@ class TeamSetupActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun TeamSetupScreen(defaultGroupId: String? = null) {
+fun TeamSetupScreen(vm: TeamSetupViewModel) {
     val context = LocalContext.current
-    val gson = Gson()
-    val settingsManager = remember { MatchSettingsManager(context) }
 
-    // Initialize with default match settings
-    var matchSettings by remember {
-        mutableStateOf(settingsManager.getDefaultMatchSettings())
-    }
+    val matchSettings = vm.matchSettings
+    val team1 = vm.team1
+    val team2 = vm.team2
+    val jokerPlayer = vm.jokerPlayer
+    val selectedGroup = vm.selectedGroup
+    val allPlayers = vm.allPlayers
+    val expandedSections = vm.expandedSections
 
-    // Team states
-    var team1 by remember { mutableStateOf(Team("Team A", mutableListOf())) }
-    var team2 by remember { mutableStateOf(Team("Team B", mutableListOf())) }
-    var jokerPlayer by remember { mutableStateOf<Player?>(null) }
-
-    // Dialog states
-    var showTeam1Dialog by remember { mutableStateOf(false) }
-    var showTeam2Dialog by remember { mutableStateOf(false) }
-    var showJokerDialog by remember { mutableStateOf(false) }
-
-    // (Use matchSettings as the source of truth for initial value)
-    var oversText by rememberSaveable { mutableStateOf(matchSettings.totalOvers.toString()) }
-    var maxOversPerBowlerText by rememberSaveable { mutableStateOf(matchSettings.maxOversPerBowler.toString()) }
-    var wideRunsText by rememberSaveable { mutableStateOf(matchSettings.wideRuns.toString()) }
-    var noballRunsText by rememberSaveable { mutableStateOf(matchSettings.noballRuns.toString()) }
-    var byeRunsText by rememberSaveable { mutableStateOf(matchSettings.byeRuns.toString()) }
-    var legByeRunsText by rememberSaveable { mutableStateOf(matchSettings.legByeRuns.toString()) }
-    var powerplayOversText by rememberSaveable { mutableStateOf(matchSettings.powerplayOvers.toString()) }
-    var jokerMaxOversText by rememberSaveable { mutableStateOf(matchSettings.jokerMaxOvers.toString()) }
-
-    // Group picker removed - group is always passed from home screen
-    val groupRepo = rememberGroupRepository()
-    val playerRepo = rememberPlayerRepository()
-    val matchRepo = rememberMatchRepository()
-
-    var selectedGroup by remember { mutableStateOf<GroupEntity?>(null) }
-
-    var tossWinner by rememberSaveable { mutableStateOf<String?>(null) }
-    var tossChoice by rememberSaveable { mutableStateOf<String?>(null) }
-
-    var groups by remember { mutableStateOf<List<GroupEntity>>(emptyList()) }
-    var allPlayers by remember { mutableStateOf<Map<String, String>>(emptyMap()) } // id->name
-
-    val scope = rememberCoroutineScope()
+    // Collect toast events
     LaunchedEffect(Unit) {
-        groups = groupRepo.listGroups()
-        // Set default group if provided from home screen
-        if (defaultGroupId != null && selectedGroup == null) {
-            selectedGroup = groups.firstOrNull { it.id == defaultGroupId }
-        }
-    }
-
-    // Load players when group selection changes - filter based on group restrictions
-    LaunchedEffect(selectedGroup) {
-        allPlayers = if (selectedGroup != null) {
-            // Get players available for this group (respects group restrictions)
-            groupRepo.getAvailablePlayersForGroup(selectedGroup!!.id)
-                .associate { it.id to it.name }
-        } else {
-            // No group selected, show all players
-            playerRepo.getAllPlayers().associate { it.id to it.name }
-        }
-    }
-
-    // Load default settings when group changes
-    LaunchedEffect(selectedGroup) {
-        selectedGroup?.let { group ->
-            // Load defaults from Room DB
-            val gd = groupRepo.getDefaults(group.id)
-            val restored = gd?.matchSettingsJson?.let { json ->
-                gson.fromJson(json, MatchSettings::class.java)
-            } ?: matchSettings
-
-            // Apply settings and update all text fields
-            matchSettings = restored.copy(shortPitch = gd?.shortPitch ?: restored.shortPitch)
-            oversText = matchSettings.totalOvers.toString()
-            maxOversPerBowlerText = matchSettings.maxOversPerBowler.toString()
-            wideRunsText = matchSettings.wideRuns.toString()
-            noballRunsText = matchSettings.noballRuns.toString()
-            byeRunsText = matchSettings.byeRuns.toString()
-            legByeRunsText = matchSettings.legByeRuns.toString()
-            powerplayOversText = matchSettings.powerplayOvers.toString()
-            jokerMaxOversText = matchSettings.jokerMaxOvers.toString()
-        }
-    }
-
-    // Expandable sections state
-    var expandedSections by remember {
-        mutableStateOf(setOf("basic")) // Start with basic expanded
-    }
-
-    fun toggleSection(section: String) {
-        expandedSections = if (expandedSections.contains(section)) {
-            expandedSections - section
-        } else {
-            expandedSections + section
-        }
-    }
-
-    // Helper function to extract captain name from team name patterns
-    fun extractCaptainFromTeamName(teamName: String): String? {
-        return when {
-            teamName.endsWith("'s Team", ignoreCase = true) -> {
-                teamName.substringBefore("'s Team").trim()
-            }
-            teamName.startsWith("Team ", ignoreCase = true) -> {
-                teamName.substringAfter("Team ").trim().takeIf { it.isNotEmpty() }
-            }
-            else -> null
-        }
-    }
-
-    suspend fun generateRandomTeamsWithJokerAndCaptains(
-        availablePlayerIds: Set<String>,
-        allPlayers: Map<String, String>,
-        groupId: String,
-        matchRepo: MatchRepository
-    ): TeamGenerationResult {
-
-        val availablePlayers = availablePlayerIds.mapNotNull { playerId ->
-            allPlayers[playerId]?.let { name ->
-                Player(id = PlayerId(playerId), name = name)
+        vm.toastEvent.collect { event ->
+            when (event) {
+                is ToastEvent.Short -> Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
+                is ToastEvent.Long -> Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
             }
         }
-
-        if (availablePlayers.size < 2) {
-            return TeamGenerationResult.InsufficientPlayers
-        }
-
-        // Get today's matches to check joker and captain history
-        val today = System.currentTimeMillis()
-        val startOfDay = today - (today % (24 * 60 * 60 * 1000))
-        val todaysMatches = try {
-            matchRepo.getAllMatches(groupId, limit = 20)
-                .filter { it.matchDate >= startOfDay }
-        } catch (e: Exception) {
-            emptyList()
-        }
-
-        // Get players who have been jokers today
-        val todaysJokers = todaysMatches
-            .mapNotNull { it.jokerPlayerName }
-            .filter { it.isNotEmpty() }
-            .toSet()
-
-        // Get players who have been captains today (using explicit captain fields with fallback to team names)
-        val todaysCaptains = todaysMatches
-            .flatMap { match ->
-                listOfNotNull(
-                    match.team1CaptainName ?: extractCaptainFromTeamName(match.team1Name),
-                    match.team2CaptainName ?: extractCaptainFromTeamName(match.team2Name)
-                )
-            }
-            .toSet()
-
-        val isOddNumberOfPlayers = availablePlayers.size % 2 == 1
-
-        // Handle joker assignment if odd number of players
-        val (playersForTeams, jokerPlayer) = if (isOddNumberOfPlayers) {
-            val jokerCandidates = availablePlayers.filter { player ->
-                !todaysJokers.contains(player.name)
-            }
-
-            val joker = if (jokerCandidates.isNotEmpty()) {
-                jokerCandidates.random()
-            } else {
-                availablePlayers.random()
-            }
-
-            val remainingPlayers = availablePlayers.filter { it.id.value != joker.id.value }
-            Pair(remainingPlayers, joker.copy(isJoker = true))
-        } else {
-            Pair(availablePlayers, null)
-        }
-
-        // Split into teams
-        val teamSize = playersForTeams.size / 2
-        val shuffledPlayers = playersForTeams.shuffled()
-        val team1Players = shuffledPlayers.take(teamSize)
-        val team2Players = shuffledPlayers.drop(teamSize)
-
-        // Assign captains - prefer players who haven't been captains today
-        val team1CaptainCandidates = team1Players.filter { !todaysCaptains.contains(it.name) }
-        val team2CaptainCandidates = team2Players.filter { !todaysCaptains.contains(it.name) }
-
-        val team1Captain = if (team1CaptainCandidates.isNotEmpty()) {
-            team1CaptainCandidates.random()
-        } else {
-            team1Players.random()
-        }
-
-        val team2Captain = if (team2CaptainCandidates.isNotEmpty()) {
-            team2CaptainCandidates.random()
-        } else {
-            team2Players.random()
-        }
-
-        return TeamGenerationResult.Success(
-            team1Players = team1Players,
-            team2Players = team2Players,
-            jokerPlayer = jokerPlayer,
-            team1Captain = team1Captain,
-            team2Captain = team2Captain
-        )
     }
 
     Scaffold(
@@ -334,7 +157,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
-
+                        
                         Row(
                             Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -366,9 +189,10 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
             // Basic Settings Section
             item {
                 SettingsSection(
-                    title = "🏏 Match Format",
+                    title = "Match Format",
                     isExpanded = expandedSections.contains("basic"),
-                    onToggle = { toggleSection("basic") }
+                    onToggle = { vm.toggleSection("basic") },
+                    icon = { Icon(Icons.Default.Timer, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary) }
                 ) {
                     // Total Overs with common presets
                     Column {
@@ -383,12 +207,12 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                                 modifier = Modifier.weight(1f)
                             )
                             OutlinedTextField(
-                                value = oversText,
+                                value = vm.oversText,
                                 onValueChange = { value ->
-                                    oversText = value
+                                    vm.oversText = value
                                     value.toIntOrNull()?.let { overs ->
                                         if (overs > 0 && overs <= 50) {
-                                            matchSettings = matchSettings.copy(totalOvers = overs)
+                                            vm.matchSettings = vm.matchSettings.copy(totalOvers = overs)
                                         }
                                     }
                                 },
@@ -398,7 +222,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                             )
                         }
-
+                        
                         // Quick presets
                         Spacer(Modifier.height(8.dp))
                         FlowRow(
@@ -409,8 +233,8 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                                 FilterChip(
                                     selected = matchSettings.totalOvers == preset,
                                     onClick = {
-                                        oversText = preset.toString()
-                                        matchSettings = matchSettings.copy(totalOvers = preset)
+                                        vm.oversText = preset.toString()
+                                        vm.matchSettings = vm.matchSettings.copy(totalOvers = preset)
                                     },
                                     label = { Text("${preset} overs", fontSize = 12.sp) }
                                 )
@@ -424,17 +248,18 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
             // Extras Settings Section
             item {
                 SettingsSection(
-                    title = "⚾ Extras Settings",
+                    title = "Extras Settings",
                     isExpanded = expandedSections.contains("extras"),
-                    onToggle = { toggleSection("extras") }
+                    onToggle = { vm.toggleSection("extras") },
+                    icon = { Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary) }
                 ) {
                     SettingDropdownRow(
                         label = "Wide Runs",
                         value = matchSettings.wideRuns,
                         options = listOf(0, 1, 2),
                         onValueChange = { runs ->
-                            matchSettings = matchSettings.copy(wideRuns = runs)
-                            wideRunsText = runs.toString()
+                            vm.matchSettings = vm.matchSettings.copy(wideRuns = runs)
+                            vm.wideRunsText = runs.toString()
                         }
                     )
 
@@ -443,8 +268,8 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                         value = matchSettings.noballRuns,
                         options = listOf(0, 1),
                         onValueChange = { runs ->
-                            matchSettings = matchSettings.copy(noballRuns = runs)
-                            noballRunsText = runs.toString()
+                            vm.matchSettings = vm.matchSettings.copy(noballRuns = runs)
+                            vm.noballRunsText = runs.toString()
                         }
                     )
 
@@ -453,8 +278,8 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                         value = matchSettings.byeRuns,
                         options = listOf(0, 1),
                         onValueChange = { runs ->
-                            matchSettings = matchSettings.copy(byeRuns = runs)
-                            byeRunsText = runs.toString()
+                            vm.matchSettings = vm.matchSettings.copy(byeRuns = runs)
+                            vm.byeRunsText = runs.toString()
                         }
                     )
 
@@ -463,8 +288,8 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                         value = matchSettings.legByeRuns,
                         options = listOf(0, 1),
                         onValueChange = { runs ->
-                            matchSettings = matchSettings.copy(legByeRuns = runs)
-                            legByeRunsText = runs.toString()
+                            vm.matchSettings = vm.matchSettings.copy(legByeRuns = runs)
+                            vm.legByeRunsText = runs.toString()
                         }
                     )
                 }
@@ -473,16 +298,17 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
             // Special Rules Section
             item {
                 SettingsSection(
-                    title = "⚡ Special Rules",
+                    title = "Special Rules",
                     isExpanded = expandedSections.contains("special"),
-                    onToggle = { toggleSection("special") }
+                    onToggle = { vm.toggleSection("special") },
+                    icon = { Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary) }
                 ) {
                     SwitchSettingRow(
                         label = "Single Side Batting",
                         description = "Allow one batsman to continue if others get out",
                         checked = matchSettings.allowSingleSideBatting,
                         onCheckedChange = {
-                            matchSettings = matchSettings.copy(allowSingleSideBatting = it)
+                            vm.matchSettings = vm.matchSettings.copy(allowSingleSideBatting = it)
                         }
                     )
                     SwitchSettingRow(
@@ -490,7 +316,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                         description = "0-4 runs available. No 6",
                         checked = matchSettings.shortPitch,
                         onCheckedChange = {
-                            matchSettings = matchSettings.copy(shortPitch = it)
+                            vm.matchSettings = vm.matchSettings.copy(shortPitch = it)
                         }
                     )
 
@@ -499,20 +325,20 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                         description = "A player who can bat and bowl for both teams",
                         checked = matchSettings.jokerCanBatAndBowl,
                         onCheckedChange = {
-                            matchSettings = matchSettings.copy(jokerCanBatAndBowl = it)
-                            if (!it) jokerPlayer = null // Clear joker if disabled
+                            vm.matchSettings = vm.matchSettings.copy(jokerCanBatAndBowl = it)
+                            if (!it) vm.jokerPlayer = null
                         }
                     )
 
                     if (matchSettings.jokerCanBatAndBowl) {
                         SettingRow(
                             label = "Joker Max Overs",
-                            value = jokerMaxOversText,
+                            value = vm.jokerMaxOversText,
                             onValueChange = { value ->
-                                jokerMaxOversText = value
+                                vm.jokerMaxOversText = value
                                 value.toIntOrNull()?.let { overs ->
                                     if (overs >= 1 && overs <= matchSettings.totalOvers) {
-                                        matchSettings = matchSettings.copy(jokerMaxOvers = overs)
+                                        vm.matchSettings = vm.matchSettings.copy(jokerMaxOvers = overs)
                                     }
                                 }
                             }
@@ -524,33 +350,34 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
             // Advanced Rules Section
             item {
                 SettingsSection(
-                    title = "🎯 Advanced Rules",
+                    title = "Advanced Rules",
                     isExpanded = expandedSections.contains("advanced"),
-                    onToggle = { toggleSection("advanced") }
+                    onToggle = { vm.toggleSection("advanced") },
+                    icon = { Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary) }
                 ) {
                     SettingDropdownRow(
                         label = "Max Overs per Bowler",
                         value = matchSettings.maxOversPerBowler,
                         options = (1..matchSettings.totalOvers).toList(),
                         onValueChange = { overs ->
-                            matchSettings = matchSettings.copy(maxOversPerBowler = overs)
-                            maxOversPerBowlerText = overs.toString()
+                            vm.matchSettings = vm.matchSettings.copy(maxOversPerBowler = overs)
+                            vm.maxOversPerBowlerText = overs.toString()
                         }
                     )
 
                     SettingRow(
                         label = "Powerplay Overs",
-                        value = powerplayOversText,
+                        value = vm.powerplayOversText,
                         onValueChange = { value ->
-                            powerplayOversText = value
+                            vm.powerplayOversText = value
                             value.toIntOrNull()?.let { overs ->
                                 if (overs >= 0 && overs <= matchSettings.totalOvers) {
-                                    matchSettings = matchSettings.copy(powerplayOvers = overs)
+                                    vm.matchSettings = vm.matchSettings.copy(powerplayOvers = overs)
                                 }
                             }
                         }
                     )
-
+                    
                     // Only show double runs option when powerplay is enabled
                     if (matchSettings.powerplayOvers > 0) {
                         SwitchSettingRow(
@@ -558,7 +385,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                             description = "All runs scored will be doubled once powerplay ends",
                             checked = matchSettings.doubleRunsInPowerplay,
                             onCheckedChange = {
-                                matchSettings = matchSettings.copy(doubleRunsInPowerplay = it)
+                                vm.matchSettings = vm.matchSettings.copy(doubleRunsInPowerplay = it)
                             }
                         )
                     }
@@ -600,7 +427,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                         ) {
                             OutlinedTextField(
                                 value = team1.name,
-                                onValueChange = { team1 = team1.copy(name = it) },
+                                onValueChange = { vm.team1 = vm.team1.copy(name = it) },
                                 label = { Text("Team 1") },
                                 leadingIcon = {
                                     Icon(Icons.Default.LocationOn, contentDescription = null)
@@ -615,7 +442,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
 
                             OutlinedTextField(
                                 value = team2.name,
-                                onValueChange = { team2 = team2.copy(name = it) },
+                                onValueChange = { vm.team2 = vm.team2.copy(name = it) },
                                 label = { Text("Team 2") },
                                 leadingIcon = {
                                     Icon(Icons.Default.LocationOn, contentDescription = null)
@@ -660,59 +487,10 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
-
+                            
                             // Use Last Teams Button
                             OutlinedButton(
-                                onClick = {
-                                    scope.launch {
-                                        try {
-                                            val lastTeams = groupRepo.loadLastTeams(selectedGroup!!.id)
-                                            if (lastTeams != null) {
-                                                val (t1Ids, t2Ids, teamNames) = lastTeams
-                                                val t1Players = t1Ids.mapNotNull { pid ->
-                                                    allPlayers[pid]?.let { name ->
-                                                        Player(
-                                                            id = PlayerId(pid),
-                                                            name = name
-                                                        )
-                                                    }
-                                                }
-                                                val t2Players = t2Ids.mapNotNull { pid ->
-                                                    allPlayers[pid]?.let { name ->
-                                                        Player(
-                                                            id = PlayerId(pid),
-                                                            name = name
-                                                        )
-                                                    }
-                                                }
-
-                                                // Update teams on main thread
-                                                team1 = team1.copy(name = teamNames.first,
-                                                    players = t1Players.toMutableList())
-                                                team2 = team2.copy(name = teamNames.second,
-                                                    players = t2Players.toMutableList())
-
-                                                Toast.makeText(
-                                                    context,
-                                                    "✅ Loaded last teams",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                            } else {
-                                                Toast.makeText(
-                                                    context,
-                                                    "⚠️ No previous teams found",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                            }
-                                        } catch (e: Exception) {
-                                            Toast.makeText(
-                                                context,
-                                                "❌ Failed to load teams: ${e.message}",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                    }
-                                },
+                                onClick = { vm.loadLastTeams() },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = MaterialTheme.shapes.medium
                             ) {
@@ -746,62 +524,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                 // Generate Random Teams Button
                 if (selectedGroup != null) {
                     Button(
-                        onClick = {
-                            scope.launch {
-                                try {
-                                    // Use getAvailablePlayersForGroup to respect group restrictions (unavailable players)
-                                    val availablePlayerIds = groupRepo.getAvailablePlayersForGroup(selectedGroup!!.id)
-                                        .map { it.id }.toSet()
-
-                                    val result = generateRandomTeamsWithJokerAndCaptains(
-                                        availablePlayerIds = availablePlayerIds,
-                                        allPlayers = allPlayers,
-                                        groupId = selectedGroup!!.id,
-                                        matchRepo = matchRepo
-                                    )
-
-                                    when (result) {
-                                        is TeamGenerationResult.Success -> {
-                                            // Assign teams
-                                            team1 = team1.copy(
-                                                name = "${result.team1Captain.name}'s Team",
-                                                players = result.team1Players.toMutableList()
-                                            )
-                                            team2 = team2.copy(
-                                                name = "${result.team2Captain.name}'s Team",
-                                                players = result.team2Players.toMutableList()
-                                            )
-                                            jokerPlayer = result.jokerPlayer
-
-                                            // Build message
-                                            val message = buildString {
-                                                append("✅ Teams generated!\n")
-                                                append("👑 ${result.team1Captain.name} vs ${result.team2Captain.name}\n")
-                                                append("📊 ${result.team1Players.size} vs ${result.team2Players.size}")
-                                                if (result.jokerPlayer != null) {
-                                                    append("\n🃏 ${result.jokerPlayer.name} is Joker")
-                                                }
-                                            }
-
-                                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-                                        }
-                                        TeamGenerationResult.InsufficientPlayers -> {
-                                            Toast.makeText(
-                                                context,
-                                                "❌ Need at least 2 players",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                    }
-                                } catch (e: Exception) {
-                                    Toast.makeText(
-                                        context,
-                                        "❌ Failed: ${e.message}",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            }
-                        },
+                        onClick = { vm.generateRandomTeams() },
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.medium
                     ) {
@@ -845,14 +568,10 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                             if (selectedGroup == null) {
                                 Toast.makeText(context, "Select a group first", Toast.LENGTH_SHORT).show()
                             } else {
-                                showTeam1Dialog = true
+                                vm.showTeam1Dialog = true
                             }
                         },
-                        onRemovePlayer = { player ->
-                            val newPlayers = team1.players.toMutableList()
-                            newPlayers.remove(player)
-                            team1 = team1.copy(players = newPlayers)
-                        },
+                        onRemovePlayer = { player -> vm.removePlayerFromTeam1(player) },
                         modifier = Modifier.weight(1f),
                     )
 
@@ -864,14 +583,10 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                             if (selectedGroup == null) {
                                 Toast.makeText(context, "Select a group first", Toast.LENGTH_SHORT).show()
                             } else {
-                                showTeam2Dialog = true
+                                vm.showTeam2Dialog = true
                             }
                         },
-                        onRemovePlayer = { player ->
-                            val newPlayers = team2.players.toMutableList()
-                            newPlayers.remove(player)
-                            team2 = team2.copy(players = newPlayers)
-                        },
+                        onRemovePlayer = { player -> vm.removePlayerFromTeam2(player) },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -919,12 +634,12 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
 
                             if (jokerPlayer == null) {
                                 FilledTonalButton(
-                                    onClick = {
+                                    onClick = { 
                                         if (selectedGroup == null) {
                                             Toast.makeText(context, "Select a group first", Toast.LENGTH_SHORT).show()
                                         } else {
-                                            showJokerDialog = true
-                                        }
+                                            vm.showJokerDialog = true
+                                        } 
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
@@ -959,11 +674,11 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                                             )
                                         }
                                         Row {
-                                            TextButton(onClick = { showJokerDialog = true }) {
-                                                Text("Change", fontSize = 13.sp)
+                                            TextButton(onClick = { vm.showJokerDialog = true }) { 
+                                                Text("Change", fontSize = 13.sp) 
                                             }
-                                            TextButton(onClick = { jokerPlayer = null }) {
-                                                Text("Remove", fontSize = 13.sp)
+                                            TextButton(onClick = { vm.jokerPlayer = null }) { 
+                                                Text("Remove", fontSize = 13.sp) 
                                             }
                                         }
                                     }
@@ -973,7 +688,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                     }
                 }
             }
-
+            
             // Toss Section
             if (team1.players.isNotEmpty() && team2.players.isNotEmpty()) {
                 item {
@@ -981,8 +696,8 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                         team1Name = team1.name,
                         team2Name = team2.name
                     ) { winner, choice ->
-                        tossWinner = winner
-                        tossChoice = choice
+                        vm.tossWinner = winner
+                        vm.tossChoice = choice
                     }
                 }
             }
@@ -997,7 +712,12 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("📊", fontSize = 16.sp)
+                            Icon(
+                                Icons.Default.Info,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                             Spacer(Modifier.width(8.dp))
                             SectionTitle("Match Summary")
                         }
@@ -1038,78 +758,36 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                         PrimaryCta(
                             text = "Start ${matchSettings.totalOvers} overs Match",
                             onClick = {
-                                val minPlayersPerTeam = 2
-                                val team1Size = team1.players.size
-                                val team2Size = team2.players.size
-                                if (team1Size >= minPlayersPerTeam && team2Size >= minPlayersPerTeam) {
-                                    if (team1Size == team2Size) {
-                                        val intent = Intent(context, ScoringActivity::class.java)
-
-                                        if (selectedGroup == null) {
-                                            Toast.makeText(context, "Please select a group (e.g., Saturday or Sunday)", Toast.LENGTH_SHORT).show()
-                                            return@PrimaryCta
-                                        }
-                                        intent.putExtra("group_id", selectedGroup?.id ?: "")
-                                        intent.putExtra("group_name", selectedGroup?.name ?: "")
-
-                                        // Pass team data via intent
-                                        intent.putExtra("team1_name", team1.name)
-                                        intent.putExtra("team2_name", team2.name)
-                                        intent.putExtra("joker_name", jokerPlayer?.name ?: "")
-
-                                        // Extract and pass captain names
-                                        val team1Captain = extractCaptainFromTeamName(team1.name) ?: ""
-                                        val team2Captain = extractCaptainFromTeamName(team2.name) ?: ""
-                                        intent.putExtra("team1_captain", team1Captain)
-                                        intent.putExtra("team2_captain", team2Captain)
-
-                                        // Pass player names as string arrays
-                                        val team1PlayerNames =
-                                            team1.players.map { it.name }.toTypedArray()
-                                        val team2PlayerNames =
-                                            team2.players.map { it.name }.toTypedArray()
-
-                                        intent.putExtra("team1_players", team1PlayerNames)
-                                        intent.putExtra("team2_players", team2PlayerNames)
-                                        intent.putExtra("team1_player_ids", team1.players.map { it.id.value }.toTypedArray())
-                                        intent.putExtra("team2_player_ids", team2.players.map { it.id.value }.toTypedArray())
-                                        intent.putExtra("toss_winner", tossWinner ?: "")
-                                        intent.putExtra("toss_choice", tossChoice ?: "")
-
-                                        // Pass match settings with calculated max players
-                                        val finalMatchSettings = matchSettings.copy(
-                                            maxPlayersPerTeam = maxOf(
-                                                team1.players.size,
-                                                team2.players.size,
-                                                11
-                                            )
-                                        )
-                                        intent.putExtra(
-                                            "match_settings",
-                                            gson.toJson(finalMatchSettings)
-                                        )
-                                        // inside onClick of PrimaryCta just before startActivity
-                                        scope.launch {
-                                            groupRepo.saveLastTeams(
-                                                selectedGroup!!.id,
-                                                team1.players.map { it.id.value },
-                                                team2.players.map { it.id.value },
-                                                team1.name,
-                                                team2.name
-                                            )
-                                        }
-                                        context.startActivity(intent)
-                                    } else {
-                                        Toast.makeText(
-                                            context,
-                                            "Both team needs to have same number of players",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
+                                val error = vm.validateMatchSetup()
+                                if (error != null) {
+                                    Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                                    return@PrimaryCta
                                 }
-                                else {
-                                    Toast.makeText(context, "Each team needs at least $minPlayersPerTeam player!", Toast.LENGTH_SHORT).show()
-                                }
+
+                                val intent = Intent(context, ScoringActivity::class.java)
+                                intent.putExtra("group_id", selectedGroup?.id ?: "")
+                                intent.putExtra("group_name", selectedGroup?.name ?: "")
+                                intent.putExtra("team1_name", team1.name)
+                                intent.putExtra("team2_name", team2.name)
+                                intent.putExtra("joker_name", jokerPlayer?.name ?: "")
+
+                                val team1Captain = vm.extractCaptainFromTeamName(team1.name) ?: ""
+                                val team2Captain = vm.extractCaptainFromTeamName(team2.name) ?: ""
+                                intent.putExtra("team1_captain", team1Captain)
+                                intent.putExtra("team2_captain", team2Captain)
+
+                                intent.putExtra("team1_players", team1.players.map { it.name }.toTypedArray())
+                                intent.putExtra("team2_players", team2.players.map { it.name }.toTypedArray())
+                                intent.putExtra("team1_player_ids", team1.players.map { it.id.value }.toTypedArray())
+                                intent.putExtra("team2_player_ids", team2.players.map { it.id.value }.toTypedArray())
+                                intent.putExtra("toss_winner", vm.tossWinner ?: "")
+                                intent.putExtra("toss_choice", vm.tossChoice ?: "")
+
+                                val finalMatchSettings = vm.buildFinalMatchSettings()
+                                intent.putExtra("match_settings", vm.gson.toJson(finalMatchSettings))
+
+                                vm.saveLastTeams()
+                                context.startActivity(intent)
                             },
                             enabled = selectedGroup != null && team1.players.isNotEmpty() && team2.players.isNotEmpty()
                         )
@@ -1117,77 +795,50 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                 }
             }
         }
-        val allowedIds = remember(selectedGroup) {
-            // load from Room when group changes
-            mutableStateOf<Set<String>>(emptySet())
-        }
-        LaunchedEffect(selectedGroup) {
-            if (selectedGroup != null) {
-                // Use getAvailablePlayersForGroup to respect group restrictions (unavailable players)
-                allowedIds.value = groupRepo.getAvailablePlayersForGroup(selectedGroup!!.id).map { it.id }.toSet()
-            } else {
-                allowedIds.value = emptySet()
-            }
-        }
-        // Group picker dialog removed - group is passed from home screen
+        val allowedIds = vm.allowedIds
         // Team 1 multi-add
-        if (showTeam1Dialog) {
+        if (vm.showTeam1Dialog) {
             val occupied = (team1.players + team2.players).map { it.id.value }.toSet() +
                     listOfNotNull(jokerPlayer?.id?.value)
             PlayerMultiSelectDialog(
                 title = "Add Players to ${team1.name}",
                 occupiedIds = occupied,
-                allowedPlayerIds = allowedIds.value,
-                onConfirm = { ids ->
-                    val all = allPlayers // id->name
-                    val newPlayers = team1.players.toMutableList()
-                    ids.forEach { pid -> all[pid]?.let { name -> newPlayers.add(Player(id = PlayerId(pid), name = name)) } }
-                    // Optional sort
-                    newPlayers.sortBy { it.name.lowercase() }
-                    team1 = team1.copy(players = newPlayers)
-                    showTeam1Dialog = false
-                },
-                onDismiss = { showTeam1Dialog = false }
+                allowedPlayerIds = allowedIds,
+                onConfirm = { ids -> vm.addPlayersToTeam1(ids) },
+                onDismiss = { vm.showTeam1Dialog = false }
             )
         }
 
 // Team 2 multi-add
-        if (showTeam2Dialog) {
+        if (vm.showTeam2Dialog) {
             val occupied = (team1.players + team2.players).map { it.id.value }.toSet() +
                     listOfNotNull(jokerPlayer?.id?.value)
             PlayerMultiSelectDialog(
                 title = "Add Players to ${team2.name}",
                 occupiedIds = occupied,
-                allowedPlayerIds = allowedIds.value,
-                onConfirm = { ids ->
-                    val all = allPlayers
-                    val newPlayers = team2.players.toMutableList()
-                    ids.forEach { pid -> all[pid]?.let { name -> newPlayers.add(Player(id = PlayerId(pid), name = name)) } }
-                    newPlayers.sortBy { it.name.lowercase() }
-                    team2 = team2.copy(players = newPlayers)
-                    showTeam2Dialog = false
-                },
-                onDismiss = { showTeam2Dialog = false }
+                allowedPlayerIds = allowedIds,
+                onConfirm = { ids -> vm.addPlayersToTeam2(ids) },
+                onDismiss = { vm.showTeam2Dialog = false }
             )
         }
 
 // Joker single-select (filtered by group)
-        if (showJokerDialog) {
+        if (vm.showJokerDialog) {
             val occupied = (team1.players + team2.players).map { it.id.value }.toSet()
-
+            
             AlertDialog(
-                onDismissRequest = { showJokerDialog = false },
+                onDismissRequest = { vm.showJokerDialog = false },
                 title = { Text("Select Joker") },
                 text = {
                     LazyColumn(Modifier.height(400.dp)) {
-                        val availablePlayers = allPlayers.filter { (id, _) ->
+                        val availablePlayers = allPlayers.filter { (id, _) -> 
                             // Only show players that are:
                             // 1. In the allowed group (if group is selected)
                             // 2. Not already in either team
-                            (allowedIds.value.isEmpty() || allowedIds.value.contains(id)) &&
-                                    !occupied.contains(id)
+                            (allowedIds.isEmpty() || allowedIds.contains(id)) && 
+                            !occupied.contains(id)
                         }
-
+                        
                         if (availablePlayers.isEmpty()) {
                             item {
                                 Text(
@@ -1201,12 +852,7 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                                 ListItem(
                                     headlineContent = { Text(playerName) },
                                     modifier = Modifier.clickable {
-                                        jokerPlayer = Player(
-                                            id = PlayerId(playerId),
-                                            name = playerName,
-                                            isJoker = true
-                                        )
-                                        showJokerDialog = false
+                                        vm.selectJoker(playerId, playerName)
                                     },
                                     leadingContent = {
                                         Icon(Icons.Default.Person, contentDescription = null)
@@ -1218,14 +864,14 @@ fun TeamSetupScreen(defaultGroupId: String? = null) {
                 },
                 confirmButton = {},
                 dismissButton = {
-                    TextButton(onClick = { showJokerDialog = false }) {
+                    TextButton(onClick = { vm.showJokerDialog = false }) {
                         Text("Cancel")
                     }
                 }
             )
         }
     }
-
+    
 }
 
 @Composable
@@ -1233,6 +879,7 @@ fun SettingsSection(
     title: String,
     isExpanded: Boolean,
     onToggle: () -> Unit,
+    icon: @Composable (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
@@ -1248,9 +895,9 @@ fun SettingsSection(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onToggle() },
-                color = if (isExpanded)
+                color = if (isExpanded) 
                     MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                else
+                else 
                     Color.Transparent
             ) {
                 Row(
@@ -1260,30 +907,35 @@ fun SettingsSection(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = title,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (icon != null) {
+                            icon()
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(
+                            text = title,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                     Icon(
-                        imageVector = if (isExpanded)
-                            Icons.Default.KeyboardArrowUp
-                        else
+                        imageVector = if (isExpanded) 
+                            Icons.Default.KeyboardArrowUp 
+                        else 
                             Icons.Default.KeyboardArrowDown,
                         contentDescription = if (isExpanded) "Collapse" else "Expand",
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
             }
-
+            
             // Content
             AnimatedVisibility(visible = isExpanded) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp)
-                        .padding(top = 0.dp)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
                     HorizontalDivider(
                         modifier = Modifier.padding(bottom = 12.dp),
@@ -1333,7 +985,7 @@ fun SettingDropdownRow(
     onValueChange: (Int) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
-
+    
     Column {
         Row(
             Modifier.fillMaxWidth(),
@@ -1341,7 +993,7 @@ fun SettingDropdownRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-
+            
             ExposedDropdownMenuBox(
                 expanded = expanded,
                 onExpandedChange = { expanded = !expanded }
@@ -1374,7 +1026,7 @@ fun SettingDropdownRow(
                         )
                     }
                 }
-
+                
                 ExposedDropdownMenu(
                     expanded = expanded,
                     onDismissRequest = { expanded = false }
@@ -1449,11 +1101,11 @@ fun TossSelectionCard(
         if (isFlipping) {
             rotationAngle += 1800f // 5 full rotations for dramatic effect
             kotlinx.coroutines.delay(2000) // 2 seconds of flipping
-
+            
             // Determine coin side (Heads or Tails)
             val result = listOf("Heads", "Tails").random()
             coinSide = result
-
+            
             // Just show the result, don't auto-select
             isFlipping = false
         }
@@ -1508,7 +1160,7 @@ fun TossSelectionCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(Modifier.height(12.dp))
-
+                    
                     // Coin animation
                     Box(
                         modifier = Modifier
@@ -1543,9 +1195,9 @@ fun TossSelectionCard(
                             }
                         }
                     }
-
+                    
                     Spacer(Modifier.height(16.dp))
-
+                    
                     // Show coin result
                     if (coinSide != null) {
                         Surface(
@@ -1562,7 +1214,7 @@ fun TossSelectionCard(
                         }
                         Spacer(Modifier.height(12.dp))
                     }
-
+                    
                     Button(
                         onClick = {
                             if (!isFlipping) {
@@ -1717,7 +1369,7 @@ fun EnhancedTeamCard(
                 Spacer(modifier = Modifier.height(16.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Spacer(modifier = Modifier.height(12.dp))
-
+                
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1726,12 +1378,12 @@ fun EnhancedTeamCard(
                         InputChip(
                             selected = false,
                             onClick = {},
-                            label = {
+                            label = { 
                                 Text(
                                     player.name,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium
-                                )
+                                ) 
                             },
                             leadingIcon = {
                                 Icon(

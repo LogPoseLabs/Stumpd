@@ -2,7 +2,7 @@ package com.oreki.stumpd.data.sync
 
 import android.content.Context
 import android.util.Log
-import com.oreki.stumpd.MatchHistory
+import com.oreki.stumpd.domain.model.MatchHistory
 import com.oreki.stumpd.data.repository.MatchRepository
 import com.oreki.stumpd.data.repository.PlayerRepository
 import kotlinx.coroutines.CoroutineScope

@@ -1,5 +1,8 @@
-package com.oreki.stumpd
+package com.oreki.stumpd.ui.scoring
 
+import com.oreki.stumpd.*
+
+import com.oreki.stumpd.domain.model.*
 import com.google.gson.Gson
 import com.oreki.stumpd.data.models.MatchInProgress
 

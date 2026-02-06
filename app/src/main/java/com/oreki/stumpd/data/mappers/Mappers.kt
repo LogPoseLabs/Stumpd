@@ -1,9 +1,7 @@
 package com.oreki.stumpd.data.mappers
 
+import com.oreki.stumpd.domain.model.*
 import android.util.Log
-import com.oreki.stumpd.DeliveryUI
-import com.oreki.stumpd.MatchHistory
-import com.oreki.stumpd.MatchSettings
 import com.oreki.stumpd.data.local.entity.MatchEntity
 import com.oreki.stumpd.data.util.GsonProvider
 

@@ -2,7 +2,7 @@ package com.oreki.stumpd.data.repository
 
 import android.util.Log
 import com.google.gson.reflect.TypeToken
-import com.oreki.stumpd.GroupDefaultSettings
+import com.oreki.stumpd.domain.model.GroupDefaultSettings
 import com.oreki.stumpd.data.local.db.StumpdDb
 import com.oreki.stumpd.data.local.entity.*
 import com.oreki.stumpd.data.mappers.toEntityWithId
@@ -310,10 +310,10 @@ class GroupRepository(private val db: StumpdDb) {
             try {
                 val allPlayers = db.playerDao().list()
                 val unavailableIds = db.groupDao().getUnavailablePlayerIds(groupId)
+                val memberIds = db.groupDao().memberIds(groupId).toSet()
                 allPlayers.filter { player ->
-                    val playerGroupIds = db.groupDao().getGroupIdsForPlayer(player.id)
-                    // Check if player is a member (or has no groups)
-                    val isMember = playerGroupIds.isEmpty() || playerGroupIds.contains(groupId)
+                    // Only show players who are explicit members of this group
+                    val isMember = memberIds.contains(player.id)
                     // Check if player is not marked as unavailable
                     val isAvailable = !unavailableIds.contains(player.id)
                     isMember && isAvailable

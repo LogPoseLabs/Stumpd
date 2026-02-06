@@ -1,4 +1,4 @@
-package com.oreki.stumpd
+package com.oreki.stumpd.domain.model
 
 import android.content.Context
 import com.google.gson.Gson

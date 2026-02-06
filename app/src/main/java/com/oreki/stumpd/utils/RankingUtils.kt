@@ -1,6 +1,6 @@
 package com.oreki.stumpd.utils
 
-import com.oreki.stumpd.PlayerDetailedStats
+import com.oreki.stumpd.data.manager.*
 
 /**
  * Utility functions for calculating player rankings

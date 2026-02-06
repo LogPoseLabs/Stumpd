@@ -1,5 +1,6 @@
 package com.oreki.stumpd
 
+import com.oreki.stumpd.domain.model.*
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -31,6 +32,8 @@ import com.oreki.stumpd.ui.components.filterMatchesByPitchType
 import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.theme.StumpdTheme
+import com.oreki.stumpd.viewmodel.RecordsViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -80,35 +83,15 @@ enum class FieldingFilter(val label: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
-fun RecordsScreen(onBack: () -> Unit) {
-    val matchRepo = rememberMatchRepository()
-    val groupRepo = rememberGroupRepository()
-    val scope = rememberCoroutineScope()
-
-    var isLoading by remember { mutableStateOf(true) }
-    var allMatches by remember { mutableStateOf<List<MatchHistory>>(emptyList()) }
-    var groups by remember { mutableStateOf<List<GroupEntity>>(emptyList()) }
-
-    // Selected category
-    var selectedCategory by remember { mutableStateOf<RecordCategory>(RecordCategory.BattingRecords) }
-    var records by remember { mutableStateOf<List<RecordEntry>>(emptyList()) }
-
-    // Group filter
-    var selectedGroupId by remember { mutableStateOf<String?>(null) }
-    var selectedGroupName by remember { mutableStateOf("All Groups") }
-
-    // Date filter
-    var selectedFilter by remember { mutableStateOf("All Time") }
-    var showFilterDialog by remember { mutableStateOf(false) }
-    var startDate by remember { mutableStateOf<LocalDate?>(null) }
-    var endDate by remember { mutableStateOf<LocalDate?>(null) }
-
-    // Pitch type filter
-    var selectedPitchType by remember { mutableStateOf<Boolean?>(false) } // Default to Long Pitch
-    var showPitchPicker by remember { mutableStateOf(false) }
-
-    // Fielding filter (only used when Fielding tab is selected)
-    var fieldingFilter by remember { mutableStateOf(FieldingFilter.ALL) }
+fun RecordsScreen(onBack: () -> Unit, vm: RecordsViewModel = viewModel()) {
+    val isLoading = vm.isLoading
+    val groups = vm.groups
+    val selectedCategory = vm.selectedCategory
+    val records = vm.records
+    val selectedGroupId = vm.selectedGroupId
+    val selectedFilter = vm.selectedFilter
+    val selectedPitchType = vm.selectedPitchType
+    val fieldingFilter = vm.fieldingFilter
 
     val categories = listOf(
         RecordCategory.BattingRecords,
@@ -117,28 +100,6 @@ fun RecordsScreen(onBack: () -> Unit) {
         RecordCategory.PartnershipRecords,
         RecordCategory.MatchRecords
     )
-
-    // Load data
-    LaunchedEffect(Unit) {
-        scope.launch {
-            isLoading = true
-            allMatches = matchRepo.getAllMatchesWithStats()
-            groups = groupRepo.listGroups()
-            isLoading = false
-        }
-    }
-
-    // Calculate records when filter/category changes
-    LaunchedEffect(allMatches, selectedFilter, startDate, endDate, selectedCategory, selectedGroupId, fieldingFilter, selectedPitchType) {
-        if (allMatches.isNotEmpty()) {
-            scope.launch {
-                val groupFiltered = filterMatchesByGroup(allMatches, selectedGroupId)
-                val pitchFiltered = filterMatchesByPitchType(groupFiltered, selectedPitchType)
-                val dateFiltered = filterMatchesByDate(pitchFiltered, selectedFilter, startDate, endDate)
-                records = calculateRecords(dateFiltered, selectedCategory, fieldingFilter)
-            }
-        }
-    }
 
     Scaffold(
         topBar = {
@@ -159,7 +120,7 @@ fun RecordsScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
-                    TextButton(onClick = { showFilterDialog = true }) {
+                    TextButton(onClick = { vm.showFilterDialog = true }) {
                         Icon(Icons.Default.DateRange, contentDescription = "Filter")
                         Spacer(Modifier.width(4.dp))
                         Text(selectedFilter)
@@ -188,10 +149,7 @@ fun RecordsScreen(onBack: () -> Unit) {
                 GroupFilterDropdown(
                     groups = groups,
                     selectedGroupId = selectedGroupId,
-                    onGroupSelected = { id, name ->
-                        selectedGroupId = id
-                        selectedGroupName = name
-                    },
+                    onGroupSelected = { id, name -> vm.onGroupSelected(id, name) },
                     modifier = Modifier.weight(1f)
                 )
 
@@ -202,7 +160,7 @@ fun RecordsScreen(onBack: () -> Unit) {
                     null -> "All Pitches"
                 }
                 FilledTonalButton(
-                    onClick = { showPitchPicker = true },
+                    onClick = { vm.showPitchPicker = true },
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Icon(
@@ -224,7 +182,7 @@ fun RecordsScreen(onBack: () -> Unit) {
                 categories.forEach { category ->
                     Tab(
                         selected = selectedCategory == category,
-                        onClick = { selectedCategory = category },
+                        onClick = { vm.onCategorySelected(category) },
                         text = {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -253,7 +211,7 @@ fun RecordsScreen(onBack: () -> Unit) {
                     FieldingFilter.values().forEach { filter ->
                         FilterChip(
                             selected = fieldingFilter == filter,
-                            onClick = { fieldingFilter = filter },
+                            onClick = { vm.onFieldingFilterSelected(filter) },
                             label = { Text(filter.label) }
                         )
                     }
@@ -311,33 +269,27 @@ fun RecordsScreen(onBack: () -> Unit) {
     }
 
     // Date Filter Dialog
-    if (showFilterDialog) {
+    if (vm.showFilterDialog) {
         DateFilterDialog(
             currentFilter = selectedFilter,
             onFilterSelected = { filter, start, end ->
-                selectedFilter = filter
-                startDate = start
-                endDate = end
-                showFilterDialog = false
+                vm.onFilterSelected(filter, start, end)
             },
-            onDismiss = { showFilterDialog = false }
+            onDismiss = { vm.showFilterDialog = false }
         )
     }
 
     // Pitch Type Picker Dialog
-    if (showPitchPicker) {
+    if (vm.showPitchPicker) {
         AlertDialog(
-            onDismissRequest = { showPitchPicker = false },
+            onDismissRequest = { vm.showPitchPicker = false },
             title = { Text("Filter by Pitch Type") },
             text = {
                 Column {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                selectedPitchType = null
-                                showPitchPicker = false
-                            }
+                            .clickable { vm.onPitchTypeSelected(null) }
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -351,10 +303,7 @@ fun RecordsScreen(onBack: () -> Unit) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                selectedPitchType = true
-                                showPitchPicker = false
-                            }
+                            .clickable { vm.onPitchTypeSelected(true) }
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -368,10 +317,7 @@ fun RecordsScreen(onBack: () -> Unit) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                selectedPitchType = false
-                                showPitchPicker = false
-                            }
+                            .clickable { vm.onPitchTypeSelected(false) }
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -385,7 +331,7 @@ fun RecordsScreen(onBack: () -> Unit) {
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showPitchPicker = false }) {
+                TextButton(onClick = { vm.showPitchPicker = false }) {
                     Text("Cancel")
                 }
             }
@@ -617,14 +563,11 @@ fun calculateRecords(
             matches.forEach { match ->
                 // Try to use pre-computed stats first, fall back to calculating from deliveries
                 val hasBattingStats = match.firstInningsBatting.isNotEmpty() ||
-                        match.secondInningsBatting.isNotEmpty() ||
-                        match.team1Players.isNotEmpty() ||
-                        match.team2Players.isNotEmpty()
+                        match.secondInningsBatting.isNotEmpty()
 
                 if (hasBattingStats) {
-                    // Use existing stats
-                    val allBatters = match.firstInningsBatting + match.secondInningsBatting +
-                            match.team1Players + match.team2Players
+                    // Use existing stats (role-based: BAT rows only)
+                    val allBatters = match.firstInningsBatting + match.secondInningsBatting
 
                     allBatters.distinctBy { "${it.name}_${it.runs}_${it.ballsFaced}_${match.id}" }.forEach { player ->
                         processBattingRecord(
@@ -689,13 +632,11 @@ fun calculateRecords(
 
             matches.forEach { match ->
                 val hasBowlingStats = match.firstInningsBowling.isNotEmpty() ||
-                        match.secondInningsBowling.isNotEmpty() ||
-                        match.team1Players.any { it.wickets > 0 || it.oversBowled > 0 } ||
-                        match.team2Players.any { it.wickets > 0 || it.oversBowled > 0 }
+                        match.secondInningsBowling.isNotEmpty()
 
                 if (hasBowlingStats) {
-                    val allBowlers = match.firstInningsBowling + match.secondInningsBowling +
-                            match.team1Players + match.team2Players
+                    // Use existing stats (role-based: BOWL rows only)
+                    val allBowlers = match.firstInningsBowling + match.secondInningsBowling
 
                     allBowlers.distinctBy { "${it.name}_${it.wickets}_${it.runsConceded}_${match.id}" }.forEach { player ->
                         processBowlingRecord(
@@ -749,10 +690,9 @@ fun calculateRecords(
             var mostStumpings: RecordEntry? = null
 
             matches.forEach { match ->
-                // Use all available player stats - innings-separated stats have fielding data
+                // Fielding stats live on BOWL rows; include BAT rows too for completeness
                 val allPlayers = (match.firstInningsBatting + match.firstInningsBowling +
-                        match.secondInningsBatting + match.secondInningsBowling +
-                        match.team1Players + match.team2Players)
+                        match.secondInningsBatting + match.secondInningsBowling)
                     .distinctBy { "${it.name}_${match.id}" }
 
                 allPlayers.forEach { player ->

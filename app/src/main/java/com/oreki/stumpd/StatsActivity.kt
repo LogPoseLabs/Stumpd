@@ -1,5 +1,7 @@
 package com.oreki.stumpd
 
+import com.oreki.stumpd.data.manager.*
+import com.oreki.stumpd.domain.model.*
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -36,6 +38,8 @@ import com.oreki.stumpd.data.mappers.toDomain
 import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.history.rememberPlayerRepository
+import com.oreki.stumpd.viewmodel.StatsViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -62,87 +66,17 @@ class StatsActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
-fun StatsScreen() {
+fun StatsScreen(vm: StatsViewModel = viewModel()) {
     val context = LocalContext.current
-    val repo = rememberMatchRepository()
-    val playerRepo = rememberPlayerRepository()
-    var isLoading by remember { mutableStateOf(true) }
 
-    var players by remember { mutableStateOf<List<PlayerDetailedStats>>(emptyList()) }
-    var matches by remember { mutableStateOf<List<MatchHistory>>(emptyList()) }
-    var selectedFilter by remember { mutableStateOf("All Time") }
-    var showFilterDialog by remember { mutableStateOf(false) }
-
-    val groupRepo = rememberGroupRepository()
-    // Read default group from SharedPreferences
-    val prefs = remember { context.getSharedPreferences("stumpd_prefs", android.content.Context.MODE_PRIVATE) }
-    val defaultGroupId = remember { prefs.getString("default_group_id", null) }
-    var selectedGroupId by remember { mutableStateOf<String?>(defaultGroupId) } // Initialize with default
-    var selectedGroupName by remember { mutableStateOf(if (defaultGroupId != null) "" else "All Groups") }
-    var showGroupPicker by remember { mutableStateOf(false) }
-
-    var selectedPitchType by remember { mutableStateOf<Boolean?>(false) }
-    var showPitchPicker by remember { mutableStateOf(false) }
-    var showDateRangePicker by remember { mutableStateOf(false) }
-    var groups by remember { mutableStateOf<List<PlayerGroup>>(emptyList()) }
-
-
-    LaunchedEffect(selectedGroupId, selectedPitchType, selectedFilter) {
-        val all = repo.getAllMatches()
-        android.util.Log.d("StatsActivity", "Loaded ${all.size} matches from database")
-        
-        var filtered = all
-
-        // Uncomment and fix the filtering logic:
-        selectedGroupId?.let { gId ->
-            android.util.Log.d("StatsActivity", "Filtering by groupId: $gId")
-            filtered = filtered.filter { it.groupId == gId }
-            android.util.Log.d("StatsActivity", "After group filter: ${filtered.size} matches")
-        }
-
-        selectedPitchType?.let { type ->
-            filtered = filtered.filter { it.shortPitch == type }
-        }
-
-        when {
-            selectedFilter == "All Time" -> { /* no-op */ }
-
-            selectedFilter.startsWith("Date:") -> {
-                val iso = selectedFilter.removePrefix("Date:")
-                val selDate = LocalDate.parse(iso) // ISO yyyy-MM-dd
-                filtered = filtered.filter {
-                    val d = Instant.ofEpochMilli(it.matchDate).atZone(ZoneId.systemDefault()).toLocalDate()
-                    d == selDate
-                }
-            }
-
-            selectedFilter.startsWith("CustomRange:") -> {
-                val parts = selectedFilter.removePrefix("CustomRange:").split("|")
-                val start = LocalDate.parse(parts[0])
-                val end = LocalDate.parse(parts[1])
-                filtered = filtered.filter {
-                    val d = Instant.ofEpochMilli(it.matchDate).atZone(ZoneId.systemDefault()).toLocalDate()
-                    d in start..end
-                }
-            }
-        }
-        matches = filtered
-
-        val summaries = groupRepo.listGroupSummaries()
-        groups = summaries.map { (g, d, _) -> g.toDomain(d, emptyList()) }
-        
-        // Set group name if default group is set
-        if (selectedGroupId != null && selectedGroupName.isEmpty()) {
-            selectedGroupName = groups.firstOrNull { it.id == selectedGroupId }?.name ?: "All Groups"
-        }
-//        val dbPlayers = playerRepo.getAllPlayers()
-
-        // Build name map and stats from filtered matches
-//        val idToName = dbPlayers.associate { it.id to it.name }
-        players = playerRepo.getPlayerDetailedStats(filtered)
-        android.util.Log.d("StatsActivity", "Computed ${players.size} player stats from ${filtered.size} matches")
-        isLoading = false
-    }
+    val isLoading = vm.isLoading
+    val players = vm.players
+    val matches = vm.matches
+    val selectedFilter = vm.selectedFilter
+    val selectedGroupId = vm.selectedGroupId
+    val selectedGroupName = vm.selectedGroupName
+    val selectedPitchType = vm.selectedPitchType
+    val groups = vm.groups
 
     Scaffold(
         topBar = {
@@ -173,7 +107,7 @@ fun StatsScreen() {
                         // Group Filter Chip
                         FilterChip(
                             selected = selectedGroupId != null,
-                            onClick = { showGroupPicker = true },
+                            onClick = { vm.showGroupPicker = true },
                             label = { 
                                 Text(
                                     selectedGroupName,
@@ -203,7 +137,7 @@ fun StatsScreen() {
                         }
                         FilterChip(
                             selected = selectedPitchType != null,
-                            onClick = { showPitchPicker = true },
+                            onClick = { vm.showPitchPicker = true },
                             label = { 
                                 Text(
                                     pitchLabel,
@@ -228,7 +162,7 @@ fun StatsScreen() {
                         // Date Filter Chip
                         FilterChip(
                             selected = selectedFilter != "All Time",
-                            onClick = { showFilterDialog = true },
+                            onClick = { vm.showFilterDialog = true },
                             label = { 
                                 Text(
                                     selectedFilter,
@@ -331,7 +265,8 @@ fun StatsScreen() {
                         }
                     }
                     val topBatsmen = players.sortedByDescending { it.totalRuns }.take(5)
-                    items(topBatsmen) { player ->
+                    items(topBatsmen.size) { index ->
+                        val player = topBatsmen[index]
                         PlayerStatsCard(
                             player = player,
                             statType = "Batting",
@@ -341,6 +276,7 @@ fun StatsScreen() {
                                     player.strikeRate
                                 )
                             }",
+                            rank = index + 1,
                             onClick = {
                                 val intent = Intent(context, PlayerDetailActivity::class.java)
                                 intent.putExtra("player_name", player.name)
@@ -378,7 +314,8 @@ fun StatsScreen() {
 
                     val topBowlers = players.filter { it.totalWickets > 0 }
                         .sortedByDescending { it.totalWickets }.take(5)
-                    items(topBowlers) { player ->
+                    items(topBowlers.size) { index ->
+                        val player = topBowlers[index]
                         PlayerStatsCard(
                             player = player,
                             statType = "Bowling",
@@ -388,6 +325,7 @@ fun StatsScreen() {
                                     player.economyRate
                                 )
                             }",
+                            rank = index + 1,
                             onClick = {
                                 val intent = Intent(context, PlayerDetailActivity::class.java)
                                 intent.putExtra("player_name", player.name)
@@ -425,9 +363,9 @@ fun StatsScreen() {
             }
         }
 
-        if (showGroupPicker) {
+        if (vm.showGroupPicker) {
             AlertDialog(
-                onDismissRequest = { showGroupPicker = false },
+                onDismissRequest = { vm.showGroupPicker = false },
                 title = { Text("Filter by Group") },
                 text = {
                     LazyColumn(Modifier.height(360.dp)) {
@@ -435,9 +373,7 @@ fun StatsScreen() {
                             ListItem(
                                 headlineContent = { Text("All Groups") },
                                 modifier = Modifier.clickable {
-                                    selectedGroupId = null
-                                    selectedGroupName = "All Groups"
-                                    showGroupPicker = false
+                                    vm.onGroupSelected(null, "All Groups")
                                 }
                             )
                         }
@@ -445,26 +381,24 @@ fun StatsScreen() {
                             ListItem(
                                 headlineContent = { Text(g.name) },
                                 supportingContent = {
-                                    val count = matches.count { it.groupId == g.id } // current list; optional
+                                    val count = matches.count { it.groupId == g.id }
                                     Text("$count matches", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 },
                                 modifier = Modifier.clickable {
-                                    selectedGroupId = g.id
-                                    selectedGroupName = g.name
-                                    showGroupPicker = false
+                                    vm.onGroupSelected(g.id, g.name)
                                 }
                             )
                         }
                     }
                 },
                 confirmButton = {},
-                dismissButton = { TextButton(onClick = { showGroupPicker = false }) { Text("Close") } }
+                dismissButton = { TextButton(onClick = { vm.showGroupPicker = false }) { Text("Close") } }
             )
         }
 
-        if (showPitchPicker) {
+        if (vm.showPitchPicker) {
             AlertDialog(
-                onDismissRequest = { showPitchPicker = false },
+                onDismissRequest = { vm.showPitchPicker = false },
                 title = { Text("Filter by Pitch Type") },
                 text = {
                     Column {
@@ -474,12 +408,13 @@ fun StatsScreen() {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        selectedPitchType = when (option) {
-                                            "Short" -> true
-                                            "Long" -> false
-                                            else -> null
-                                        }
-                                        showPitchPicker = false
+                                        vm.onPitchTypeSelected(
+                                            when (option) {
+                                                "Short" -> true
+                                                "Long" -> false
+                                                else -> null
+                                            }
+                                        )
                                     }
                                     .padding(8.dp)
                             )
@@ -490,7 +425,7 @@ fun StatsScreen() {
             )
         }
 
-        if (showFilterDialog) {
+        if (vm.showFilterDialog) {
             // compute last 3 distinct match dates as LocalDate
             val last3Dates = matches
                 .map { Instant.ofEpochMilli(it.matchDate).atZone(ZoneId.systemDefault()).toLocalDate() }
@@ -499,7 +434,7 @@ fun StatsScreen() {
                 .take(3)
 
             AlertDialog(
-                onDismissRequest = { showFilterDialog = false },
+                onDismissRequest = { vm.showFilterDialog = false },
                 title = { Text("Filter Statistics") },
                 text = {
                     Column {
@@ -507,19 +442,13 @@ fun StatsScreen() {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    selectedFilter = "All Time"
-                                    showFilterDialog = false
-                                }
+                                .clickable { vm.onFilterSelected("All Time") }
                                 .padding(vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             RadioButton(
                                 selected = selectedFilter == "All Time",
-                                onClick = {
-                                    selectedFilter = "All Time"
-                                    showFilterDialog = false
-                                }
+                                onClick = { vm.onFilterSelected("All Time") }
                             )
                             Spacer(Modifier.width(8.dp))
                             Text("All Time")
@@ -535,19 +464,13 @@ fun StatsScreen() {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable {
-                                        selectedFilter = "Date:$iso"
-                                        showFilterDialog = false
-                                    }
+                                    .clickable { vm.onFilterSelected("Date:$iso") }
                                     .padding(vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 RadioButton(
                                     selected = selectedFilter == "Date:$iso",
-                                    onClick = {
-                                        selectedFilter = "Date:$iso"
-                                        showFilterDialog = false
-                                    }
+                                    onClick = { vm.onFilterSelected("Date:$iso") }
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(label)
@@ -560,15 +483,13 @@ fun StatsScreen() {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    showDateRangePicker = true
-                                }
+                                .clickable { vm.showDateRangePicker = true }
                                 .padding(vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             RadioButton(
                                 selected = selectedFilter.startsWith("CustomRange"),
-                                onClick = { showDateRangePicker = true }
+                                onClick = { vm.showDateRangePicker = true }
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Custom Date Range…")
@@ -576,7 +497,7 @@ fun StatsScreen() {
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { showFilterDialog = false }) {
+                    TextButton(onClick = { vm.showFilterDialog = false }) {
                         Text("Close")
                     }
                 }
@@ -584,23 +505,19 @@ fun StatsScreen() {
         }
 
         // Modern Date Range Picker Dialog
-        if (showDateRangePicker) {
+        if (vm.showDateRangePicker) {
             val dateRangeState = rememberDateRangePickerState()
 
             DatePickerDialog(
-                onDismissRequest = { showDateRangePicker = false },
+                onDismissRequest = { vm.showDateRangePicker = false },
                 confirmButton = {
                     Button(
                         onClick = {
                             val startMillis = dateRangeState.selectedStartDateMillis
                             val endMillis = dateRangeState.selectedEndDateMillis
                             if (startMillis != null && endMillis != null) {
-                                val startLocal = Instant.ofEpochMilli(startMillis).atZone(ZoneId.systemDefault()).toLocalDate()
-                                val endLocal = Instant.ofEpochMilli(endMillis).atZone(ZoneId.systemDefault()).toLocalDate()
-                                selectedFilter = "CustomRange:${startLocal}|${endLocal}"
+                                vm.onDateRangeSelected(startMillis, endMillis)
                             }
-                            showDateRangePicker = false
-                            showFilterDialog = false
                         },
                         enabled = dateRangeState.selectedStartDateMillis != null && 
                                   dateRangeState.selectedEndDateMillis != null
@@ -609,7 +526,7 @@ fun StatsScreen() {
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showDateRangePicker = false }) {
+                    TextButton(onClick = { vm.showDateRangePicker = false }) {
                         Text("Cancel")
                     }
                 }
@@ -667,6 +584,7 @@ fun PlayerStatsCard(
     statType: String,
     primaryStat: String,
     secondaryStat: String,
+    rank: Int? = null,
     onClick: () -> Unit
 ) {
     Card(
@@ -674,9 +592,16 @@ fun PlayerStatsCard(
             .fillMaxWidth()
             .clickable { onClick() },
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            containerColor = if (rank != null && rank <= 3) {
+                when (rank) {
+                    1 -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
+                    2 -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f)
+                    3 -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.2f)
+                    else -> MaterialTheme.colorScheme.surfaceContainerHigh
+                }
+            } else MaterialTheme.colorScheme.surfaceContainerHigh
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = if (rank != null && rank <= 3) 4.dp else 2.dp)
     ) {
         Row(
             modifier = Modifier
@@ -684,23 +609,30 @@ fun PlayerStatsCard(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Player Avatar
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.size(48.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.Person,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(28.dp)
-                    )
+            // Rank badge
+            if (rank != null) {
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = when (rank) {
+                        1 -> MaterialTheme.colorScheme.primary
+                        2 -> MaterialTheme.colorScheme.secondary
+                        3 -> MaterialTheme.colorScheme.tertiary
+                        else -> MaterialTheme.colorScheme.surfaceVariant
+                    },
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "#$rank",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (rank <= 3) MaterialTheme.colorScheme.onPrimary 
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
+                Spacer(modifier = Modifier.width(12.dp))
             }
-
-            Spacer(modifier = Modifier.width(16.dp))
 
             // Player Info
             Column(modifier = Modifier.weight(1f)) {
@@ -745,7 +677,6 @@ fun PlayerStatsCard(
         }
     }
 }
-
 
 // Pure aggregation from filtered matches; optional idToName map for normalization
 private fun computeDetailedStatsFromMatches(

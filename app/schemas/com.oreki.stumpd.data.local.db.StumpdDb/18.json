@@ -1,0 +1,1279 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 18,
+    "identityHash": "864550c0cad339f60bbd501b77cbc418",
+    "entities": [
+      {
+        "tableName": "players",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `isJoker` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isJoker",
+            "columnName": "isJoker",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "teams",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, PRIMARY KEY(`name`))",
+        "fields": [
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "name"
+          ]
+        }
+      },
+      {
+        "tableName": "team_players",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`teamName` TEXT NOT NULL, `playerId` TEXT NOT NULL, PRIMARY KEY(`teamName`, `playerId`))",
+        "fields": [
+          {
+            "fieldPath": "teamName",
+            "columnName": "teamName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "playerId",
+            "columnName": "playerId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "teamName",
+            "playerId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_team_players_playerId",
+            "unique": false,
+            "columnNames": [
+              "playerId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_team_players_playerId` ON `${TABLE_NAME}` (`playerId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "groups",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `inviteCode` TEXT, `claimCode` TEXT, `isOwner` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inviteCode",
+            "columnName": "inviteCode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "claimCode",
+            "columnName": "claimCode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isOwner",
+            "columnName": "isOwner",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "group_defaults",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`groupId` TEXT NOT NULL, `groundName` TEXT NOT NULL, `format` TEXT NOT NULL, `shortPitch` INTEGER NOT NULL, `matchSettingsJson` TEXT, PRIMARY KEY(`groupId`))",
+        "fields": [
+          {
+            "fieldPath": "groupId",
+            "columnName": "groupId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groundName",
+            "columnName": "groundName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "format",
+            "columnName": "format",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "shortPitch",
+            "columnName": "shortPitch",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "matchSettingsJson",
+            "columnName": "matchSettingsJson",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "groupId"
+          ]
+        }
+      },
+      {
+        "tableName": "group_members",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`groupId` TEXT NOT NULL, `playerId` TEXT NOT NULL, PRIMARY KEY(`groupId`, `playerId`))",
+        "fields": [
+          {
+            "fieldPath": "groupId",
+            "columnName": "groupId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "playerId",
+            "columnName": "playerId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "groupId",
+            "playerId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_group_members_playerId",
+            "unique": false,
+            "columnNames": [
+              "playerId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_group_members_playerId` ON `${TABLE_NAME}` (`playerId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "group_unavailable_players",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`groupId` TEXT NOT NULL, `playerId` TEXT NOT NULL, PRIMARY KEY(`groupId`, `playerId`))",
+        "fields": [
+          {
+            "fieldPath": "groupId",
+            "columnName": "groupId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "playerId",
+            "columnName": "playerId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "groupId",
+            "playerId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_group_unavailable_players_playerId",
+            "unique": false,
+            "columnNames": [
+              "playerId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_group_unavailable_players_playerId` ON `${TABLE_NAME}` (`playerId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "group_last_teams",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`groupId` TEXT NOT NULL, `team1PlayerIdsJson` TEXT NOT NULL, `team2PlayerIdsJson` TEXT NOT NULL, `team1Name` TEXT NOT NULL, `team2Name` TEXT NOT NULL, PRIMARY KEY(`groupId`))",
+        "fields": [
+          {
+            "fieldPath": "groupId",
+            "columnName": "groupId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "team1PlayerIdsJson",
+            "columnName": "team1PlayerIdsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "team2PlayerIdsJson",
+            "columnName": "team2PlayerIdsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "team1Name",
+            "columnName": "team1Name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "team2Name",
+            "columnName": "team2Name",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "groupId"
+          ]
+        }
+      },
+      {
+        "tableName": "matches",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `team1Name` TEXT NOT NULL, `team2Name` TEXT NOT NULL, `jokerPlayerName` TEXT, `team1CaptainName` TEXT, `team2CaptainName` TEXT, `firstInningsRuns` INTEGER NOT NULL, `firstInningsWickets` INTEGER NOT NULL, `secondInningsRuns` INTEGER NOT NULL, `secondInningsWickets` INTEGER NOT NULL, `winnerTeam` TEXT NOT NULL, `winningMargin` TEXT NOT NULL, `matchDate` INTEGER NOT NULL, `groupId` TEXT, `groupName` TEXT, `shortPitch` INTEGER NOT NULL, `playerOfTheMatchId` TEXT, `playerOfTheMatchName` TEXT, `playerOfTheMatchTeam` TEXT, `playerOfTheMatchImpact` REAL, `playerOfTheMatchSummary` TEXT, `matchSettingsJson` TEXT, `allDeliveriesJson` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "team1Name",
+            "columnName": "team1Name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "team2Name",
+            "columnName": "team2Name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "jokerPlayerName",
+            "columnName": "jokerPlayerName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "team1CaptainName",
+            "columnName": "team1CaptainName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "team2CaptainName",
+            "columnName": "team2CaptainName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "firstInningsRuns",
+            "columnName": "firstInningsRuns",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstInningsWickets",
+            "columnName": "firstInningsWickets",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "secondInningsRuns",
+            "columnName": "secondInningsRuns",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "secondInningsWickets",
+            "columnName": "secondInningsWickets",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "winnerTeam",
+            "columnName": "winnerTeam",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "winningMargin",
+            "columnName": "winningMargin",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "matchDate",
+            "columnName": "matchDate",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groupId",
+            "columnName": "groupId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "groupName",
+            "columnName": "groupName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "shortPitch",
+            "columnName": "shortPitch",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "playerOfTheMatchId",
+            "columnName": "playerOfTheMatchId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "playerOfTheMatchName",
+            "columnName": "playerOfTheMatchName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "playerOfTheMatchTeam",
+            "columnName": "playerOfTheMatchTeam",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "playerOfTheMatchImpact",
+            "columnName": "playerOfTheMatchImpact",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "playerOfTheMatchSummary",
+            "columnName": "playerOfTheMatchSummary",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "matchSettingsJson",
+            "columnName": "matchSettingsJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "allDeliveriesJson",
+            "columnName": "allDeliveriesJson",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "player_match_stats",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`matchId` TEXT NOT NULL, `playerId` TEXT NOT NULL, `name` TEXT NOT NULL, `team` TEXT NOT NULL, `role` TEXT NOT NULL, `runs` INTEGER NOT NULL, `ballsFaced` INTEGER NOT NULL, `dots` INTEGER NOT NULL, `singles` INTEGER NOT NULL, `twos` INTEGER NOT NULL, `threes` INTEGER NOT NULL, `fours` INTEGER NOT NULL, `sixes` INTEGER NOT NULL, `wickets` INTEGER NOT NULL, `runsConceded` INTEGER NOT NULL, `oversBowled` REAL NOT NULL, `maidenOvers` INTEGER NOT NULL, `isOut` INTEGER NOT NULL, `isRetired` INTEGER NOT NULL, `isJoker` INTEGER NOT NULL, `catches` INTEGER NOT NULL, `runOuts` INTEGER NOT NULL, `stumpings` INTEGER NOT NULL, `dismissalType` TEXT, `bowlerName` TEXT, `fielderName` TEXT, `battingPosition` INTEGER NOT NULL, `bowlingPosition` INTEGER NOT NULL, PRIMARY KEY(`matchId`, `playerId`, `team`, `role`))",
+        "fields": [
+          {
+            "fieldPath": "matchId",
+            "columnName": "matchId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "playerId",
+            "columnName": "playerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "team",
+            "columnName": "team",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "role",
+            "columnName": "role",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runs",
+            "columnName": "runs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ballsFaced",
+            "columnName": "ballsFaced",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dots",
+            "columnName": "dots",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "singles",
+            "columnName": "singles",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "twos",
+            "columnName": "twos",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "threes",
+            "columnName": "threes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fours",
+            "columnName": "fours",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sixes",
+            "columnName": "sixes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "wickets",
+            "columnName": "wickets",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runsConceded",
+            "columnName": "runsConceded",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "oversBowled",
+            "columnName": "oversBowled",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maidenOvers",
+            "columnName": "maidenOvers",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isOut",
+            "columnName": "isOut",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isRetired",
+            "columnName": "isRetired",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isJoker",
+            "columnName": "isJoker",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "catches",
+            "columnName": "catches",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runOuts",
+            "columnName": "runOuts",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stumpings",
+            "columnName": "stumpings",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dismissalType",
+            "columnName": "dismissalType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "bowlerName",
+            "columnName": "bowlerName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "fielderName",
+            "columnName": "fielderName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "battingPosition",
+            "columnName": "battingPosition",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bowlingPosition",
+            "columnName": "bowlingPosition",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "matchId",
+            "playerId",
+            "team",
+            "role"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_player_match_stats_matchId",
+            "unique": false,
+            "columnNames": [
+              "matchId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_player_match_stats_matchId` ON `${TABLE_NAME}` (`matchId`)"
+          },
+          {
+            "name": "index_player_match_stats_playerId",
+            "unique": false,
+            "columnNames": [
+              "playerId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_player_match_stats_playerId` ON `${TABLE_NAME}` (`playerId`)"
+          },
+          {
+            "name": "index_player_match_stats_team",
+            "unique": false,
+            "columnNames": [
+              "team"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_player_match_stats_team` ON `${TABLE_NAME}` (`team`)"
+          }
+        ]
+      },
+      {
+        "tableName": "player_impacts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`pk` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `matchId` TEXT NOT NULL, `playerId` TEXT NOT NULL, `name` TEXT NOT NULL, `team` TEXT NOT NULL, `impact` REAL NOT NULL, `summary` TEXT NOT NULL, `isJoker` INTEGER NOT NULL, `runs` INTEGER NOT NULL, `balls` INTEGER NOT NULL, `dots` INTEGER NOT NULL, `singles` INTEGER NOT NULL, `twos` INTEGER NOT NULL, `threes` INTEGER NOT NULL, `fours` INTEGER NOT NULL, `sixes` INTEGER NOT NULL, `wickets` INTEGER NOT NULL, `runsConceded` INTEGER NOT NULL, `oversBowled` REAL NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "pk",
+            "columnName": "pk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "matchId",
+            "columnName": "matchId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "playerId",
+            "columnName": "playerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "team",
+            "columnName": "team",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "impact",
+            "columnName": "impact",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "summary",
+            "columnName": "summary",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isJoker",
+            "columnName": "isJoker",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runs",
+            "columnName": "runs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "balls",
+            "columnName": "balls",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dots",
+            "columnName": "dots",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "singles",
+            "columnName": "singles",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "twos",
+            "columnName": "twos",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "threes",
+            "columnName": "threes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fours",
+            "columnName": "fours",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sixes",
+            "columnName": "sixes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "wickets",
+            "columnName": "wickets",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runsConceded",
+            "columnName": "runsConceded",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "oversBowled",
+            "columnName": "oversBowled",
+            "affinity": "REAL",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "pk"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_player_impacts_matchId",
+            "unique": false,
+            "columnNames": [
+              "matchId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_player_impacts_matchId` ON `${TABLE_NAME}` (`matchId`)"
+          },
+          {
+            "name": "index_player_impacts_playerId",
+            "unique": false,
+            "columnNames": [
+              "playerId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_player_impacts_playerId` ON `${TABLE_NAME}` (`playerId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "in_progress_matches",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`matchId` TEXT NOT NULL, `team1Name` TEXT NOT NULL, `team2Name` TEXT NOT NULL, `jokerName` TEXT NOT NULL, `groupId` TEXT, `groupName` TEXT, `tossWinner` TEXT, `tossChoice` TEXT, `matchSettingsJson` TEXT NOT NULL, `team1PlayerIds` TEXT NOT NULL, `team2PlayerIds` TEXT NOT NULL, `team1PlayerNames` TEXT NOT NULL, `team2PlayerNames` TEXT NOT NULL, `currentInnings` INTEGER NOT NULL, `currentOver` INTEGER NOT NULL, `ballsInOver` INTEGER NOT NULL, `totalWickets` INTEGER NOT NULL, `team1PlayersJson` TEXT NOT NULL, `team2PlayersJson` TEXT NOT NULL, `strikerIndex` INTEGER, `nonStrikerIndex` INTEGER, `bowlerIndex` INTEGER, `firstInningsRuns` INTEGER NOT NULL, `firstInningsWickets` INTEGER NOT NULL, `firstInningsOvers` INTEGER NOT NULL, `firstInningsBalls` INTEGER NOT NULL, `totalExtras` INTEGER NOT NULL, `calculatedTotalRuns` INTEGER NOT NULL, `completedBattersInnings1Json` TEXT, `completedBattersInnings2Json` TEXT, `completedBowlersInnings1Json` TEXT, `completedBowlersInnings2Json` TEXT, `firstInningsBattingPlayersJson` TEXT, `firstInningsBowlingPlayersJson` TEXT, `jokerOutInCurrentInnings` INTEGER NOT NULL, `jokerBallsBowledInnings1` INTEGER NOT NULL, `jokerBallsBowledInnings2` INTEGER NOT NULL, `powerplayRunsInnings1` INTEGER NOT NULL, `powerplayRunsInnings2` INTEGER NOT NULL, `powerplayDoublingDoneInnings1` INTEGER NOT NULL, `powerplayDoublingDoneInnings2` INTEGER NOT NULL, `allDeliveriesJson` TEXT, `lastSavedAt` INTEGER NOT NULL, `startedAt` INTEGER NOT NULL, PRIMARY KEY(`matchId`))",
+        "fields": [
+          {
+            "fieldPath": "matchId",
+            "columnName": "matchId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "team1Name",
+            "columnName": "team1Name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "team2Name",
+            "columnName": "team2Name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "jokerName",
+            "columnName": "jokerName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groupId",
+            "columnName": "groupId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "groupName",
+            "columnName": "groupName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "tossWinner",
+            "columnName": "tossWinner",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "tossChoice",
+            "columnName": "tossChoice",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "matchSettingsJson",
+            "columnName": "matchSettingsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "team1PlayerIds",
+            "columnName": "team1PlayerIds",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "team2PlayerIds",
+            "columnName": "team2PlayerIds",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "team1PlayerNames",
+            "columnName": "team1PlayerNames",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "team2PlayerNames",
+            "columnName": "team2PlayerNames",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currentInnings",
+            "columnName": "currentInnings",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currentOver",
+            "columnName": "currentOver",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ballsInOver",
+            "columnName": "ballsInOver",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalWickets",
+            "columnName": "totalWickets",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "team1PlayersJson",
+            "columnName": "team1PlayersJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "team2PlayersJson",
+            "columnName": "team2PlayersJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "strikerIndex",
+            "columnName": "strikerIndex",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "nonStrikerIndex",
+            "columnName": "nonStrikerIndex",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "bowlerIndex",
+            "columnName": "bowlerIndex",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "firstInningsRuns",
+            "columnName": "firstInningsRuns",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstInningsWickets",
+            "columnName": "firstInningsWickets",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstInningsOvers",
+            "columnName": "firstInningsOvers",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstInningsBalls",
+            "columnName": "firstInningsBalls",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalExtras",
+            "columnName": "totalExtras",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "calculatedTotalRuns",
+            "columnName": "calculatedTotalRuns",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completedBattersInnings1Json",
+            "columnName": "completedBattersInnings1Json",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "completedBattersInnings2Json",
+            "columnName": "completedBattersInnings2Json",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "completedBowlersInnings1Json",
+            "columnName": "completedBowlersInnings1Json",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "completedBowlersInnings2Json",
+            "columnName": "completedBowlersInnings2Json",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "firstInningsBattingPlayersJson",
+            "columnName": "firstInningsBattingPlayersJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "firstInningsBowlingPlayersJson",
+            "columnName": "firstInningsBowlingPlayersJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "jokerOutInCurrentInnings",
+            "columnName": "jokerOutInCurrentInnings",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "jokerBallsBowledInnings1",
+            "columnName": "jokerBallsBowledInnings1",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "jokerBallsBowledInnings2",
+            "columnName": "jokerBallsBowledInnings2",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "powerplayRunsInnings1",
+            "columnName": "powerplayRunsInnings1",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "powerplayRunsInnings2",
+            "columnName": "powerplayRunsInnings2",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "powerplayDoublingDoneInnings1",
+            "columnName": "powerplayDoublingDoneInnings1",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "powerplayDoublingDoneInnings2",
+            "columnName": "powerplayDoublingDoneInnings2",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "allDeliveriesJson",
+            "columnName": "allDeliveriesJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastSavedAt",
+            "columnName": "lastSavedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "matchId"
+          ]
+        }
+      },
+      {
+        "tableName": "user_preferences",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`key`))",
+        "fields": [
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "value",
+            "columnName": "value",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "key"
+          ]
+        }
+      },
+      {
+        "tableName": "partnerships",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`matchId` TEXT NOT NULL, `innings` INTEGER NOT NULL, `partnershipNumber` INTEGER NOT NULL, `batsman1Name` TEXT NOT NULL, `batsman2Name` TEXT NOT NULL, `runs` INTEGER NOT NULL, `balls` INTEGER NOT NULL, `batsman1Runs` INTEGER NOT NULL, `batsman2Runs` INTEGER NOT NULL, `isActive` INTEGER NOT NULL, PRIMARY KEY(`matchId`, `innings`, `partnershipNumber`))",
+        "fields": [
+          {
+            "fieldPath": "matchId",
+            "columnName": "matchId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "innings",
+            "columnName": "innings",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "partnershipNumber",
+            "columnName": "partnershipNumber",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batsman1Name",
+            "columnName": "batsman1Name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batsman2Name",
+            "columnName": "batsman2Name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runs",
+            "columnName": "runs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "balls",
+            "columnName": "balls",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batsman1Runs",
+            "columnName": "batsman1Runs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batsman2Runs",
+            "columnName": "batsman2Runs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isActive",
+            "columnName": "isActive",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "matchId",
+            "innings",
+            "partnershipNumber"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_partnerships_matchId",
+            "unique": false,
+            "columnNames": [
+              "matchId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_partnerships_matchId` ON `${TABLE_NAME}` (`matchId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "fall_of_wickets",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`matchId` TEXT NOT NULL, `innings` INTEGER NOT NULL, `wicketNumber` INTEGER NOT NULL, `batsmanName` TEXT NOT NULL, `runs` INTEGER NOT NULL, `overs` REAL NOT NULL, `dismissalType` TEXT, `bowlerName` TEXT, `fielderName` TEXT, PRIMARY KEY(`matchId`, `innings`, `wicketNumber`))",
+        "fields": [
+          {
+            "fieldPath": "matchId",
+            "columnName": "matchId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "innings",
+            "columnName": "innings",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "wicketNumber",
+            "columnName": "wicketNumber",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batsmanName",
+            "columnName": "batsmanName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runs",
+            "columnName": "runs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "overs",
+            "columnName": "overs",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dismissalType",
+            "columnName": "dismissalType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "bowlerName",
+            "columnName": "bowlerName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "fielderName",
+            "columnName": "fielderName",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "matchId",
+            "innings",
+            "wicketNumber"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_fall_of_wickets_matchId",
+            "unique": false,
+            "columnNames": [
+              "matchId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_fall_of_wickets_matchId` ON `${TABLE_NAME}` (`matchId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "joined_groups",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`groupId` TEXT NOT NULL, `inviteCode` TEXT NOT NULL, `groupName` TEXT NOT NULL, `joinedAt` INTEGER NOT NULL, PRIMARY KEY(`groupId`))",
+        "fields": [
+          {
+            "fieldPath": "groupId",
+            "columnName": "groupId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inviteCode",
+            "columnName": "inviteCode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groupName",
+            "columnName": "groupName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "joinedAt",
+            "columnName": "joinedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "groupId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_joined_groups_inviteCode",
+            "unique": false,
+            "columnNames": [
+              "inviteCode"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_joined_groups_inviteCode` ON `${TABLE_NAME}` (`inviteCode`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '864550c0cad339f60bbd501b77cbc418')"
+    ]
+  }
+}

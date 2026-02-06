@@ -1,5 +1,6 @@
 package com.oreki.stumpd
 
+import com.oreki.stumpd.domain.model.*
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -371,7 +372,8 @@ fun ScorecardTab(match: MatchHistory) {
                 didNotBowl = didNotBowl,
                 isExpandedInitially = false,
                 deliveries = match.allDeliveries,
-                inningsNumber = 1
+                inningsNumber = 1,
+                shortPitch = match.shortPitch
             )
         }
         
@@ -428,7 +430,8 @@ fun ScorecardTab(match: MatchHistory) {
                 didNotBowl = didNotBowl,
                 isExpandedInitially = true,
                 deliveries = match.allDeliveries,
-                inningsNumber = 2
+                inningsNumber = 2,
+                shortPitch = match.shortPitch
             )
         }
         
@@ -521,50 +524,139 @@ fun SummaryTab(match: MatchHistory) {
     }
 }
 
+/**
+ * Merged view of a player's batting + bowling + fielding for the Squads tab.
+ */
+private data class SquadPlayerSummary(
+    val id: String,
+    val name: String,
+    val isCaptain: Boolean,
+    val isJoker: Boolean,
+    // Batting (null = DNB)
+    val runs: Int?,
+    val ballsFaced: Int?,
+    val fours: Int,
+    val sixes: Int,
+    val isOut: Boolean,
+    val isRetired: Boolean,
+    // Bowling (null = DNB)
+    val wickets: Int?,
+    val runsConceded: Int?,
+    val oversBowled: Double?,
+    // Fielding
+    val catches: Int,
+    val runOuts: Int,
+    val stumpings: Int,
+)
+
+private fun buildSquadSummaries(
+    battingStats: List<PlayerMatchStats>,
+    bowlingStats: List<PlayerMatchStats>,
+    captainName: String?,
+    jokerName: String?,
+): List<SquadPlayerSummary> {
+    val map = linkedMapOf<String, SquadPlayerSummary>()
+
+    // Batting entries first (preserves batting order)
+    battingStats.forEach { p ->
+        val hasBatted = p.runs > 0 || p.ballsFaced > 0 || p.isOut || p.isRetired
+        map[p.id] = SquadPlayerSummary(
+            id = p.id, name = p.name,
+            isCaptain = p.name == captainName,
+            isJoker = p.isJoker || p.name == jokerName,
+            runs = if (hasBatted) p.runs else null,
+            ballsFaced = if (hasBatted) p.ballsFaced else null,
+            fours = p.fours, sixes = p.sixes,
+            isOut = p.isOut, isRetired = p.isRetired,
+            wickets = null, runsConceded = null, oversBowled = null,
+            catches = p.catches, runOuts = p.runOuts, stumpings = p.stumpings,
+        )
+    }
+
+    // Merge bowling entries
+    bowlingStats.forEach { p ->
+        val hasBowled = p.wickets > 0 || p.oversBowled > 0.0 || p.runsConceded > 0
+        val existing = map[p.id]
+        if (existing != null) {
+            map[p.id] = existing.copy(
+                wickets = if (hasBowled) p.wickets else null,
+                runsConceded = if (hasBowled) p.runsConceded else null,
+                oversBowled = if (hasBowled) p.oversBowled else null,
+                catches = maxOf(existing.catches, p.catches),
+                runOuts = maxOf(existing.runOuts, p.runOuts),
+                stumpings = maxOf(existing.stumpings, p.stumpings),
+            )
+        } else {
+            map[p.id] = SquadPlayerSummary(
+                id = p.id, name = p.name,
+                isCaptain = p.name == captainName,
+                isJoker = p.isJoker || p.name == jokerName,
+                runs = null, ballsFaced = null, fours = 0, sixes = 0,
+                isOut = false, isRetired = false,
+                wickets = if (hasBowled) p.wickets else null,
+                runsConceded = if (hasBowled) p.runsConceded else null,
+                oversBowled = if (hasBowled) p.oversBowled else null,
+                catches = p.catches, runOuts = p.runOuts, stumpings = p.stumpings,
+            )
+        }
+    }
+
+    return map.values.toList()
+}
+
 @Composable
 fun SquadsTab(match: MatchHistory) {
+    val team1 = remember(match) {
+        buildSquadSummaries(
+            battingStats = match.firstInningsBatting,
+            bowlingStats = match.secondInningsBowling,
+            captainName = match.team1CaptainName,
+            jokerName = match.jokerPlayerName,
+        )
+    }
+    val team2 = remember(match) {
+        buildSquadSummaries(
+            battingStats = match.secondInningsBatting,
+            bowlingStats = match.firstInningsBowling,
+            captainName = match.team2CaptainName,
+            jokerName = match.jokerPlayerName,
+        )
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Team 1
         item {
             TeamSquadCard(
                 teamName = match.team1Name,
-                captainName = match.team1CaptainName,
-                jokerName = match.jokerPlayerName,
-                players = (match.firstInningsBatting + match.secondInningsBowling)
-                    .distinctBy { it.id }
-                    .sortedByDescending { it.runs + (it.wickets * 20) }, // Sort by contribution
-                teamColor = MaterialTheme.colorScheme.primaryContainer
+                players = team1,
+                teamColor = MaterialTheme.colorScheme.primaryContainer,
+                shortPitch = match.shortPitch
             )
         }
-        
-        // Team 2
         item {
             TeamSquadCard(
                 teamName = match.team2Name,
-                captainName = match.team2CaptainName,
-                jokerName = match.jokerPlayerName,
-                players = (match.secondInningsBatting + match.firstInningsBowling)
-                    .distinctBy { it.id }
-                    .sortedByDescending { it.runs + (it.wickets * 20) },
-                teamColor = MaterialTheme.colorScheme.secondaryContainer
+                players = team2,
+                teamColor = MaterialTheme.colorScheme.secondaryContainer,
+                shortPitch = match.shortPitch
             )
         }
     }
 }
 
 @Composable
-fun TeamSquadCard(
+private fun TeamSquadCard(
     teamName: String,
-    captainName: String?,
-    jokerName: String?,
-    players: List<PlayerMatchStats>,
-    teamColor: Color
+    players: List<SquadPlayerSummary>,
+    teamColor: Color,
+    shortPitch: Boolean = false
 ) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = teamColor),
@@ -586,93 +678,151 @@ fun TeamSquadCard(
                 Text(
                     text = "${players.size} players",
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = muted
                 )
             }
-            
+
             Spacer(Modifier.height(12.dp))
             HorizontalDivider(thickness = 1.dp)
-            Spacer(Modifier.height(12.dp))
-            
+
             // Players List
-            players.forEach { player ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Player name with badges
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = player.name,
-                            fontSize = 14.sp,
-                            fontWeight = if (player.name == captainName) FontWeight.Bold else FontWeight.Normal,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        
-                        // Captain badge
-                        if (player.name == captainName) {
-                            Surface(
-                                shape = MaterialTheme.shapes.extraSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            ) {
-                                Text(
-                                    "C",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        
-                        // Joker badge
-                        if (player.isJoker || player.name == jokerName) {
-                            Text(
-                                "🃏",
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-                    
-                    // Quick stats
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (player.runs > 0 || player.ballsFaced > 0) {
-                            Text(
-                                "${player.runs}(${player.ballsFaced})",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        if (player.wickets > 0) {
-                            Text(
-                                "${player.wickets}W",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.tertiary
-                            )
-                        }
-                        if (player.catches > 0 || player.runOuts > 0 || player.stumpings > 0) {
-                            val fieldingTotal = player.catches + player.runOuts + player.stumpings
-                            Text(
-                                "🧤$fieldingTotal",
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+            players.forEachIndexed { index, player ->
+                SquadPlayerRow(player = player, shortPitch = shortPitch)
+                if (index < players.lastIndex) {
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun SquadPlayerRow(player: SquadPlayerSummary, shortPitch: Boolean = false) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Left: Name + badges
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(
+                text = player.name,
+                fontSize = 14.sp,
+                fontWeight = if (player.isCaptain) FontWeight.Bold else FontWeight.Normal,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            if (player.isCaptain) {
+                Surface(
+                    shape = MaterialTheme.shapes.extraSmall,
+                    color = MaterialTheme.colorScheme.primary
+                ) {
+                    Text(
+                        "C",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                    )
+                }
+            }
+            if (player.isJoker) {
+                Text("🃏", fontSize = 11.sp)
+            }
+        }
+
+        // Right: stat chips
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Batting chip
+            if (player.runs != null) {
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
+                ) {
+                    Text(
+                        text = "${player.runs}(${player.ballsFaced})",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                    )
+                }
+            } else {
+                Text(
+                    "DNB",
+                    fontSize = 10.sp,
+                    fontStyle = FontStyle.Italic,
+                    color = muted.copy(alpha = 0.45f)
+                )
+            }
+
+            // Bowling chip
+            if (player.wickets != null) {
+                val hasWickets = player.wickets > 0
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = if (hasWickets)
+                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f)
+                    else
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
+                ) {
+                    Text(
+                        text = "${player.wickets}/${player.runsConceded}",
+                        fontSize = 12.sp,
+                        fontWeight = if (hasWickets) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (hasWickets) MaterialTheme.colorScheme.tertiary
+                                else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                    )
+                }
+            } else {
+                Text(
+                    "DNB",
+                    fontSize = 10.sp,
+                    fontStyle = FontStyle.Italic,
+                    color = muted.copy(alpha = 0.45f)
+                )
+            }
+
+            // Fielding chip (only if non-zero)
+            val fieldingTotal = player.catches + player.runOuts + player.stumpings
+            if (fieldingTotal > 0) {
+                val parts = mutableListOf<String>()
+                if (player.catches > 0) parts += "${player.catches}ct"
+                if (player.stumpings > 0) parts += "${player.stumpings}st"
+                if (player.runOuts > 0) parts += "${player.runOuts}ro"
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
+                ) {
+                    Text(
+                        text = parts.joinToString(" "),
+                        fontSize = 11.sp,
+                        color = muted,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun formatOvers(overs: Double): String {
+    val fullOvers = overs.toInt()
+    val balls = ((overs - fullOvers) * 10).toInt()
+    return "$fullOvers.$balls"
 }
 
 // Helper function to calculate overs from bowling stats
@@ -1051,6 +1201,7 @@ fun EnhancedBattingScorecardCard(
     players: List<PlayerMatchStats>,
     didNotBat: List<PlayerMatchStats>,
     isComplete: Boolean,
+    shortPitch: Boolean = false,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1067,7 +1218,9 @@ fun EnhancedBattingScorecardCard(
                 Text("R", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 Text("B", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 Text("4s", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text("6s", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                if (!shortPitch) {
+                    Text("6s", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                }
                 Text("SR", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             }
 
@@ -1098,7 +1251,9 @@ fun EnhancedBattingScorecardCard(
                         Text("${player.runs}${if (player.isOut) "" else "*"}", fontSize = 14.sp, modifier = Modifier.weight(1f))
                         Text("${player.ballsFaced}", fontSize = 14.sp, modifier = Modifier.weight(1f))
                         Text("${player.fours}", fontSize = 14.sp, modifier = Modifier.weight(1f))
-                        Text("${player.sixes}", fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        if (!shortPitch) {
+                            Text("${player.sixes}", fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        }
                         Text("${"%.1f".format(player.strikeRate)}", fontSize = 14.sp, modifier = Modifier.weight(1f))
                     }
                     if (player.isOut || player.isRetired) {
@@ -1161,6 +1316,7 @@ fun EnhancedBowlingScorecardCard(
             ) {
                 Text("Bowler", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(2f))
                 Text("O", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("M", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.7f))
                 Text("R", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 Text("W", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 Text("Eco", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -1184,6 +1340,7 @@ fun EnhancedBowlingScorecardCard(
                         color = if (player.isJoker) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
                     )
                     Text("${"%.1f".format(player.oversBowled)}", fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Text("${player.maidenOvers}", fontSize = 14.sp, modifier = Modifier.weight(0.7f))
                     Text("${player.runsConceded}", fontSize = 14.sp, modifier = Modifier.weight(1f))
                     Text("${player.wickets}", fontSize = 14.sp, modifier = Modifier.weight(1f))
                     Text("${"%.1f".format(player.economy)}", fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -1496,7 +1653,8 @@ fun CollapsibleInningsScorecardCard(
     didNotBowl: List<PlayerMatchStats> = emptyList(),
     isExpandedInitially: Boolean = true,
     deliveries: List<DeliveryUI> = emptyList(),
-    inningsNumber: Int = 1
+    inningsNumber: Int = 1,
+    shortPitch: Boolean = false
 ) {
     var isExpanded by remember { mutableStateOf(isExpandedInitially) }
     
@@ -1613,7 +1771,9 @@ fun CollapsibleInningsScorecardCard(
                         Text("R", modifier = Modifier.weight(0.7f), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("B", modifier = Modifier.weight(0.7f), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("4s", modifier = Modifier.weight(0.7f), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("6s", modifier = Modifier.weight(0.7f), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (!shortPitch) {
+                            Text("6s", modifier = Modifier.weight(0.7f), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         Text("SR", modifier = Modifier.weight(0.9f), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     
@@ -1638,7 +1798,9 @@ fun CollapsibleInningsScorecardCard(
                                 Text(player.runs.toString(), modifier = Modifier.weight(0.7f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
                                 Text(player.ballsFaced.toString(), modifier = Modifier.weight(0.7f), fontSize = 13.sp)
                                 Text(player.fours.toString(), modifier = Modifier.weight(0.7f), fontSize = 13.sp)
-                                Text(player.sixes.toString(), modifier = Modifier.weight(0.7f), fontSize = 13.sp)
+                                if (!shortPitch) {
+                                    Text(player.sixes.toString(), modifier = Modifier.weight(0.7f), fontSize = 13.sp)
+                                }
                                 Text(sr, modifier = Modifier.weight(0.9f), fontSize = 13.sp)
                             }
                             if (player.isOut || player.isRetired) {
@@ -1687,6 +1849,7 @@ fun CollapsibleInningsScorecardCard(
                     Row(modifier = Modifier.fillMaxWidth()) {
                         Text("Bowler", modifier = Modifier.weight(2f), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("O", modifier = Modifier.weight(0.7f), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("M", modifier = Modifier.weight(0.5f), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("R", modifier = Modifier.weight(0.7f), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("W", modifier = Modifier.weight(0.7f), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("Econ", modifier = Modifier.weight(0.9f), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1711,6 +1874,7 @@ fun CollapsibleInningsScorecardCard(
                             Row(modifier = Modifier.fillMaxWidth()) {
                                 Text(player.name, modifier = Modifier.weight(2f), fontSize = 13.sp)
                                 Text(oversStr, modifier = Modifier.weight(0.7f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                Text(player.maidenOvers.toString(), modifier = Modifier.weight(0.5f), fontSize = 13.sp)
                                 Text(player.runsConceded.toString(), modifier = Modifier.weight(0.7f), fontSize = 13.sp)
                                 Text(player.wickets.toString(), modifier = Modifier.weight(0.7f), fontSize = 13.sp)
                                 Text(econ, modifier = Modifier.weight(0.9f), fontSize = 13.sp)

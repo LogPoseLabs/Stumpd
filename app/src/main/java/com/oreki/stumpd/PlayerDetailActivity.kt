@@ -1,5 +1,7 @@
 package com.oreki.stumpd
 
+import com.oreki.stumpd.data.manager.*
+import com.oreki.stumpd.domain.model.*
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -49,7 +51,7 @@ class PlayerDetailActivity : ComponentActivity() {
         val filterGroupName = intent.getStringExtra("filter_group_name") ?: "All Groups"
         val filterPitchType = if (intent.hasExtra("filter_pitch_type")) {
             intent.getBooleanExtra("filter_pitch_type", false)
-        } else false
+        } else false // Default to Long Pitch
         val filterDate = intent.getStringExtra("filter_date") ?: "All Time"
 
         setContent {
@@ -147,7 +149,6 @@ fun PlayerDetailScreen(
         val computed = playerRepo.getPlayerDetailedStats(fm)
         player = computed.firstOrNull { it.name.equals(playerName, ignoreCase = true) }
     }
-
 
 // UI
     Column(modifier = Modifier.fillMaxSize()) {
@@ -1140,7 +1141,6 @@ fun StatBox(
     }
 }
 
-
 @Composable
 fun StatRow(
     label: String,
@@ -1411,7 +1411,6 @@ private fun EmptyPerformance() {
         }
     }
 }
-
 
 @Composable
 private fun EmptyStats() {

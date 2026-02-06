@@ -11,7 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.oreki.stumpd.MatchHistory
+import com.oreki.stumpd.domain.model.MatchHistory
 import com.oreki.stumpd.data.local.entity.GroupEntity
 import java.time.Instant
 import java.time.LocalDate

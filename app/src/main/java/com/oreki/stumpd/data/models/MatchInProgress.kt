@@ -1,6 +1,6 @@
 package com.oreki.stumpd.data.models
 
-import com.oreki.stumpd.Player
+import com.oreki.stumpd.domain.model.Player
 
 /**
  * Represents a match currently in progress that can be saved and resumed

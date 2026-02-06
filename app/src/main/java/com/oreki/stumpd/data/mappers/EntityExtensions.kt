@@ -1,6 +1,6 @@
 package com.oreki.stumpd.data.mappers
 
-import com.oreki.stumpd.PlayerMatchStats
+import com.oreki.stumpd.domain.model.PlayerMatchStats
 import com.oreki.stumpd.data.local.entity.PlayerMatchStatsEntity
 import com.oreki.stumpd.data.util.Constants
 
@@ -16,6 +16,7 @@ fun PlayerMatchStatsEntity.toDomain(): PlayerMatchStats {
         id = this.playerId,
         name = this.name,
         team = this.team,
+        role = this.role,
         runs = this.runs,
         ballsFaced = this.ballsFaced,
         dots = this.dots,

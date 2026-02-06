@@ -1,5 +1,6 @@
-package com.oreki.stumpd
+package com.oreki.stumpd.data.manager
 
+import com.oreki.stumpd.domain.model.*
 import android.content.Context
 import android.util.Log
 import com.google.gson.reflect.TypeToken

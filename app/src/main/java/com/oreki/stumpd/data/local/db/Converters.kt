@@ -1,9 +1,7 @@
 package com.oreki.stumpd.data.local.db
 
+import com.oreki.stumpd.domain.model.*
 import androidx.room.TypeConverter
-import com.oreki.stumpd.BallFormat
-import com.oreki.stumpd.MatchSettings
-import com.oreki.stumpd.PlayerId
 import com.oreki.stumpd.data.util.GsonProvider
 
 /**

@@ -1,5 +1,6 @@
 package com.oreki.stumpd
 
+import com.oreki.stumpd.domain.model.*
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -29,6 +30,8 @@ import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.history.rememberPlayerRepository
 import com.oreki.stumpd.ui.theme.StumpdTheme
+import com.oreki.stumpd.viewmodel.HeadToHeadViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -75,104 +78,17 @@ data class HeadToHeadStats(
 @OptIn(ExperimentalMaterial3Api::class)
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
-fun HeadToHeadScreen(onBack: () -> Unit) {
-    val matchRepo = rememberMatchRepository()
-    val playerRepo = rememberPlayerRepository()
-    val groupRepo = rememberGroupRepository()
-    val scope = rememberCoroutineScope()
-
-    var isLoading by remember { mutableStateOf(true) }
-    var allPlayers by remember { mutableStateOf<List<String>>(emptyList()) }
-    var allMatches by remember { mutableStateOf<List<MatchHistory>>(emptyList()) }
-    var groups by remember { mutableStateOf<List<GroupEntity>>(emptyList()) }
-
-    // Selection state
-    var selectedBatsman by remember { mutableStateOf<String?>(null) }
-    var selectedBowler by remember { mutableStateOf<String?>(null) }
-    var showBatsmanDropdown by remember { mutableStateOf(false) }
-    var showBowlerDropdown by remember { mutableStateOf(false) }
-
-    // Group filter
-    var selectedGroupId by remember { mutableStateOf<String?>(null) }
-    var selectedGroupName by remember { mutableStateOf("All Groups") }
-
-    // Date filter
-    var selectedFilter by remember { mutableStateOf("All Time") }
-    var showFilterDialog by remember { mutableStateOf(false) }
-    var startDate by remember { mutableStateOf<LocalDate?>(null) }
-    var endDate by remember { mutableStateOf<LocalDate?>(null) }
-
-    // Pitch type filter
-    var selectedPitchType by remember { mutableStateOf<Boolean?>(false) } // Default to Long Pitch
-    var showPitchPicker by remember { mutableStateOf(false) }
-
-    // Results
-    var headToHeadStats by remember { mutableStateOf<HeadToHeadStats?>(null) }
-    var matchDetails by remember { mutableStateOf<List<MatchHeadToHeadDetail>>(emptyList()) }
-
-    // Filtered players based on group selection
-    var filteredPlayers by remember { mutableStateOf<List<String>>(emptyList()) }
-
-    // Load data
-    LaunchedEffect(Unit) {
-        scope.launch {
-            isLoading = true
-            allMatches = matchRepo.getAllMatches()
-            groups = groupRepo.listGroups()
-
-            // Extract unique player names from deliveries
-            val playerNames = mutableSetOf<String>()
-            allMatches.forEach { match ->
-                match.allDeliveries.forEach { delivery ->
-                    if (delivery.strikerName.isNotBlank()) playerNames.add(delivery.strikerName)
-                    if (delivery.bowlerName.isNotBlank()) playerNames.add(delivery.bowlerName)
-                }
-            }
-            allPlayers = playerNames.sorted()
-            filteredPlayers = allPlayers
-            isLoading = false
-        }
-    }
-
-    // Update filtered players when group changes
-    LaunchedEffect(selectedGroupId, allMatches) {
-        if (allMatches.isNotEmpty()) {
-            val matchesForGroup = filterMatchesByGroup(allMatches, selectedGroupId)
-            val playerNames = mutableSetOf<String>()
-            matchesForGroup.forEach { match ->
-                match.allDeliveries.forEach { delivery ->
-                    if (delivery.strikerName.isNotBlank()) playerNames.add(delivery.strikerName)
-                    if (delivery.bowlerName.isNotBlank()) playerNames.add(delivery.bowlerName)
-                }
-            }
-            filteredPlayers = playerNames.sorted()
-            // Clear selections if they're no longer valid
-            if (selectedBatsman != null && selectedBatsman !in filteredPlayers) {
-                selectedBatsman = null
-            }
-            if (selectedBowler != null && selectedBowler !in filteredPlayers) {
-                selectedBowler = null
-            }
-        }
-    }
-
-    // Calculate stats when selections change
-    LaunchedEffect(selectedBatsman, selectedBowler, selectedFilter, startDate, endDate, selectedGroupId, selectedPitchType) {
-        if (selectedBatsman != null && selectedBowler != null) {
-            scope.launch {
-                val groupFiltered = filterMatchesByGroup(allMatches, selectedGroupId)
-                val pitchFiltered = filterMatchesByPitchType(groupFiltered, selectedPitchType)
-                val dateFiltered = filterMatchesByDate(pitchFiltered, selectedFilter, startDate, endDate)
-                val (stats, details) = calculateHeadToHead(
-                    dateFiltered,
-                    selectedBatsman!!,
-                    selectedBowler!!
-                )
-                headToHeadStats = stats
-                matchDetails = details
-            }
-        }
-    }
+fun HeadToHeadScreen(onBack: () -> Unit, vm: HeadToHeadViewModel = viewModel()) {
+    val isLoading = vm.isLoading
+    val groups = vm.groups
+    val selectedGroupId = vm.selectedGroupId
+    val selectedFilter = vm.selectedFilter
+    val selectedPitchType = vm.selectedPitchType
+    val selectedBatsman = vm.selectedBatsman
+    val selectedBowler = vm.selectedBowler
+    val headToHeadStats = vm.headToHeadStats
+    val matchDetails = vm.matchDetails
+    val filteredPlayers = vm.filteredPlayers
 
     Scaffold(
         topBar = {
@@ -193,7 +109,7 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
-                    TextButton(onClick = { showFilterDialog = true }) {
+                    TextButton(onClick = { vm.showFilterDialog = true }) {
                         Icon(Icons.Default.DateRange, contentDescription = "Filter")
                         Spacer(Modifier.width(4.dp))
                         Text(selectedFilter)
@@ -221,10 +137,7 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
                 GroupFilterDropdown(
                     groups = groups,
                     selectedGroupId = selectedGroupId,
-                    onGroupSelected = { id, name ->
-                        selectedGroupId = id
-                        selectedGroupName = name
-                    },
+                    onGroupSelected = { id, name -> vm.onGroupSelected(id, name) },
                     modifier = Modifier.weight(1f)
                 )
 
@@ -234,7 +147,7 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
                     null -> "All Pitches"
                 }
                 FilledTonalButton(
-                    onClick = { showPitchPicker = true },
+                    onClick = { vm.showPitchPicker = true },
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Icon(
@@ -280,8 +193,8 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
 
                                 // Batsman dropdown
                                 ExposedDropdownMenuBox(
-                                    expanded = showBatsmanDropdown,
-                                    onExpandedChange = { showBatsmanDropdown = it }
+                                    expanded = vm.showBatsmanDropdown,
+                                    onExpandedChange = { vm.showBatsmanDropdown = it }
                                 ) {
                                     OutlinedTextField(
                                         value = selectedBatsman ?: "",
@@ -291,22 +204,19 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
                                         leadingIcon = {
                                             Icon(Icons.Default.SportsCricket, contentDescription = null)
                                         },
-                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showBatsmanDropdown) },
+                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = vm.showBatsmanDropdown) },
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .menuAnchor()
                                     )
                                     ExposedDropdownMenu(
-                                        expanded = showBatsmanDropdown,
-                                        onDismissRequest = { showBatsmanDropdown = false }
+                                        expanded = vm.showBatsmanDropdown,
+                                        onDismissRequest = { vm.showBatsmanDropdown = false }
                                     ) {
                                         filteredPlayers.forEach { player ->
                                             DropdownMenuItem(
                                                 text = { Text(player) },
-                                                onClick = {
-                                                    selectedBatsman = player
-                                                    showBatsmanDropdown = false
-                                                }
+                                                onClick = { vm.onBatsmanSelected(player) }
                                             )
                                         }
                                     }
@@ -328,8 +238,8 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
 
                                 // Bowler dropdown
                                 ExposedDropdownMenuBox(
-                                    expanded = showBowlerDropdown,
-                                    onExpandedChange = { showBowlerDropdown = it }
+                                    expanded = vm.showBowlerDropdown,
+                                    onExpandedChange = { vm.showBowlerDropdown = it }
                                 ) {
                                     OutlinedTextField(
                                         value = selectedBowler ?: "",
@@ -339,22 +249,19 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
                                         leadingIcon = {
                                             Icon(Icons.Default.Sports, contentDescription = null)
                                         },
-                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showBowlerDropdown) },
+                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = vm.showBowlerDropdown) },
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .menuAnchor()
                                     )
                                     ExposedDropdownMenu(
-                                        expanded = showBowlerDropdown,
-                                        onDismissRequest = { showBowlerDropdown = false }
+                                        expanded = vm.showBowlerDropdown,
+                                        onDismissRequest = { vm.showBowlerDropdown = false }
                                     ) {
                                         filteredPlayers.forEach { player ->
                                             DropdownMenuItem(
                                                 text = { Text(player) },
-                                                onClick = {
-                                                    selectedBowler = player
-                                                    showBowlerDropdown = false
-                                                }
+                                                onClick = { vm.onBowlerSelected(player) }
                                             )
                                         }
                                     }
@@ -406,33 +313,27 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
     }
 
     // Date Filter Dialog
-    if (showFilterDialog) {
+    if (vm.showFilterDialog) {
         DateFilterDialog(
             currentFilter = selectedFilter,
             onFilterSelected = { filter, start, end ->
-                selectedFilter = filter
-                startDate = start
-                endDate = end
-                showFilterDialog = false
+                vm.onFilterSelected(filter, start, end)
             },
-            onDismiss = { showFilterDialog = false }
+            onDismiss = { vm.showFilterDialog = false }
         )
     }
 
     // Pitch Type Picker Dialog
-    if (showPitchPicker) {
+    if (vm.showPitchPicker) {
         AlertDialog(
-            onDismissRequest = { showPitchPicker = false },
+            onDismissRequest = { vm.showPitchPicker = false },
             title = { Text("Filter by Pitch Type") },
             text = {
                 Column {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                selectedPitchType = null
-                                showPitchPicker = false
-                            }
+                            .clickable { vm.onPitchTypeSelected(null) }
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -446,10 +347,7 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                selectedPitchType = true
-                                showPitchPicker = false
-                            }
+                            .clickable { vm.onPitchTypeSelected(true) }
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -463,10 +361,7 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                selectedPitchType = false
-                                showPitchPicker = false
-                            }
+                            .clickable { vm.onPitchTypeSelected(false) }
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -480,7 +375,7 @@ fun HeadToHeadScreen(onBack: () -> Unit) {
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showPitchPicker = false }) {
+                TextButton(onClick = { vm.showPitchPicker = false }) {
                     Text("Cancel")
                 }
             }

@@ -1,5 +1,7 @@
 package com.oreki.stumpd
 
+import com.oreki.stumpd.data.manager.*
+import com.oreki.stumpd.domain.model.*
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -50,7 +52,7 @@ class AllPlayersStatsActivity : ComponentActivity() {
         val filterGroupName = intent.getStringExtra("filter_group_name") ?: if (defaultGroupId != null) "" else "All Groups"
         val filterPitchType = if (intent.hasExtra("filter_pitch_type")) {
             intent.getBooleanExtra("filter_pitch_type", false)
-        } else false // Default to long pitch
+        } else false // Default to Long Pitch
         val filterDate = intent.getStringExtra("filter_date") ?: "All Time"
         
         setContent {
@@ -230,58 +232,66 @@ fun AllPlayersStatsScreen(
                 StatsTopBar(
                     title = "All Players Statistics",
                     subtitle = if (sortBy == "Overall Ranking") {
-                        "${sortedPlayers.size} players (3+ matches) • $selectedGroupName\n$pitchTypeLabel • $formattedDateFilter • Sorted by: $sortBy"
+                        "${sortedPlayers.size} players (3+ matches) • Sorted by: $sortBy"
                     } else {
-                        "${players.size} players • $selectedGroupName\n$pitchTypeLabel • $formattedDateFilter • Sorted by: $sortBy"
+                        "${players.size} players • Sorted by: $sortBy"
                     },
                     onBack = {
                         (context as ComponentActivity).finish()
                     }
                 )
                 // Filter row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 1.dp
                 ) {
-                    FilledTonalButton(
-                        onClick = { showGroupPicker = true },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        modifier = Modifier.height(IntrinsicSize.Min)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.Group, contentDescription = "Group", modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(selectedGroupName, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+                        FilterChip(
+                            selected = selectedGroupId != null,
+                            onClick = { showGroupPicker = true },
+                            label = { Text(selectedGroupName, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            leadingIcon = { Icon(Icons.Default.Group, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        )
 
-                    FilledTonalButton(
-                        onClick = { showPitchPicker = true },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Default.Terrain, contentDescription = "Pitch", modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(pitchTypeLabel, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+                        FilterChip(
+                            selected = selectedPitchType != null,
+                            onClick = { showPitchPicker = true },
+                            label = { Text(pitchTypeLabel, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            leadingIcon = { Icon(Icons.Default.Terrain, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        )
 
-                    FilledTonalButton(
-                        onClick = { showFilterDialog = true },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        modifier = Modifier.height(IntrinsicSize.Min)
-                    ) {
-                        Icon(Icons.Default.FilterList, contentDescription = "Filter", modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(selectedFilter, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    
-                    FilledTonalButton(
-                        onClick = { showSortDialog = true },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Default.Sort, contentDescription = "Sort", modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Sort: $sortBy", fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        FilterChip(
+                            selected = selectedFilter != "All Time",
+                            onClick = { showFilterDialog = true },
+                            label = { Text(formattedDateFilter, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        )
+                        
+                        FilterChip(
+                            selected = true,
+                            onClick = { showSortDialog = true },
+                            label = { Text(sortBy, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            leadingIcon = { Icon(Icons.Default.Sort, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                        )
                     }
                 }
             }

@@ -1,5 +1,7 @@
 package com.oreki.stumpd
 
+import com.oreki.stumpd.domain.model.*
+import com.oreki.stumpd.ui.scoring.ScoringActivity
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity

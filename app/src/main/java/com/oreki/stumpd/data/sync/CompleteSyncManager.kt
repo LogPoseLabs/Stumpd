@@ -2,7 +2,7 @@ package com.oreki.stumpd.data.sync
 
 import android.content.Context
 import android.util.Log
-import com.oreki.stumpd.MatchHistory
+import com.oreki.stumpd.domain.model.MatchHistory
 import com.oreki.stumpd.data.local.db.StumpdDb
 import com.oreki.stumpd.data.repository.GroupRepository
 import com.oreki.stumpd.data.repository.MatchRepository

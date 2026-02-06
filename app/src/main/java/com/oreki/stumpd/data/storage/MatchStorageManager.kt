@@ -3,7 +3,7 @@ package com.oreki.stumpd.data.storage
 import android.content.Context
 import android.util.Log
 import com.google.gson.reflect.TypeToken
-import com.oreki.stumpd.MatchHistory
+import com.oreki.stumpd.domain.model.MatchHistory
 import com.oreki.stumpd.data.util.Constants
 import com.oreki.stumpd.data.util.GsonProvider
 

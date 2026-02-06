@@ -161,7 +161,7 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
                 PRIMARY KEY(groupId, playerId)
             )
         """.trimIndent())
-
+        
         // Create index for efficient queries
         database.execSQL("""
             CREATE INDEX IF NOT EXISTS index_group_unavailable_players_playerId 
@@ -179,7 +179,7 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
                 value TEXT NOT NULL
             )
         """.trimIndent())
-
+        
         // We could migrate existing SharedPreferences data here if needed
         // For now, users will just need to re-select their default group
     }
@@ -200,7 +200,7 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
         database.execSQL(
             "ALTER TABLE player_match_stats ADD COLUMN threes INTEGER NOT NULL DEFAULT 0"
         )
-
+        
         // Add run breakdown columns to player_impacts table (correct table name)
         database.execSQL(
             "ALTER TABLE player_impacts ADD COLUMN dots INTEGER NOT NULL DEFAULT 0"
@@ -235,12 +235,12 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
                 PRIMARY KEY(matchId, innings, partnershipNumber)
             )
         """.trimIndent())
-
+        
         database.execSQL("""
             CREATE INDEX IF NOT EXISTS index_partnerships_matchId 
             ON partnerships(matchId)
         """.trimIndent())
-
+        
         // Create fall_of_wickets table
         database.execSQL("""
             CREATE TABLE IF NOT EXISTS fall_of_wickets (
@@ -256,7 +256,7 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
                 PRIMARY KEY(matchId, innings, wicketNumber)
             )
         """.trimIndent())
-
+        
         database.execSQL("""
             CREATE INDEX IF NOT EXISTS index_fall_of_wickets_matchId 
             ON fall_of_wickets(matchId)
@@ -283,7 +283,7 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
         // Add invite code columns to groups table
         database.execSQL("ALTER TABLE groups ADD COLUMN inviteCode TEXT")
         database.execSQL("ALTER TABLE groups ADD COLUMN isOwner INTEGER NOT NULL DEFAULT 1")
-
+        
         // Create joined_groups table for tracking groups joined via invite codes
         database.execSQL("""
             CREATE TABLE IF NOT EXISTS joined_groups (
@@ -293,7 +293,7 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
                 joinedAt INTEGER NOT NULL
             )
         """.trimIndent())
-
+        
         // Create index for invite code lookups
         database.execSQL("""
             CREATE INDEX IF NOT EXISTS index_joined_groups_inviteCode 
@@ -317,6 +317,131 @@ val MIGRATION_16_17 = object : Migration(16, 17) {
     }
 }
 
+val MIGRATION_17_18 = object : Migration(17, 18) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // Remodel: split merged player rows into separate BAT/BOWL rows.
+        // New PK includes 'role' column ("BAT" or "BOWL").
+
+        // 1. Create new table with role in PK
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS player_match_stats_new (
+                matchId TEXT NOT NULL,
+                playerId TEXT NOT NULL,
+                name TEXT NOT NULL,
+                team TEXT NOT NULL,
+                role TEXT NOT NULL,
+                runs INTEGER NOT NULL,
+                ballsFaced INTEGER NOT NULL,
+                dots INTEGER NOT NULL DEFAULT 0,
+                singles INTEGER NOT NULL DEFAULT 0,
+                twos INTEGER NOT NULL DEFAULT 0,
+                threes INTEGER NOT NULL DEFAULT 0,
+                fours INTEGER NOT NULL,
+                sixes INTEGER NOT NULL,
+                wickets INTEGER NOT NULL,
+                runsConceded INTEGER NOT NULL,
+                oversBowled REAL NOT NULL,
+                maidenOvers INTEGER NOT NULL DEFAULT 0,
+                isOut INTEGER NOT NULL,
+                isRetired INTEGER NOT NULL DEFAULT 0,
+                isJoker INTEGER NOT NULL,
+                catches INTEGER NOT NULL DEFAULT 0,
+                runOuts INTEGER NOT NULL DEFAULT 0,
+                stumpings INTEGER NOT NULL DEFAULT 0,
+                dismissalType TEXT,
+                bowlerName TEXT,
+                fielderName TEXT,
+                battingPosition INTEGER NOT NULL DEFAULT 0,
+                bowlingPosition INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(matchId, playerId, team, role)
+            )
+        """.trimIndent())
+
+        // 2. Insert BAT rows for players with batting activity
+        //    Zero out bowling fields, keep batting fields + dismissal info
+        database.execSQL("""
+            INSERT INTO player_match_stats_new (
+                matchId, playerId, name, team, role,
+                runs, ballsFaced, dots, singles, twos, threes, fours, sixes,
+                wickets, runsConceded, oversBowled, maidenOvers,
+                isOut, isRetired, isJoker,
+                catches, runOuts, stumpings,
+                dismissalType, bowlerName, fielderName,
+                battingPosition, bowlingPosition
+            )
+            SELECT
+                matchId, playerId, name, team, 'BAT',
+                runs, ballsFaced, dots, singles, twos, threes, fours, sixes,
+                0, 0, 0.0, 0,
+                isOut, isRetired, isJoker,
+                0, 0, 0,
+                dismissalType, bowlerName, fielderName,
+                battingPosition, 0
+            FROM player_match_stats
+            WHERE runs > 0 OR ballsFaced > 0 OR fours > 0 OR sixes > 0 OR isOut = 1 OR isRetired = 1
+        """.trimIndent())
+
+        // 3. Insert BOWL rows for players with bowling or fielding activity
+        //    Zero out batting fields, keep bowling + fielding fields
+        database.execSQL("""
+            INSERT OR IGNORE INTO player_match_stats_new (
+                matchId, playerId, name, team, role,
+                runs, ballsFaced, dots, singles, twos, threes, fours, sixes,
+                wickets, runsConceded, oversBowled, maidenOvers,
+                isOut, isRetired, isJoker,
+                catches, runOuts, stumpings,
+                dismissalType, bowlerName, fielderName,
+                battingPosition, bowlingPosition
+            )
+            SELECT
+                matchId, playerId, name, team, 'BOWL',
+                0, 0, 0, 0, 0, 0, 0, 0,
+                wickets, runsConceded, oversBowled, maidenOvers,
+                0, 0, isJoker,
+                catches, runOuts, stumpings,
+                NULL, NULL, NULL,
+                0, bowlingPosition
+            FROM player_match_stats
+            WHERE wickets > 0 OR oversBowled > 0.0 OR runsConceded > 0
+                OR catches > 0 OR runOuts > 0 OR stumpings > 0
+        """.trimIndent())
+
+        // 4. Fallback: rows with no batting AND no bowling/fielding activity → BAT row
+        database.execSQL("""
+            INSERT OR IGNORE INTO player_match_stats_new (
+                matchId, playerId, name, team, role,
+                runs, ballsFaced, dots, singles, twos, threes, fours, sixes,
+                wickets, runsConceded, oversBowled, maidenOvers,
+                isOut, isRetired, isJoker,
+                catches, runOuts, stumpings,
+                dismissalType, bowlerName, fielderName,
+                battingPosition, bowlingPosition
+            )
+            SELECT
+                matchId, playerId, name, team, 'BAT',
+                runs, ballsFaced, dots, singles, twos, threes, fours, sixes,
+                wickets, runsConceded, oversBowled, maidenOvers,
+                isOut, isRetired, isJoker,
+                catches, runOuts, stumpings,
+                dismissalType, bowlerName, fielderName,
+                battingPosition, bowlingPosition
+            FROM player_match_stats
+            WHERE NOT (runs > 0 OR ballsFaced > 0 OR fours > 0 OR sixes > 0 OR isOut = 1 OR isRetired = 1)
+              AND NOT (wickets > 0 OR oversBowled > 0.0 OR runsConceded > 0
+                       OR catches > 0 OR runOuts > 0 OR stumpings > 0)
+        """.trimIndent())
+
+        // 5. Drop old table and rename
+        database.execSQL("DROP TABLE player_match_stats")
+        database.execSQL("ALTER TABLE player_match_stats_new RENAME TO player_match_stats")
+
+        // 6. Recreate indices
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_player_match_stats_matchId ON player_match_stats(matchId)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_player_match_stats_playerId ON player_match_stats(playerId)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_player_match_stats_team ON player_match_stats(team)")
+    }
+}
+
 @Database(
     entities = [
         PlayerEntity::class, TeamEntity::class, TeamPlayerX::class,
@@ -328,7 +453,7 @@ val MIGRATION_16_17 = object : Migration(16, 17) {
         PartnershipEntity::class, FallOfWicketEntity::class,
         JoinedGroupEntity::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -351,7 +476,7 @@ abstract class StumpdDb : RoomDatabase() {
                     context.applicationContext,
                     StumpdDb::class.java,
                     "stumpd.db"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
                     .build().also { INSTANCE = it }
             }
     }
