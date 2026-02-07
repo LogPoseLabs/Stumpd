@@ -17,9 +17,11 @@ import com.oreki.stumpd.data.sync.firebase.FirestoreGroupLastTeamsDao
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -56,6 +58,10 @@ class CompleteSyncManager(
 
     private val _syncState = MutableStateFlow<SyncState>(SyncState.Idle)
     val syncState: StateFlow<SyncState> = _syncState.asStateFlow()
+
+    // Toast events for showing sync progress outside of CloudSyncActivity
+    private val _toastEvents = Channel<String>(Channel.BUFFERED)
+    val toastEvents = _toastEvents.receiveAsFlow()
 
     private val _syncMetadata = MutableStateFlow(
         SyncMetadata(deviceId = getDeviceId())
@@ -162,6 +168,7 @@ class CompleteSyncManager(
 
         try {
             Log.d(TAG, "=== Starting incremental sync (timestamp-based) ===")
+            _toastEvents.trySend("Syncing...")
 
             // 1. Sync active in-progress match (always, for live spectators)
             val inProgressMatch = db.inProgressMatchDao().getLatest()
@@ -230,9 +237,15 @@ class CompleteSyncManager(
             }
 
             Log.d(TAG, "✅ Incremental sync complete: $totalWrites writes")
+            if (totalWrites > 0) {
+                _toastEvents.trySend("Sync complete: $totalWrites items synced")
+            } else {
+                _toastEvents.trySend("Sync complete: everything up to date")
+            }
 
         } catch (e: Exception) {
             Log.e(TAG, "Failed to sync incremental changes", e)
+            _toastEvents.trySend("Sync failed: ${e.message?.take(50) ?: "unknown error"}")
         }
     }
 
@@ -318,6 +331,7 @@ class CompleteSyncManager(
         }
 
         _syncState.value = SyncState.Syncing(0, 6, "Preparing to sync...")
+        _toastEvents.trySend("Starting full sync...")
 
         return try {
             Log.d(TAG, "Starting full sync to cloud...")
@@ -473,23 +487,28 @@ class CompleteSyncManager(
             Log.d(TAG, "Full sync completed - $totalSynced items synced, ${errors.size} errors")
 
             if (errors.isEmpty()) {
+                _toastEvents.trySend("Sync complete: $totalSynced items synced")
                 SyncResult.Success(totalSynced)
             } else {
+                _toastEvents.trySend("Sync partially done: $totalSynced synced, ${errors.size} errors")
                 SyncResult.PartialSuccess(totalSynced, errors.size, errors)
             }
 
         } catch (e: Exception) {
             Log.e(TAG, "Full sync failed catastrophically", e)
             _syncState.value = SyncState.Error("Sync failed: ${e.message}", e)
+            _toastEvents.trySend("Sync failed: ${e.message?.take(50) ?: "unknown error"}")
             SyncResult.Failure("Full sync failed", e)
         }
     }
 
     /**
      * Launch syncAll in the manager's internal scope
-     * This survives UI navigation - use from Composables/Activities
+     * This survives UI navigation - use from Composables/Activities.
+     * Starts a foreground service to keep sync alive when the app is backgrounded.
      */
     fun launchSyncAll() {
+        SyncForegroundService.start(context)
         scope.launch {
             syncAll()
         }
@@ -497,9 +516,11 @@ class CompleteSyncManager(
 
     /**
      * Launch downloadAllFromCloud in the manager's internal scope
-     * This survives UI navigation - use from Composables/Activities
+     * This survives UI navigation - use from Composables/Activities.
+     * Starts a foreground service to keep sync alive when the app is backgrounded.
      */
     fun launchDownloadAllFromCloud() {
+        SyncForegroundService.start(context)
         scope.launch {
             downloadAllFromCloud()
         }
@@ -519,6 +540,7 @@ class CompleteSyncManager(
         return try {
             Log.d(TAG, "Downloading all data from cloud...")
             _syncState.value = SyncState.Syncing(0, 6, "Preparing to download...")
+            _toastEvents.trySend("Downloading from cloud...")
 
             var totalDownloaded = 0
 
@@ -640,11 +662,13 @@ class CompleteSyncManager(
             Log.d(TAG, "Cloud download completed - $totalDownloaded items")
             _syncState.value = SyncState.Syncing(6, 6, "Download complete!")
             _syncState.value = SyncState.Success(totalDownloaded)
+            _toastEvents.trySend("Download complete: $totalDownloaded items")
             SyncResult.Success(totalDownloaded)
 
         } catch (e: Exception) {
             Log.e(TAG, "Failed to download from cloud", e)
             _syncState.value = SyncState.Error("Download failed: ${e.message}", e)
+            _toastEvents.trySend("Download failed: ${e.message?.take(50) ?: "unknown error"}")
             SyncResult.Failure("Download failed", e)
         }
     }

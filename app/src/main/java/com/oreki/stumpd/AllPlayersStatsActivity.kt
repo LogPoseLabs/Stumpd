@@ -184,7 +184,7 @@ fun AllPlayersStatsScreen(
             "Overall Ranking" -> players
                 .filter { it.totalMatches >= 3 } // Min 3 matches to qualify
                 .map { player ->
-                    Pair(player, RankingUtils.calculateOverallScore(player, players))
+                    Pair(player, RankingUtils.calculateOverallRating(player))
                 }
                 .sortedByDescending { it.second }
                 .map { it.first }
@@ -330,7 +330,7 @@ fun AllPlayersStatsScreen(
                             rank = if (sortBy == "Overall Ranking") index + 1 else null,
                             showRankingScore = sortBy == "Overall Ranking",
                             rankingScore = if (sortBy == "Overall Ranking") {
-                                RankingUtils.calculateOverallScore(player, players)
+                                RankingUtils.calculateOverallRating(player)
                             } else 0.0,
                             sortBy = sortBy, // Pass the sort option
                             onClick = {
@@ -846,13 +846,13 @@ fun AllPlayerStatsCard(
                 if (showRankingScore) {
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            text = "%.1f".format(rankingScore),
+                            text = "%.0f".format(rankingScore),
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "pts",
+                            text = "rating",
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

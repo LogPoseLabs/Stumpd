@@ -1,7 +1,13 @@
 package com.oreki.stumpd
 
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import com.google.firebase.FirebaseApp
 import com.oreki.stumpd.data.local.db.StumpdDb
 import com.oreki.stumpd.data.repository.GroupRepository
@@ -20,10 +26,12 @@ import kotlinx.coroutines.launch
  * - Firebase
  * - Room Database
  * - Sync Manager
+ * - Notification channel for foreground sync service
  */
 class StumpdApplication : Application() {
     
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val mainHandler = Handler(Looper.getMainLooper())
     
     // Database and repositories
     val database by lazy { StumpdDb.get(this) }
@@ -47,6 +55,9 @@ class StumpdApplication : Application() {
         
         Log.d(TAG, "StumpdApplication starting...")
         
+        // Create notification channel for sync foreground service
+        createSyncNotificationChannel()
+        
         // Initialize Firebase
         try {
             FirebaseApp.initializeApp(this)
@@ -65,9 +76,35 @@ class StumpdApplication : Application() {
                 Log.e(TAG, "Failed to initialize sync manager", e)
             }
         }
+        
+        // Observe sync toast events and show on main thread
+        applicationScope.launch {
+            syncManager.toastEvents.collect { message ->
+                mainHandler.post {
+                    Toast.makeText(this@StumpdApplication, message, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+    
+    private fun createSyncNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                SYNC_CHANNEL_ID,
+                "Sync Progress",
+                NotificationManager.IMPORTANCE_LOW // No sound, just shows in notification tray
+            ).apply {
+                description = "Shows progress while syncing data with the cloud"
+            }
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+            Log.d(TAG, "Sync notification channel created")
+        }
     }
     
     companion object {
         private const val TAG = "StumpdApplication"
+        const val SYNC_CHANNEL_ID = "stumpd_sync"
+        const val SYNC_NOTIFICATION_ID = 1001
     }
 }

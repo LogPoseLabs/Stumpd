@@ -270,12 +270,27 @@ fun GroupManagementScreen() {
                         }
                         
                         if (groupData != null) {
-                            // Save joined group locally
+                            // Save joined group locally (invite code record)
                             groupRepo.joinGroupWithCode(
                                 inviteCode = code,
                                 remoteGroupId = groupData.group.id,
                                 groupName = groupData.group.name
                             )
+                            // Also save the full group data so it shows immediately
+                            withContext(Dispatchers.IO) {
+                                val db = (context.applicationContext as StumpdApplication).database
+                                db.groupDao().upsertGroup(groupData.group)
+                                db.groupDao().clearMembers(groupData.group.id)
+                                groupData.members.forEach { member ->
+                                    db.groupDao().upsertMembers(listOf(member))
+                                }
+                                groupData.unavailable.forEach { unavailable ->
+                                    db.groupDao().markPlayerUnavailable(unavailable)
+                                }
+                                groupData.defaults?.let { defaults ->
+                                    db.groupDao().upsertDefaults(defaults)
+                                }
+                            }
                             snackbarMessage = "Joined \"${groupData.group.name}\" successfully!"
                             refreshTrigger++ // Refresh the list
                         } else {

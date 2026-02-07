@@ -16,6 +16,11 @@
     <!-- Permission for OTA updates (installing APKs) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Foreground service for keeping sync alive when app is backgrounded -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".StumpdApplication"
         android:allowBackup="true"
@@ -114,6 +119,12 @@
         <activity android:name=".EnhancedCloudSyncActivity"
             android:exported="false"
             android:theme="@style/Theme.Stumpd" />
+
+        <!-- Foreground service for sync -->
+        <service
+            android:name=".data.sync.SyncForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <!-- FileProvider for APK installation (OTA updates) -->
         <provider
