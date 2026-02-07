@@ -12,6 +12,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -190,10 +192,12 @@ fun SpectatorScreen(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgressMatchEntity, lastUpdated: Long) {
-    var selectedTabIndex by remember { mutableStateOf(0) }
     val tabs = listOf("Live", "Scorecard", "Overs", "Partnerships")
+    val pagerState = rememberPagerState(pageCount = { tabs.size })
+    val coroutineScope = rememberCoroutineScope()
     val gson = remember { Gson() }
     
     // Parse match settings
@@ -346,18 +350,22 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
         }
         
         // Tabs
-        TabRow(selectedTabIndex = selectedTabIndex) {
+        TabRow(selectedTabIndex = pagerState.currentPage) {
             tabs.forEachIndexed { index, title ->
                 Tab(
-                    selected = selectedTabIndex == index,
-                    onClick = { selectedTabIndex = index },
+                    selected = pagerState.currentPage == index,
+                    onClick = { coroutineScope.launch { pagerState.animateScrollToPage(index) } },
                     text = { Text(title, fontSize = 13.sp) }
                 )
             }
         }
         
-        // Tab content
-        when (selectedTabIndex) {
+        // Tab content with swipe
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+        when (page) {
             // ===== LIVE TAB =====
             0 -> {
                 Column(
@@ -696,6 +704,7 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                     }
                 }
             }
+        }
         }
     }
 }

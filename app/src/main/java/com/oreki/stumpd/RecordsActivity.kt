@@ -11,6 +11,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -80,7 +82,7 @@ enum class FieldingFilter(val label: String) {
     RUN_OUTS("Run Outs")
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun RecordsScreen(onBack: () -> Unit, vm: RecordsViewModel = viewModel()) {
@@ -100,6 +102,17 @@ fun RecordsScreen(onBack: () -> Unit, vm: RecordsViewModel = viewModel()) {
         RecordCategory.PartnershipRecords,
         RecordCategory.MatchRecords
     )
+
+    val coroutineScope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(pageCount = { categories.size })
+
+    // Sync pager -> ViewModel
+    LaunchedEffect(pagerState.currentPage) {
+        val category = categories[pagerState.currentPage]
+        if (selectedCategory != category) {
+            vm.onCategorySelected(category)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -175,14 +188,14 @@ fun RecordsScreen(onBack: () -> Unit, vm: RecordsViewModel = viewModel()) {
 
             // Category tabs
             ScrollableTabRow(
-                selectedTabIndex = categories.indexOf(selectedCategory),
+                selectedTabIndex = pagerState.currentPage,
                 modifier = Modifier.fillMaxWidth(),
                 edgePadding = 16.dp
             ) {
-                categories.forEach { category ->
+                categories.forEachIndexed { index, category ->
                     Tab(
-                        selected = selectedCategory == category,
-                        onClick = { vm.onCategorySelected(category) },
+                        selected = pagerState.currentPage == index,
+                        onClick = { coroutineScope.launch { pagerState.animateScrollToPage(index) } },
                         text = {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -201,7 +214,7 @@ fun RecordsScreen(onBack: () -> Unit, vm: RecordsViewModel = viewModel()) {
             }
 
             // Fielding filter chips (only show when Fielding tab is selected)
-            if (selectedCategory is RecordCategory.FieldingRecords) {
+            if (pagerState.currentPage == categories.indexOf(RecordCategory.FieldingRecords)) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -218,50 +231,56 @@ fun RecordsScreen(onBack: () -> Unit, vm: RecordsViewModel = viewModel()) {
                 }
             }
 
-            if (isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            } else if (records.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.EmojiEvents,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            "No records found",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            if (selectedCategory is RecordCategory.FieldingRecords)
-                                "Fielding stats require detailed match data"
-                            else
-                                "Play more matches to see records",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { _ ->
+                // Content for current page (driven by ViewModel's selectedCategory)
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
                     }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(records) { record ->
-                        RecordCard(record = record)
+                } else if (records.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Default.EmojiEvents,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                "No records found",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                if (selectedCategory is RecordCategory.FieldingRecords)
+                                    "Fielding stats require detailed match data"
+                                else
+                                    "Play more matches to see records",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(records) { record ->
+                            RecordCard(record = record)
+                        }
                     }
                 }
             }

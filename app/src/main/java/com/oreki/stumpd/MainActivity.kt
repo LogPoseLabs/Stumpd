@@ -650,7 +650,7 @@ fun MainScreen() {
                     MenuCard(
                         title = "Statistics Hub",
                         icon = Icons.Default.Insights,
-                        description = "Rankings, records & head-to-head",
+                        description = "Stats, rankings, records & more",
                         containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                         contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                         modifier = Modifier.fillMaxWidth()

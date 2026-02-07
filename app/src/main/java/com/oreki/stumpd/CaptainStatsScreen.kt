@@ -26,6 +26,8 @@ import com.oreki.stumpd.data.local.entity.GroupEntity
 import com.oreki.stumpd.ui.components.DateFilterDialog
 import com.oreki.stumpd.ui.components.GroupFilterDropdown
 import com.oreki.stumpd.ui.components.filterMatchesByGroup
+import com.oreki.stumpd.ui.components.filterMatchesByPitchType
+import androidx.compose.ui.text.style.TextOverflow
 import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.theme.StumpdTheme
@@ -79,6 +81,10 @@ fun CaptainStatsScreen(onBack: () -> Unit) {
     var selectedGroupId by remember { mutableStateOf<String?>(null) }
     var selectedGroupName by remember { mutableStateOf("All Groups") }
 
+    // Pitch type filter
+    var selectedPitchType by remember { mutableStateOf<Boolean?>(false) } // Default to Long Pitch
+    var showPitchPicker by remember { mutableStateOf(false) }
+
     // Date filter
     var selectedFilter by remember { mutableStateOf("All Time") }
     var showFilterDialog by remember { mutableStateOf(false) }
@@ -95,16 +101,22 @@ fun CaptainStatsScreen(onBack: () -> Unit) {
             isLoading = true
             allMatches = matchRepo.getAllMatches()
             groups = groupRepo.listGroups()
+            // Auto-select if only one group
+            if (groups.size == 1 && selectedGroupId == null) {
+                selectedGroupId = groups[0].id
+                selectedGroupName = groups[0].name
+            }
             isLoading = false
         }
     }
 
     // Calculate stats when filter changes
-    LaunchedEffect(allMatches, selectedFilter, startDate, endDate, sortBy, selectedGroupId) {
+    LaunchedEffect(allMatches, selectedFilter, startDate, endDate, sortBy, selectedGroupId, selectedPitchType) {
         if (allMatches.isNotEmpty()) {
             scope.launch {
                 val groupFiltered = filterMatchesByGroup(allMatches, selectedGroupId)
-                val dateFiltered = filterMatchesByDate(groupFiltered, selectedFilter, startDate, endDate)
+                val pitchFiltered = filterMatchesByPitchType(groupFiltered, selectedPitchType)
+                val dateFiltered = filterMatchesByDate(pitchFiltered, selectedFilter, startDate, endDate)
                 captainStats = calculateCaptainStats(dateFiltered, sortBy)
             }
         }
@@ -179,18 +191,38 @@ fun CaptainStatsScreen(onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Group filter
-            GroupFilterDropdown(
-                groups = groups,
-                selectedGroupId = selectedGroupId,
-                onGroupSelected = { id, name ->
-                    selectedGroupId = id
-                    selectedGroupName = name
-                },
+            // Filter row: Group + Pitch Type
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            )
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                GroupFilterDropdown(
+                    groups = groups,
+                    selectedGroupId = selectedGroupId,
+                    onGroupSelected = { id, name ->
+                        selectedGroupId = id
+                        selectedGroupName = name
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+
+                val pitchLabel = when (selectedPitchType) {
+                    true -> "Short"
+                    false -> "Long"
+                    null -> "All Pitches"
+                }
+                FilledTonalButton(
+                    onClick = { showPitchPicker = true },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Default.Terrain, contentDescription = "Pitch", modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(pitchLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
 
             if (isLoading) {
                 Box(
@@ -241,6 +273,37 @@ fun CaptainStatsScreen(onBack: () -> Unit) {
                 }
             }
         }
+    }
+
+    // Pitch Type Picker
+    if (showPitchPicker) {
+        AlertDialog(
+            onDismissRequest = { showPitchPicker = false },
+            title = { Text("Select Pitch Type") },
+            text = {
+                Column {
+                    listOf(null to "All Pitches", true to "Short Pitch", false to "Long Pitch").forEach { (value, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedPitchType == value,
+                                onClick = {
+                                    selectedPitchType = value
+                                    showPitchPicker = false
+                                }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(label)
+                        }
+                    }
+                }
+            },
+            confirmButton = {}
+        )
     }
 
     // Date Filter Dialog

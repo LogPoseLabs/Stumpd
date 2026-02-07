@@ -56,10 +56,16 @@ fun StatsHubScreen(onBack: () -> Unit) {
 
     val categories = listOf(
         StatsCategory(
-            title = "Player Rankings",
-            description = "Compare players by batting, bowling & fielding stats",
+            title = "Statistics",
+            description = "Top batsmen, bowlers & player stats",
             icon = Icons.Default.Leaderboard,
             route = "player_rankings"
+        ),
+        StatsCategory(
+            title = "Rankings",
+            description = "ICC-inspired batting, bowling & all-rounder ratings",
+            icon = Icons.Default.EmojiEvents,
+            route = "rankings"
         ),
         StatsCategory(
             title = "Head to Head",
@@ -76,7 +82,7 @@ fun StatsHubScreen(onBack: () -> Unit) {
         StatsCategory(
             title = "Records",
             description = "Highest scores, best bowling & more",
-            icon = Icons.Default.EmojiEvents,
+            icon = Icons.Default.MilitaryTech,
             route = "records"
         )
     )
@@ -122,6 +128,9 @@ fun StatsHubScreen(onBack: () -> Unit) {
                         when (category.route) {
                             "player_rankings" -> {
                                 context.startActivity(Intent(context, StatsActivity::class.java))
+                            }
+                            "rankings" -> {
+                                context.startActivity(Intent(context, RankingsActivity::class.java))
                             }
                             "head_to_head" -> {
                                 context.startActivity(Intent(context, HeadToHeadActivity::class.java))

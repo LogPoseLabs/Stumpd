@@ -120,6 +120,9 @@
             android:exported="false"
             android:theme="@style/Theme.Stumpd" />
 
+        <activity android:name=".RankingsActivity"
+            android:exported="false" />
+
         <!-- Foreground service for sync -->
         <service
             android:name=".data.sync.SyncForegroundService"

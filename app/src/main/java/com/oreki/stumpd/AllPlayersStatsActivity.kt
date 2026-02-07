@@ -55,6 +55,7 @@ class AllPlayersStatsActivity : ComponentActivity() {
             intent.getBooleanExtra("filter_pitch_type", false)
         } else false // Default to Long Pitch
         val filterDate = intent.getStringExtra("filter_date") ?: "All Time"
+        val initialSortBy = intent.getStringExtra("sort_by") ?: "Runs"
         
         setContent {
             StumpdTheme {
@@ -66,7 +67,8 @@ class AllPlayersStatsActivity : ComponentActivity() {
                         filterGroupId = filterGroupId,
                         filterGroupName = filterGroupName,
                         filterPitchType = filterPitchType,
-                        filterDate = filterDate
+                        filterDate = filterDate,
+                        initialSortBy = initialSortBy
                     )
                 }
             }
@@ -81,7 +83,8 @@ fun AllPlayersStatsScreen(
     filterGroupId: String?,
     filterGroupName: String,
     filterPitchType: Boolean?,
-    filterDate: String
+    filterDate: String,
+    initialSortBy: String = "Runs"
 ) {
     val context = LocalContext.current
     val repo = rememberMatchRepository()
@@ -90,7 +93,7 @@ fun AllPlayersStatsScreen(
     
     var isLoading by remember { mutableStateOf(true) }
     var players by remember { mutableStateOf<List<PlayerDetailedStats>>(emptyList()) }
-    var sortBy by rememberSaveable { mutableStateOf("Runs") } // Runs, Wickets, Avg, SR, Economy
+    var sortBy by rememberSaveable { mutableStateOf(initialSortBy) }
     var showSortDialog by remember { mutableStateOf(false) }
     
     // Make filters interactive
@@ -186,11 +189,19 @@ fun AllPlayersStatsScreen(
             "Maidens" -> players.filter { it.totalMaidenOvers > 0 }.sortedByDescending { it.maidenOverPercentage }
             "Pressure Index" -> players.filter { it.totalBallsBowled > 0 }.sortedByDescending { it.pressureIndex }
             "Consistency" -> players.filter { it.matchPerformances.size >= 2 }.sortedBy { it.consistency } // Lower is better
-            "Overall Ranking" -> players
-                .filter { it.totalMatches >= 3 } // Min 3 matches to qualify
-                .map { player ->
-                    Pair(player, RankingUtils.calculateOverallRating(player))
-                }
+            "Batting Ranking" -> players
+                .filter { (it.totalRuns > 0 || it.totalBallsFaced > 0) && it.matchPerformances.count { p -> p.ballsFaced > 0 || p.runs > 0 } >= 3 }
+                .map { player -> Pair(player, RankingUtils.calculateBattingRating(player.matchPerformances)) }
+                .sortedByDescending { it.second }
+                .map { it.first }
+            "Bowling Ranking" -> players
+                .filter { it.totalBallsBowled > 0 && it.matchPerformances.count { p -> p.ballsBowled > 0 } >= 3 }
+                .map { player -> Pair(player, RankingUtils.calculateBowlingRating(player.matchPerformances)) }
+                .sortedByDescending { it.second }
+                .map { it.first }
+            "All-Rounder Ranking" -> players
+                .filter { it.totalMatches >= 3 && (it.totalRuns > 0 || it.totalBallsFaced > 0) && it.totalBallsBowled > 0 }
+                .map { player -> Pair(player, RankingUtils.calculateOverallRating(player)) }
                 .sortedByDescending { it.second }
                 .map { it.first }
             else -> players
@@ -237,8 +248,8 @@ fun AllPlayersStatsScreen(
             Column {
                 StatsTopBar(
                     title = "All Players Statistics",
-                    subtitle = if (sortBy == "Overall Ranking") {
-                        "${sortedPlayers.size} players (3+ matches) • Sorted by: $sortBy"
+                    subtitle = if (sortBy.endsWith("Ranking")) {
+                        "${sortedPlayers.size} qualified • Sorted by: $sortBy"
                     } else {
                         "${players.size} players • Sorted by: $sortBy"
                     },
@@ -330,14 +341,18 @@ fun AllPlayersStatsScreen(
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(sortedPlayers.size) { index ->
                         val player = sortedPlayers[index]
+                        val isRanking = sortBy.endsWith("Ranking")
                         AllPlayerStatsCard(
                             player = player,
-                            rank = if (sortBy == "Overall Ranking") index + 1 else null,
-                            showRankingScore = sortBy == "Overall Ranking",
-                            rankingScore = if (sortBy == "Overall Ranking") {
-                                RankingUtils.calculateOverallRating(player)
-                            } else 0.0,
-                            sortBy = sortBy, // Pass the sort option
+                            rank = if (isRanking) index + 1 else null,
+                            showRankingScore = isRanking,
+                            rankingScore = when (sortBy) {
+                                "Batting Ranking" -> RankingUtils.calculateBattingRating(player.matchPerformances)
+                                "Bowling Ranking" -> RankingUtils.calculateBowlingRating(player.matchPerformances)
+                                "All-Rounder Ranking" -> RankingUtils.calculateOverallRating(player)
+                                else -> 0.0
+                            },
+                            sortBy = sortBy,
                             onClick = {
                                 val intent = Intent(context, PlayerDetailActivity::class.java)
                                 intent.putExtra("player_name", player.name)
@@ -449,43 +464,7 @@ fun AllPlayersStatsScreen(
                             }
                         }
                         
-                        // Overall Ranking
-                        item {
-                            OutlinedCard(
-                                colors = CardDefaults.outlinedCardColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f),
-                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                ),
-                                border = CardDefaults.outlinedCardBorder().copy(
-                                    width = 2.dp
-                                )
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("🏆", fontSize = 18.sp)
-                                        Spacer(Modifier.width(8.dp))
-                                        Column {
-                                            Text(
-                                                "Overall Ranking",
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 15.sp,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                            Text(
-                                                "40% Bat • 40% Bowl • 20% Field",
-                                                fontSize = 10.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-                                    Spacer(Modifier.height(8.dp))
-                                    SortOption("Overall Ranking", sortBy) {
-                                        sortBy = "Overall Ranking"
-                                        showSortDialog = false
-                                    }
-                                }
-                            }
-                        }
+                        
                         
                         // General
                         item {
@@ -977,6 +956,48 @@ fun AllPlayerStatsCard(
                         Text("${player.totalWides + player.totalNoBalls}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                     }
                     Text("Wides: ${player.totalWides} • No-balls: ${player.totalNoBalls} • Economy: ${"%.1f".format(player.economyRate)}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                "Batting Ranking" -> {
+                    val innings = player.matchPerformances.count { it.ballsFaced > 0 || it.runs > 0 }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("🏏 BATTING", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text("${player.totalRuns} runs • $innings innings", fontSize = 12.sp)
+                    Text("Avg: ${"%.1f".format(player.battingAverage)} • SR: ${"%.1f".format(player.strikeRate)} • 4s: ${player.totalFours} • 6s: ${player.totalSixes}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                "Bowling Ranking" -> {
+                    val innings = player.matchPerformances.count { it.ballsBowled > 0 }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("⚾ BOWLING", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text("${player.totalWickets} wickets • $innings innings", fontSize = 12.sp)
+                    Text("Avg: ${"%.1f".format(player.bowlingAverage)} • Eco: ${"%.1f".format(player.economyRate)} • Overs: ${"%.1f".format(player.oversBowled)}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                "All-Rounder Ranking" -> {
+                    // Show both batting and bowling
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("🏏 BATTING", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(4.dp))
+                            Text("${player.totalRuns} runs • ${player.totalMatches} matches", fontSize = 12.sp)
+                            Text("Avg: ${"%.1f".format(player.battingAverage)} • SR: ${"%.1f".format(player.strikeRate)}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                            Text("⚾ BOWLING", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(4.dp))
+                            Text("${player.totalWickets} wickets", fontSize = 12.sp)
+                            Text("Avg: ${"%.1f".format(player.bowlingAverage)} • Eco: ${"%.1f".format(player.economyRate)}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    if (player.totalCatches + player.totalRunOuts + player.totalStumpings > 0) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("🧤 ${player.totalCatches}c • ${player.totalRunOuts}ro • ${player.totalStumpings}st", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
                 else -> {
                     // Default display - show batting, bowling, fielding

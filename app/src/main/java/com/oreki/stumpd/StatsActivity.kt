@@ -32,7 +32,6 @@ import com.oreki.stumpd.ui.theme.SectionTitle
 import com.oreki.stumpd.ui.theme.StatsTopBar
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import com.oreki.stumpd.ui.theme.sectionContainer
-import com.oreki.stumpd.utils.RankingUtils
 import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.ui.text.style.TextAlign
@@ -942,6 +941,140 @@ fun RankingCard(
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun RankingSectionCard(
+    title: String,
+    icon: String,
+    players: List<PlayerDetailedStats>,
+    ratingFn: (PlayerDetailedStats) -> Double,
+    qualifyFn: (PlayerDetailedStats) -> Boolean,
+    statLine: (PlayerDetailedStats) -> String,
+    onViewAll: () -> Unit,
+    onPlayerClick: (PlayerDetailedStats) -> Unit
+) {
+    val ranked = remember(players) {
+        players
+            .filter(qualifyFn)
+            .map { Pair(it, ratingFn(it)) }
+            .sortedByDescending { it.second }
+            .take(3)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        elevation = CardDefaults.cardElevation(2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Header
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(icon, fontSize = 18.sp)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = title,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = onViewAll) {
+                    Text("View All", fontSize = 12.sp)
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            if (ranked.isEmpty()) {
+                Text(
+                    text = "Need 3+ qualifying innings",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            } else {
+                Spacer(Modifier.height(4.dp))
+                ranked.forEachIndexed { index, (player, rating) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onPlayerClick(player) }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Rank badge
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = when (index) {
+                                0 -> MaterialTheme.colorScheme.primary
+                                1 -> MaterialTheme.colorScheme.secondary
+                                2 -> MaterialTheme.colorScheme.tertiary
+                                else -> MaterialTheme.colorScheme.surfaceVariant
+                            },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = when (index) {
+                                        0 -> "🥇"
+                                        1 -> "🥈"
+                                        else -> "🥉"
+                                    },
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+
+                        // Player name + stat line
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = player.name,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = statLine(player),
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // Rating score
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = "%.0f".format(rating),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "rating",
+                                fontSize = 9.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    if (index < ranked.size - 1) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 38.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                    }
+                }
             }
         }
     }

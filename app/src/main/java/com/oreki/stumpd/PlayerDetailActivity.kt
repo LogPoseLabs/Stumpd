@@ -80,7 +80,7 @@ fun PlayerDetailScreen(
     playerName: String,
     initialGroupId: String? = null,
     initialGroupName: String = "All Groups",
-    initialPitchType: Boolean? = null,
+    initialPitchType: Boolean? = false,
     initialDateFilter: String = "All Time"
 ) {
     val context = LocalContext.current
