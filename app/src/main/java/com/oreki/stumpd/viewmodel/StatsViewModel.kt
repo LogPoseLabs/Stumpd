@@ -102,6 +102,11 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
             if (selectedGroupId != null && selectedGroupName.isEmpty()) {
                 selectedGroupName = groups.firstOrNull { it.id == selectedGroupId }?.name ?: "All Groups"
             }
+            // Auto-select if only one group
+            if (groups.size == 1 && selectedGroupId == null) {
+                selectedGroupId = groups[0].id
+                selectedGroupName = groups[0].name
+            }
 
             players = playerRepo.getPlayerDetailedStats(filtered)
             android.util.Log.d("StatsViewModel", "Computed ${players.size} player stats from ${filtered.size} matches")

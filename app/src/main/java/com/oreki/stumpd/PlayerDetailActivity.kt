@@ -112,6 +112,11 @@ fun PlayerDetailScreen(
         val summaries = groupRepo.listGroupSummaries()
         groups = summaries.map { (g, d, _) -> g.toDomain(d, emptyList()) }
         allMatches = matchRepo.getAllMatchesWithStats(null)
+        // Auto-select if only one group
+        if (groups.size == 1 && selectedGroupId == null) {
+            selectedGroupId = groups[0].id
+            selectedGroupName = groups[0].name
+        }
     }
 
 // Recompute filtered data whenever filters or name change
@@ -361,15 +366,18 @@ fun PlayerDetailScreen(
             title = { Text("Filter by Group") },
             text = {
                 LazyColumn(Modifier.height(360.dp)) {
-                    item {
-                        ListItem(
-                            headlineContent = { Text("All Groups") },
-                            modifier = Modifier.clickable {
-                                selectedGroupId = null
-                                selectedGroupName = "All Groups"
-                                showGroupPicker = false
-                            }
-                        )
+                    // Only show "All Groups" when user belongs to more than one group
+                    if (groups.size > 1) {
+                        item {
+                            ListItem(
+                                headlineContent = { Text("All Groups") },
+                                modifier = Modifier.clickable {
+                                    selectedGroupId = null
+                                    selectedGroupName = "All Groups"
+                                    showGroupPicker = false
+                                }
+                            )
+                        }
                     }
                     items(groups) { g ->
                         ListItem(

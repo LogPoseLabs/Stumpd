@@ -20,7 +20,8 @@ import kotlin.math.pow
  */
 object RankingUtils {
 
-    private const val DECAY_FACTOR = 0.95  // Each older match loses 5% weight
+    private const val DECAY_FACTOR = 0.95   // Each older match loses 5% weight
+    private const val EXPERIENCE_RAMP = 10.0 // Matches needed to reach full rating
 
     // --- Per-innings rating functions (0-1000 scale) ---
 
@@ -91,6 +92,8 @@ object RankingUtils {
     /**
      * Calculate time-weighted career batting rating (0-1000).
      * Matches are sorted by date (newest first), each weighted by [DECAY_FACTOR]^index.
+     * An experience factor scales the rating based on how many batting innings
+     * the player has -- need [EXPERIENCE_RAMP] innings for full credit.
      */
     fun calculateBattingRating(performances: List<MatchPerformance>): Double {
         // Only consider innings where the player actually batted
@@ -98,12 +101,18 @@ object RankingUtils {
         if (battingInnings.isEmpty()) return 0.0
 
         val sorted = battingInnings.sortedByDescending { it.matchDate }
-        return timeWeightedAverage(sorted) { rateBattingInnings(it) }
+        val rawRating = timeWeightedAverage(sorted) { rateBattingInnings(it) }
+
+        // Per-role experience: need enough batting innings for full rating
+        val experienceFactor = min(battingInnings.size / EXPERIENCE_RAMP, 1.0)
+        return rawRating * experienceFactor
     }
 
     /**
      * Calculate time-weighted career bowling rating (0-1000).
      * Matches are sorted by date (newest first), each weighted by [DECAY_FACTOR]^index.
+     * An experience factor scales the rating based on how many bowling innings
+     * the player has -- need [EXPERIENCE_RAMP] innings for full credit.
      */
     fun calculateBowlingRating(performances: List<MatchPerformance>): Double {
         // Only consider innings where the player actually bowled
@@ -111,12 +120,18 @@ object RankingUtils {
         if (bowlingInnings.isEmpty()) return 0.0
 
         val sorted = bowlingInnings.sortedByDescending { it.matchDate }
-        return timeWeightedAverage(sorted) { rateBowlingInnings(it) }
+        val rawRating = timeWeightedAverage(sorted) { rateBowlingInnings(it) }
+
+        // Per-role experience: need enough bowling innings for full rating
+        val experienceFactor = min(bowlingInnings.size / EXPERIENCE_RAMP, 1.0)
+        return rawRating * experienceFactor
     }
 
     /**
      * Calculate time-weighted career fielding rating (0-1000).
      * Matches are sorted by date (newest first), each weighted by [DECAY_FACTOR]^index.
+     * An experience factor scales the rating based on how many matches the
+     * player has fielded in -- need [EXPERIENCE_RAMP] matches for full credit.
      */
     fun calculateFieldingRating(performances: List<MatchPerformance>): Double {
         val fieldingMatches = performances.filter {
@@ -125,7 +140,11 @@ object RankingUtils {
         if (fieldingMatches.isEmpty()) return 0.0
 
         val sorted = fieldingMatches.sortedByDescending { it.matchDate }
-        return timeWeightedAverage(sorted) { rateFieldingMatch(it) }
+        val rawRating = timeWeightedAverage(sorted) { rateFieldingMatch(it) }
+
+        // Per-role experience: need enough fielding matches for full rating
+        val experienceFactor = min(fieldingMatches.size / EXPERIENCE_RAMP, 1.0)
+        return rawRating * experienceFactor
     }
 
     /**
@@ -134,6 +153,10 @@ object RankingUtils {
      * - All-rounder (batted AND bowled): 40% batting + 40% bowling + 20% fielding
      * - Pure batter (never bowled):      75% batting + 25% fielding
      * - Pure bowler (never batted):      75% bowling + 25% fielding
+     *
+     * Each sub-rating already includes a per-role experience factor, so a
+     * player who bowled in only 3 out of 21 matches gets their bowling rating
+     * scaled down to 30% while their batting (with 10+ innings) stays at full.
      *
      * Requires at least 3 matches to qualify.
      */

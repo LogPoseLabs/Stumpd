@@ -74,6 +74,12 @@ class HeadToHeadViewModel(application: Application) : AndroidViewModel(applicati
             }
             allPlayers = playerNames.sorted()
             filteredPlayers = allPlayers
+            // Auto-select if only one group
+            if (groups.size == 1 && selectedGroupId == null) {
+                selectedGroupId = groups[0].id
+                selectedGroupName = groups[0].name
+                updateFilteredPlayers()
+            }
             isLoading = false
         }
     }
@@ -95,6 +101,13 @@ class HeadToHeadViewModel(application: Application) : AndroidViewModel(applicati
     fun onBowlerSelected(name: String) {
         selectedBowler = name
         showBowlerDropdown = false
+        recalculateStats()
+    }
+
+    fun swapPlayers() {
+        val temp = selectedBatsman
+        selectedBatsman = selectedBowler
+        selectedBowler = temp
         recalculateStats()
     }
 

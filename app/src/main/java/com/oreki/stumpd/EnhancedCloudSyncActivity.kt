@@ -172,10 +172,33 @@ fun EnhancedCloudSyncScreen() {
                     val currentSyncState = syncState
                     if (currentSyncState is SyncState.Syncing) {
                         Spacer(modifier = Modifier.height(8.dp))
+
+                        // Step progress bar (e.g., step 2 of 6)
+                        Text(
+                            text = "Step ${currentSyncState.progress}/${currentSyncState.total}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
                         LinearProgressIndicator(
                             progress = { currentSyncState.progress.toFloat() / currentSyncState.total.coerceAtLeast(1).toFloat() },
                             modifier = Modifier.fillMaxWidth()
                         )
+
+                        // Sub-step progress bar (e.g., match 3 of 15)
+                        if (currentSyncState.subTotal > 0) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "${currentSyncState.subProgress}/${currentSyncState.subTotal} items",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            LinearProgressIndicator(
+                                progress = { currentSyncState.subProgress.toFloat() / currentSyncState.subTotal.coerceAtLeast(1).toFloat() },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
             }

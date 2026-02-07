@@ -8,7 +8,9 @@ sealed class SyncState {
     data class Syncing(
         val progress: Int = 0,
         val total: Int = 0,
-        val message: String = "Syncing..."
+        val message: String = "Syncing...",
+        val subProgress: Int = 0,   // Progress within the current step (e.g., match 3 of 15)
+        val subTotal: Int = 0       // Total items in the current step
     ) : SyncState()
     data class Success(val itemsSynced: Int) : SyncState()
     data class Error(val message: String, val error: Throwable? = null) : SyncState()

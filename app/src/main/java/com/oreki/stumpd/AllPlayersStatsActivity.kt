@@ -113,6 +113,11 @@ fun AllPlayersStatsScreen(
         if (selectedGroupId != null && selectedGroupName.isEmpty()) {
             selectedGroupName = groups.firstOrNull { it.id == selectedGroupId }?.name ?: "All Groups"
         }
+        // Auto-select if only one group
+        if (groups.size == 1 && selectedGroupId == null) {
+            selectedGroupId = groups[0].id
+            selectedGroupName = groups[0].name
+        }
     }
 
     LaunchedEffect(selectedGroupId, selectedPitchType, selectedFilter) {
@@ -523,27 +528,30 @@ fun AllPlayersStatsScreen(
                 title = { Text("Select Group") },
                 text = {
                     Column {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    selectedGroupId = null
-                                    selectedGroupName = "All Groups"
-                                    showGroupPicker = false
-                                }
-                                .padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = selectedGroupId == null,
-                                onClick = {
-                                    selectedGroupId = null
-                                    selectedGroupName = "All Groups"
-                                    showGroupPicker = false
-                                }
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text("All Groups")
+                        // Only show "All Groups" when user belongs to more than one group
+                        if (groups.size > 1) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedGroupId = null
+                                        selectedGroupName = "All Groups"
+                                        showGroupPicker = false
+                                    }
+                                    .padding(vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = selectedGroupId == null,
+                                    onClick = {
+                                        selectedGroupId = null
+                                        selectedGroupName = "All Groups"
+                                        showGroupPicker = false
+                                    }
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("All Groups")
+                            }
                         }
                         groups.forEach { group ->
                             Row(

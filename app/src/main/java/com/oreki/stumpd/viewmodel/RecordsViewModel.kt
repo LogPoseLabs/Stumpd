@@ -58,6 +58,11 @@ class RecordsViewModel(application: Application) : AndroidViewModel(application)
             isLoading = true
             allMatches = matchRepo.getAllMatchesWithStats()
             groups = groupRepo.listGroups()
+            // Auto-select if only one group
+            if (groups.size == 1 && selectedGroupId == null) {
+                selectedGroupId = groups[0].id
+                selectedGroupName = groups[0].name
+            }
             recalculateRecords()
             isLoading = false
         }

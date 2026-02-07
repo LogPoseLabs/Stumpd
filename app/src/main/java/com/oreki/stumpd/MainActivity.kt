@@ -34,7 +34,13 @@ import com.oreki.stumpd.data.local.entity.GroupEntity
 import com.oreki.stumpd.data.update.AppUpdateManager
 import com.oreki.stumpd.data.update.UpdateInfo
 import com.oreki.stumpd.data.update.UpdateState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.oreki.stumpd.data.sync.firebase.FirestoreGroupDao
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.lifecycle.Lifecycle
@@ -83,6 +89,10 @@ fun MainScreen() {
     var expanded by remember { mutableStateOf(false) }
     var matchCount by remember { mutableStateOf(0) }
     var playerCount by remember { mutableStateOf(0) }
+
+    // Join Group dialog state
+    var showJoinDialog by remember { mutableStateOf(false) }
+    var joinMessage by remember { mutableStateOf<String?>(null) }
 
     // OTA Update state
     val updateManager = remember { AppUpdateManager(context) }
@@ -186,6 +196,127 @@ fun MainScreen() {
         LaunchedEffect(Unit) {
             showUpdateDialog = true
         }
+    }
+
+    // Join Group Dialog (shown directly from Get Started card)
+    if (showJoinDialog) {
+        var code by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showJoinDialog = false },
+            icon = { Icon(Icons.Default.GroupAdd, contentDescription = null) },
+            title = { Text("Join Group") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Enter the 6-character invite code shared by the group admin:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = {
+                            val filtered = it.filter { c -> c.isLetterOrDigit() }
+                                .take(6)
+                                .uppercase()
+                            code = filtered
+                        },
+                        label = { Text("Invite Code") },
+                        placeholder = { Text("ABC123") },
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(
+                            fontSize = 24.sp,
+                            letterSpacing = 4.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (joinMessage != null) {
+                        Text(
+                            joinMessage!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            joinMessage = "Looking for group..."
+                            try {
+                                val app = context.applicationContext as StumpdApplication
+                                val userId = app.syncManager.getUserId()
+
+                                if (userId == null) {
+                                    joinMessage = "Please wait for sync to initialize..."
+                                    return@launch
+                                }
+
+                                if (groupRepo.hasJoinedGroupWithCode(code)) {
+                                    joinMessage = "You've already joined this group"
+                                    return@launch
+                                }
+
+                                val firestoreGroupDao = FirestoreGroupDao()
+                                val groupData = withContext(Dispatchers.IO) {
+                                    firestoreGroupDao.joinGroupWithInviteCode(code, userId)
+                                }
+
+                                if (groupData != null) {
+                                    // Save joined group record
+                                    groupRepo.joinGroupWithCode(
+                                        inviteCode = code,
+                                        remoteGroupId = groupData.group.id,
+                                        groupName = groupData.group.name
+                                    )
+                                    // Save full group data so it shows immediately
+                                    withContext(Dispatchers.IO) {
+                                        val db = app.database
+                                        db.groupDao().upsertGroup(groupData.group)
+                                        db.groupDao().clearMembers(groupData.group.id)
+                                        groupData.members.forEach { member ->
+                                            db.groupDao().upsertMembers(listOf(member))
+                                        }
+                                        groupData.unavailable.forEach { unavailable ->
+                                            db.groupDao().markPlayerUnavailable(unavailable)
+                                        }
+                                        groupData.defaults?.let { defaults ->
+                                            db.groupDao().upsertDefaults(defaults)
+                                        }
+                                    }
+                                    // Refresh groups list
+                                    groups = groupRepo.listGroups()
+                                    if (selectedGroup == null && groups.isNotEmpty()) {
+                                        selectedGroup = groups.first()
+                                    }
+                                    joinMessage = null
+                                    showJoinDialog = false
+                                    // Auto-sync to download group's matches and players
+                                    app.syncManager.launchDownloadAllFromCloud()
+                                } else {
+                                    joinMessage = "Invalid invite code. Please check and try again."
+                                }
+                            } catch (e: Exception) {
+                                joinMessage = "Failed to join: ${e.message}"
+                            }
+                        }
+                    },
+                    enabled = code.length == 6
+                ) {
+                    Text("Join Group")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    joinMessage = null
+                    showJoinDialog = false
+                }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -446,9 +577,7 @@ fun MainScreen() {
                                     Text("Create Group")
                                 }
                                 Button(
-                                    onClick = {
-                                        context.startActivity(Intent(context, GroupManagementActivity::class.java))
-                                    }
+                                    onClick = { showJoinDialog = true }
                                 ) {
                                     Icon(Icons.Default.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))

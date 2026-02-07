@@ -224,15 +224,29 @@ fun HeadToHeadScreen(onBack: () -> Unit, vm: HeadToHeadViewModel = viewModel()) 
 
                                 Spacer(modifier = Modifier.height(8.dp))
 
-                                // VS indicator
-                                Text(
-                                    "VS",
+                                // VS indicator with swap button
+                                Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    textAlign = TextAlign.Center,
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "VS",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    FilledTonalIconButton(
+                                        onClick = { vm.swapPlayers() },
+                                        enabled = selectedBatsman != null || selectedBowler != null
+                                    ) {
+                                        Icon(
+                                            Icons.Default.SwapVert,
+                                            contentDescription = "Swap players"
+                                        )
+                                    }
+                                }
 
                                 Spacer(modifier = Modifier.height(8.dp))
 

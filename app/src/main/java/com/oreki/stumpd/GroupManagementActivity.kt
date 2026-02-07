@@ -293,6 +293,8 @@ fun GroupManagementScreen() {
                             }
                             snackbarMessage = "Joined \"${groupData.group.name}\" successfully!"
                             refreshTrigger++ // Refresh the list
+                            // Auto-sync to download group's matches and players
+                            (context.applicationContext as StumpdApplication).syncManager.launchDownloadAllFromCloud()
                         } else {
                             snackbarMessage = "Invalid invite code. Please check and try again."
                         }

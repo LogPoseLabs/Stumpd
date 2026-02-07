@@ -371,13 +371,16 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                 title = { Text("Filter by Group") },
                 text = {
                     LazyColumn(Modifier.height(360.dp)) {
-                        item {
-                            ListItem(
-                                headlineContent = { Text("All Groups") },
-                                modifier = Modifier.clickable {
-                                    vm.onGroupSelected(null, "All Groups")
-                                }
-                            )
+                        // Only show "All Groups" when user belongs to more than one group
+                        if (groups.size > 1) {
+                            item {
+                                ListItem(
+                                    headlineContent = { Text("All Groups") },
+                                    modifier = Modifier.clickable {
+                                        vm.onGroupSelected(null, "All Groups")
+                                    }
+                                )
+                            }
                         }
                         items(groups) { g ->
                             ListItem(
