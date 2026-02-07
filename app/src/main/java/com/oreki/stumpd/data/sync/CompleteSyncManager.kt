@@ -211,12 +211,12 @@ class CompleteSyncManager(
                 }
             }
 
-            // 4. Sync groups (only if modified since last sync)
+            // 4. Sync groups (only if modified since last sync, only owned groups)
             val lastGroupSync = getLastGroupSyncTimestamp()
             if (currentTime - lastGroupSync > 300000) { // 5 minutes threshold
-                val groups = db.groupDao().getAllGroups()
+                val groups = db.groupDao().getAllGroups().filter { it.isOwner }
                 if (groups.isNotEmpty()) {
-                    Log.d(TAG, "Syncing ${groups.size} groups (periodic check)")
+                    Log.d(TAG, "Syncing ${groups.size} owned groups (periodic check)")
                     val allMembers = db.groupDao().getAllGroupMembers()
                     val allUnavailable = db.groupDao().getAllGroupUnavailablePlayers()
 
@@ -382,12 +382,12 @@ class CompleteSyncManager(
             }
             _syncState.value = SyncState.Syncing(2, 6, "Players uploaded", 0, 0)
 
-            // 3. Sync all groups with their members and settings
+            // 3. Sync owned groups with their members and settings
             Log.d(TAG, "Step 3/6: Syncing groups...")
             _syncState.value = SyncState.Syncing(2, 6, "Uploading groups...", 0, 0)
             try {
-                val groups = db.groupDao().getAllGroups()
-                Log.d(TAG, "Syncing ${groups.size} groups...")
+                val groups = db.groupDao().getAllGroups().filter { it.isOwner }
+                Log.d(TAG, "Syncing ${groups.size} owned groups...")
 
                 val allMembers = db.groupDao().getAllGroupMembers()
                 val allUnavailable = db.groupDao().getAllGroupUnavailablePlayers()

@@ -83,11 +83,20 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
     // Search for adding players
     var searchQuery by rememberSaveable { mutableStateOf("") }
     
+    // Ownership check
+    var isOwner by remember { mutableStateOf(true) } // Default true for new groups
+
     // Load data
     LaunchedEffect(Unit) {
         if (!isNew && groupId != null) {
             try {
                 val editInfo = groupRepo.getGroupForEdit(groupId)
+                isOwner = editInfo.entity.isOwner
+                if (!isOwner) {
+                    // Non-owner cannot edit — close immediately
+                    (context as ComponentActivity).finish()
+                    return@LaunchedEffect
+                }
                 val group = editInfo.entity.toDomain(editInfo.defaults, editInfo.memberIds, editInfo.unavailablePlayerIds)
                 groupData = group
                 

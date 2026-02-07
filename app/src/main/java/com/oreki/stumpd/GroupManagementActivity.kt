@@ -516,7 +516,7 @@ private fun GroupCard(
                 }
                 
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (inviteCode == null && onGenerateCode != null) {
+                    if (isOwner && inviteCode == null && onGenerateCode != null) {
                         FilledTonalIconButton(onClick = onGenerateCode) {
                             Icon(
                                 Icons.Default.Add,
@@ -617,43 +617,65 @@ private fun GroupCard(
             HorizontalDivider()
             Spacer(Modifier.height(12.dp))
             
-            // Action Buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilledTonalButton(
-                    onClick = onEdit,
-                    modifier = if (FeatureFlags.isDeletionsEnabled(LocalContext.current) && onDelete != null) {
-                        Modifier.weight(1f)
-                    } else {
-                        Modifier.fillMaxWidth()
-                    }
+            // Action Buttons (only for owners)
+            if (isOwner) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        Icons.Default.Edit,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Edit Group")
-                }
-                
-                // Only show delete button if feature flag is enabled
-                if (FeatureFlags.isDeletionsEnabled(LocalContext.current) && onDelete != null) {
-                    OutlinedButton(
-                        onClick = onDelete,
-                        modifier = Modifier.weight(0.5f),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error
-                        )
+                    FilledTonalButton(
+                        onClick = onEdit,
+                        modifier = if (FeatureFlags.isDeletionsEnabled(LocalContext.current) && onDelete != null) {
+                            Modifier.weight(1f)
+                        } else {
+                            Modifier.fillMaxWidth()
+                        }
                     ) {
                         Icon(
-                            Icons.Default.Delete,
+                            Icons.Default.Edit,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Edit Group")
                     }
+                    
+                    // Only show delete button if feature flag is enabled
+                    if (FeatureFlags.isDeletionsEnabled(LocalContext.current) && onDelete != null) {
+                        OutlinedButton(
+                            onClick = onDelete,
+                            modifier = Modifier.weight(0.5f),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Non-owner info text
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "Only the group owner can edit this group",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

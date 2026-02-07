@@ -1098,13 +1098,28 @@ fun AddPlayerDialog(
                             FilterChip(
                                 selected = selectedGroupIds.contains(group.id),
                                 onClick = {
-                                    selectedGroupIds = if (selectedGroupIds.contains(group.id)) {
-                                        selectedGroupIds - group.id
-                                    } else {
-                                        selectedGroupIds + group.id
+                                    if (group.isOwner) {
+                                        selectedGroupIds = if (selectedGroupIds.contains(group.id)) {
+                                            selectedGroupIds - group.id
+                                        } else {
+                                            selectedGroupIds + group.id
+                                        }
                                     }
                                 },
-                                label = { Text(group.name, fontSize = 13.sp) }
+                                enabled = group.isOwner,
+                                label = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(group.name, fontSize = 13.sp)
+                                        if (!group.isOwner) {
+                                            Spacer(Modifier.width(4.dp))
+                                            Icon(
+                                                Icons.Default.Lock,
+                                                contentDescription = "Not owner",
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                        }
+                                    }
+                                }
                             )
                         }
                     }
