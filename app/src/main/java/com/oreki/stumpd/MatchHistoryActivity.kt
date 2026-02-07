@@ -2,9 +2,11 @@ package com.oreki.stumpd
 
 import com.oreki.stumpd.domain.model.*
 import com.oreki.stumpd.ui.scoring.ScoringActivity
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.annotation.RequiresApi
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,27 +23,33 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.oreki.stumpd.data.mappers.toDomain
+import com.oreki.stumpd.data.local.entity.GroupEntity
 import com.oreki.stumpd.data.manager.InProgressMatchManager
 import com.oreki.stumpd.data.models.MatchInProgress
+import com.oreki.stumpd.ui.components.DateFilterDialog
+import com.oreki.stumpd.ui.components.GroupFilterDropdown
+import com.oreki.stumpd.ui.components.filterMatchesByGroup
+import com.oreki.stumpd.ui.components.filterMatchesByPitchType
 import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.theme.ResultChip
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import com.oreki.stumpd.ui.theme.StumpdTopBar
 import com.oreki.stumpd.ui.theme.sectionContainer
+import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
+import java.time.LocalDate
 import java.util.*
 
 class MatchHistoryActivity : ComponentActivity() {
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         actionBar?.hide()
@@ -58,6 +66,7 @@ class MatchHistoryActivity : ComponentActivity() {
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MatchHistoryScreen() {
@@ -72,33 +81,41 @@ fun MatchHistoryScreen() {
     var inProgressMatch by remember { mutableStateOf<MatchInProgress?>(null) }
 
     // Group filter state
-    data class GroupFilter(val id: String?, val name: String) // id == null => All Groups
-    var selectedFilter by remember { mutableStateOf(GroupFilter(id = null, name = "All Groups")) }
-    var showGroupPicker by remember { mutableStateOf(false) }
-    var groups by remember { mutableStateOf<List<PlayerGroup>>(emptyList()) }
+    var groups by remember { mutableStateOf<List<GroupEntity>>(emptyList()) }
+    var selectedGroupId by remember { mutableStateOf<String?>(null) }
+    var selectedGroupName by remember { mutableStateOf("All Groups") }
+
+    // Pitch type filter
+    var selectedPitchType by remember { mutableStateOf<Boolean?>(false) } // Default: Long Pitch
+    var showPitchPicker by remember { mutableStateOf(false) }
+
+    // Date filter
+    var selectedDateFilter by remember { mutableStateOf("All Time") }
+    var showDateFilterDialog by remember { mutableStateOf(false) }
+    var startDate by remember { mutableStateOf<LocalDate?>(null) }
+    var endDate by remember { mutableStateOf<LocalDate?>(null) }
 
     LaunchedEffect(Unit) {
-        val summaries = groupRepo.listGroupSummaries()
-        groups = summaries.map { (g, d, _) -> g.toDomain(d, emptyList()) }
-        
-        // Load default group from Room DB
+        groups = groupRepo.listGroups()
+
+        // Load default group from Room DB (auto-select handled by GroupFilterDropdown for single group)
         val defaultGroupId = groupRepo.getDefaultGroupId()
         if (defaultGroupId != null) {
             val groupName = groups.firstOrNull { it.id == defaultGroupId }?.name ?: "All Groups"
-            selectedFilter = GroupFilter(id = defaultGroupId, name = groupName)
+            selectedGroupId = defaultGroupId
+            selectedGroupName = groupName
         }
-        
-        // Load ALL matches (we'll filter in UI based on selectedFilter)
+
+        // Load ALL matches (we'll filter in UI)
         allMatches = repo.getAllMatches(groupId = null)
         inProgressMatch = inProgressManager.loadMatch()
     }
 
-    // Apply filter
-    val filteredMatches = remember(allMatches, selectedFilter) {
-        when {
-            selectedFilter.id == null -> allMatches
-            else -> allMatches.filter { it.groupId == selectedFilter.id }
-        }
+    // Apply all filters
+    val filteredMatches = remember(allMatches, selectedGroupId, selectedPitchType, selectedDateFilter, startDate, endDate) {
+        val groupFiltered = filterMatchesByGroup(allMatches, selectedGroupId)
+        val pitchFiltered = filterMatchesByPitchType(groupFiltered, selectedPitchType)
+        filterMatchesByDate(pitchFiltered, selectedDateFilter, startDate, endDate)
     }
 
     // Calculate quick stats
@@ -110,25 +127,13 @@ fun MatchHistoryScreen() {
         topBar = {
             StumpdTopBar(
                 title = "Match History",
-                subtitle = "$totalMatches matches${if (selectedFilter.id != null) " in ${selectedFilter.name}" else ""}",
+                subtitle = "$totalMatches matches${if (selectedGroupId != null) " in $selectedGroupName" else ""}",
                 onBack = { (context as ComponentActivity).finish() },
                 actions = {
-                    IconButton(onClick = { showGroupPicker = true }) {
-                        Badge(
-                            containerColor = if (selectedFilter.id != null)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                Color.Transparent
-                        ) {
-                            Icon(
-                                Icons.Default.FilterList,
-                                contentDescription = "Filter by Group",
-                                tint = if (selectedFilter.id != null)
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.onSurface
-                            )
-                        }
+                    TextButton(onClick = { showDateFilterDialog = true }) {
+                        Icon(Icons.Default.DateRange, contentDescription = "Date Filter")
+                        Spacer(Modifier.width(4.dp))
+                        Text(selectedDateFilter)
                     }
                 }
             )
@@ -175,13 +180,13 @@ fun MatchHistoryScreen() {
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                             )
                         }
-                        
+
                         if (inProgressCount > 0) {
                             VerticalDivider(
                                 modifier = Modifier.height(56.dp),
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f)
                             )
-                            
+
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Icon(
                                     Icons.Default.Pending,
@@ -207,28 +212,39 @@ fun MatchHistoryScreen() {
                 }
                 Spacer(modifier = Modifier.height(16.dp))
             }
-            
-            // Group Filter Chip
-            if (groups.isNotEmpty()) {
-                FilterChip(
-                    selected = selectedFilter.id != null,
-                    onClick = { showGroupPicker = true },
-                    label = { Text(selectedFilter.name, fontSize = 13.sp) },
-                    leadingIcon = {
-                        Icon(
-                            Icons.Default.Group,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
+
+            // Filter row: Group + Pitch Type
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                GroupFilterDropdown(
+                    groups = groups,
+                    selectedGroupId = selectedGroupId,
+                    onGroupSelected = { id, name ->
+                        selectedGroupId = id
+                        selectedGroupName = name
                     },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
+                    modifier = Modifier.weight(1f)
                 )
-                Spacer(modifier = Modifier.height(16.dp))
+
+                val pitchLabel = when (selectedPitchType) {
+                    true -> "Short"
+                    false -> "Long"
+                    null -> "All Pitches"
+                }
+                FilledTonalButton(
+                    onClick = { showPitchPicker = true },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Default.Terrain, contentDescription = "Pitch", modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(pitchLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
-            
+            Spacer(modifier = Modifier.height(16.dp))
+
             if (filteredMatches.isEmpty() && inProgressMatch == null) {
                 // Modern empty state
                 Card(
@@ -259,9 +275,9 @@ fun MatchHistoryScreen() {
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = when (selectedFilter.id) {
+                            text = when (selectedGroupId) {
                                 null -> "Start scoring to build your match history!"
-                                else -> "No matches in ${selectedFilter.name}."
+                                else -> "No matches found for the selected filters."
                             },
                             fontSize = 14.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -318,7 +334,7 @@ fun MatchHistoryScreen() {
                             )
                         }
                     }
-                    
+
                     // Show completed matches
                     items(filteredMatches) { match ->
                         MatchHistoryCard(
@@ -337,41 +353,52 @@ fun MatchHistoryScreen() {
         }
     }
 
-    // Group picker dialog
-    if (showGroupPicker) {
+    // Pitch Type Picker
+    if (showPitchPicker) {
         AlertDialog(
-            onDismissRequest = { showGroupPicker = false },
-            title = { Text("Filter by Group") },
+            onDismissRequest = { showPitchPicker = false },
+            title = { Text("Select Pitch Type") },
             text = {
-                LazyColumn(Modifier.height(360.dp)) {
-                    // All Groups
-                    item {
-                        ListItem(
-                            headlineContent = { Text("All Groups") },
-                            modifier = Modifier.clickable {
-                                selectedFilter = GroupFilter(id = null, name = "All Groups")
-                                showGroupPicker = false
-                            }
-                        )
-                    }
-                    // Real groups
-                    items(groups) { g ->
-                        val count = allMatches.count { it.groupId == g.id }
-                        ListItem(
-                            headlineContent = { Text(g.name) },
-                            supportingContent = {
-                                Text("$count matches", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            },
-                            modifier = Modifier.clickable {
-                                selectedFilter = GroupFilter(id = g.id, name = g.name)
-                                showGroupPicker = false
-                            }
-                        )
+                Column {
+                    listOf(null to "All Pitches", true to "Short Pitch", false to "Long Pitch").forEach { (value, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedPitchType = value
+                                    showPitchPicker = false
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedPitchType == value,
+                                onClick = {
+                                    selectedPitchType = value
+                                    showPitchPicker = false
+                                }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(label)
+                        }
                     }
                 }
             },
-            confirmButton = {},
-            dismissButton = { TextButton(onClick = { showGroupPicker = false }) { Text("Close") } }
+            confirmButton = {}
+        )
+    }
+
+    // Date Filter Dialog
+    if (showDateFilterDialog) {
+        DateFilterDialog(
+            currentFilter = selectedDateFilter,
+            onFilterSelected = { filter, start, end ->
+                selectedDateFilter = filter
+                startDate = start
+                endDate = end
+                showDateFilterDialog = false
+            },
+            onDismiss = { showDateFilterDialog = false }
         )
     }
 }
@@ -426,7 +453,7 @@ fun MatchHistoryCard(
                         modifier = Modifier.padding(start = 20.dp, top = 2.dp)
                     )
                 }
-                
+
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -446,7 +473,7 @@ fun MatchHistoryCard(
                             )
                         }
                     }
-                    
+
                     IconButton(
                         onClick = onDelete,
                         modifier = Modifier.size(28.dp)
@@ -536,7 +563,7 @@ fun MatchHistoryCard(
                         )
                     }
                 }
-                
+
                 // VS Divider
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -555,7 +582,7 @@ fun MatchHistoryCard(
                         )
                     }
                 }
-                
+
                 // Team 2
                 Column(
                     modifier = Modifier.weight(1f),
@@ -654,7 +681,7 @@ fun MatchHistoryCard(
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(14.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             Spacer(modifier = Modifier.height(14.dp))
@@ -688,7 +715,7 @@ fun MatchHistoryCard(
                         fontWeight = FontWeight.Bold
                     )
                 }
-                
+
                 // Quick Summary - Secondary action
                 OutlinedButton(
                     onClick = {
@@ -722,7 +749,7 @@ fun InProgressMatchCard(
     onDiscard: () -> Unit
 ) {
     val dateFormat = SimpleDateFormat("MMM dd, yyyy 'at' hh:mm a", Locale.getDefault())
-    
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -758,7 +785,7 @@ fun InProgressMatchCard(
                             )
                         }
                     }
-                    
+
                     match.groupName?.takeIf { it.isNotBlank() }?.let { gName ->
                         Spacer(Modifier.width(8.dp))
                         Surface(
@@ -774,7 +801,7 @@ fun InProgressMatchCard(
                         }
                     }
                 }
-                
+
                 IconButton(
                     onClick = onDiscard,
                     modifier = Modifier.size(32.dp)
@@ -815,7 +842,7 @@ fun InProgressMatchCard(
                         fontWeight = FontWeight.Bold
                     )
                 }
-                
+
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = "${match.calculatedTotalRuns}/${match.totalWickets}",

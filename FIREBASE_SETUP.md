@@ -37,7 +37,7 @@ This app now supports **online cloud sync** using **Firebase Firestore** (100% F
 1. Firebase will provide a **`google-services.json`** file
 2. Click **"Download google-services.json"**
 3. Move this file to: `/Users/sb/cursor/Stumpd/app/google-services.json`
-   
+
    **IMPORTANT**: The file must be in the `app/` folder, NOT the root project folder
 
 ---
@@ -64,21 +64,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // ========== SIMPLIFIED RULES FOR RELIABILITY ==========
+    // ========== OWNERSHIP-ENFORCED RULES ==========
     // 
-    // These rules are simplified to handle legacy data and avoid
-    // complex queries that can fail during listing operations.
-    // The app handles group filtering client-side.
-    //
     // Security model:
     // - All authenticated users can READ most data
     // - Only owners can WRITE/DELETE their own data
     // - ownerId field determines ownership
+    // - Non-owners have minimal write access (join/leave only)
     
     // ========== GROUPS ==========
-    // Simplified: Anyone authenticated can read groups
-    // This allows: listing groups, searching by invite code, syncing
-    // App filters which groups to display based on membership
+    // Anyone authenticated can read groups (app filters by membership)
     match /groups/{groupId} {
       // Anyone authenticated can READ (app filters by membership)
       allow read: if request.auth != null;
@@ -87,19 +82,25 @@ service cloud.firestore {
       allow create: if request.auth != null 
                     && request.resource.data.ownerId == request.auth.uid;
       
-      // UPDATE: Anyone authenticated (for joining via invite code)
-      // The memberDeviceIds array controls actual access in the app
-      allow update: if request.auth != null;
+      // UPDATE: Owner can update anything.
+      // Non-owners can ONLY modify memberDeviceIds (join/leave via invite code)
+      // or claim ownership (update ownerId + memberDeviceIds to themselves).
+      allow update: if request.auth != null
+                    && (resource.data.ownerId == request.auth.uid
+                        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberDeviceIds'])
+                        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ownerId', 'memberDeviceIds'])
+                            && request.resource.data.ownerId == request.auth.uid));
       
       // DELETE: Only owners
       allow delete: if request.auth != null 
                     && resource.data.ownerId == request.auth.uid;
     }
     
-    // Group subcollections - Same as parent
+    // Group subcollections (members, defaults, etc.) - only owner can write
     match /groups/{groupId}/{subcollection=**} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow write: if request.auth != null
+                   && get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid;
     }
     
     // ========== MATCHES ==========
@@ -113,10 +114,11 @@ service cloud.firestore {
                             && resource.data.ownerId == request.auth.uid;
     }
     
-    // Match subcollections
+    // Match subcollections - only match owner can write
     match /matches/{matchId}/{subcollection=**} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow write: if request.auth != null
+                   && get(/databases/$(database)/documents/matches/$(matchId)).data.ownerId == request.auth.uid;
     }
     
     // ========== IN-PROGRESS MATCHES (Live Scoring) ==========
@@ -204,24 +206,22 @@ service cloud.firestore {
 ```
 
 ### Security Model:
-- **Firebase Level**: Basic authentication check (must be logged in)
-- **App Level**: Filters data based on `memberDeviceIds` array
-- **Write Protection**: Only owners can delete their data
+- **Firebase Level**: Ownership-enforced rules (ownerId check on all writes)
+- **App Level**: Filters data based on `memberDeviceIds` array + `isOwner` flag
+- **Write Protection**: Only owners can modify groups, matches, and subcollections
 
 ### What This Means:
-- **Groups**: App only downloads groups where user is a member
-- **Matches**: App only shows matches from joined groups
-- **Live Matches**: App filters live matches by group membership
-- **Players**: Shared resource - anyone can see all players
+- **Groups**: Only the owner can edit group settings, members, and defaults. Non-owners can only join/leave (modify `memberDeviceIds`) or claim ownership.
+- **Group Subcollections**: Only the group owner can write (uses `get()` to verify parent ownership)
+- **Matches**: Only the match creator can update/delete. Subcollections also owner-protected.
+- **Players**: Shared resource - anyone can create/update, delete restricted to creator
 - **User Preferences**: Private to each user (Firebase enforced)
 
-### Why Simplified Rules?
-Complex Firebase rules with `get()` calls can fail during listing operations.
-The simplified approach:
-- ✅ Works reliably with legacy data
-- ✅ No permission denied errors on sync
-- ✅ App-level filtering is just as effective
-- ✅ Write operations still protected by ownerId check
+### Key Rule: `diff().affectedKeys().hasOnly()`
+The group update rule uses Firestore's `diff()` to ensure non-owners can **only** modify the `memberDeviceIds` field (for join/leave). Any attempt to change group name, settings, or other fields will be rejected by Firebase.
+
+### Note on Subcollection Rules:
+The `get()` call in subcollection rules costs 1 additional read per write. This is negligible for typical usage but worth noting for quota awareness.
 
 ---
 
@@ -289,9 +289,9 @@ dependencies {
 ### Automatic Sync
 - Enabled by default
 - Syncs automatically when:
-  - App starts (if online)
-  - Network reconnects (after being offline)
-  - After saving a match
+   - App starts (if online)
+   - Network reconnects (after being offline)
+   - After saving a match
 
 ### Manual Sync
 1. Open the app
@@ -688,7 +688,7 @@ After the release is created:
 2. Go to Firebase Console → **Remote Config**
 3. Update:
    - `latest_version_code` → new version code
-   - `latest_version_name` → new version name  
+   - `latest_version_name` → new version name
    - `apk_download_url` → the GitHub release APK URL
 4. Click **"Publish changes"**
 
