@@ -298,7 +298,15 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
                         onToggleUnlimitedUndo = { newValue ->
                             vm.pendingUnlimitedUndoValue = newValue
                             vm.showUnlimitedUndoDialog = true
-                        }
+                        },
+                        currentPartnershipRuns = vm.currentPartnershipRuns,
+                        currentPartnershipBalls = vm.currentPartnershipBalls,
+                        currentPartnershipBatsman1Name = vm.currentPartnershipBatsman1Name,
+                        currentPartnershipBatsman2Name = vm.currentPartnershipBatsman2Name,
+                        currentPartnershipBatsman1Runs = vm.currentPartnershipBatsman1Runs,
+                        currentPartnershipBatsman2Runs = vm.currentPartnershipBatsman2Runs,
+                        currentPartnershipBatsman1Balls = vm.currentPartnershipBatsman1Balls,
+                        currentPartnershipBatsman2Balls = vm.currentPartnershipBatsman2Balls
         )
             1 -> ScorecardTab(
                 modifier = Modifier.padding(16.dp),
@@ -313,6 +321,7 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
                 completedBowlersInnings2 = vm.completedBowlersInnings2,
                 firstInningsBattingPlayersList = vm.firstInningsBattingPlayersList,
                         firstInningsBowlingPlayersList = vm.firstInningsBowlingPlayersList,
+                        allDeliveries = vm.allDeliveries,
                         currentPartnerships = vm.partnerships,
                         firstInningsPartnerships = vm.firstInningsPartnerships,
                         currentFallOfWickets = vm.fallOfWickets,

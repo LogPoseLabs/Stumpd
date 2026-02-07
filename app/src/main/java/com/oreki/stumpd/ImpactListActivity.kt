@@ -45,7 +45,7 @@ fun ImpactListScreen(matchId: String) {
     LaunchedEffect(matchId) { matchData = repo.getMatchWithStats(matchId) }
     Scaffold(
         topBar = {
-            SmallTopAppBar(
+            TopAppBar(
                 title = { Text("Impact - Full List") },
                 navigationIcon = {
                     IconButton(onClick = { (context as? ComponentActivity)?.finish() }) {

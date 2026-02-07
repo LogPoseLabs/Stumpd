@@ -1224,7 +1224,7 @@ fun EnhancedBattingScorecardCard(
                 Text("SR", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             }
 
-            Divider(modifier = Modifier.padding(vertical = 8.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             // FILTER: Only show players who actually batted or retired
             val actualBatters = players.filter { player ->
@@ -1275,7 +1275,7 @@ fun EnhancedBattingScorecardCard(
 
             if (relevantDidNotBat.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Divider()
+                HorizontalDivider()
                 Spacer(modifier = Modifier.height(8.dp))
 
                 val statusText = if (isComplete) {
@@ -1322,7 +1322,7 @@ fun EnhancedBowlingScorecardCard(
                 Text("Eco", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             }
 
-            Divider(modifier = Modifier.padding(vertical = 8.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             // Player rows
             players.forEach { player ->
@@ -1350,7 +1350,7 @@ fun EnhancedBowlingScorecardCard(
             // Show players who didn't bowl
             if (didNotBowl.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Divider()
+                HorizontalDivider()
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(

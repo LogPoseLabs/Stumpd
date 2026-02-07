@@ -132,9 +132,9 @@ class PlayerRepository(private val db: StumpdDb) {
         
         match.allDeliveries.forEach { delivery ->
             try {
-                // Safely handle null or blank bowler names (can be null from old JSON data)
+                // Safely handle blank bowler names
                 val bowlerName = delivery.bowlerName
-                if (bowlerName == null || bowlerName.isBlank()) return@forEach
+                if (bowlerName.isBlank()) return@forEach
                 
                 val playerKey = bowlerName.lowercase().trim()
                 playerStatsMap[playerKey]?.let { stats ->

@@ -59,7 +59,15 @@ fun LiveScoreTab(
     onWide: () -> Unit,
     onRetire: () -> Unit,
     unlimitedUndoEnabled: Boolean,
-    onToggleUnlimitedUndo: (Boolean) -> Unit
+    onToggleUnlimitedUndo: (Boolean) -> Unit,
+    currentPartnershipRuns: Int = 0,
+    currentPartnershipBalls: Int = 0,
+    currentPartnershipBatsman1Name: String? = null,
+    currentPartnershipBatsman2Name: String? = null,
+    currentPartnershipBatsman1Runs: Int = 0,
+    currentPartnershipBatsman2Runs: Int = 0,
+    currentPartnershipBatsman1Balls: Int = 0,
+    currentPartnershipBatsman2Balls: Int = 0
 ) {
     Column(
         modifier = modifier
@@ -97,6 +105,66 @@ fun LiveScoreTab(
             jokerPlayer = jokerPlayer,
             shortPitch = matchSettings.shortPitch,
         )
+
+        // Active partnership
+        if (currentPartnershipBalls > 0 && currentPartnershipBatsman1Name != null && currentPartnershipBatsman2Name != null) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                tonalElevation = 1.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Batsman 1
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            currentPartnershipBatsman1Name ?: "",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1
+                        )
+                        Text(
+                            "$currentPartnershipBatsman1Runs ($currentPartnershipBatsman1Balls)",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    // Partnership total in center
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "$currentPartnershipRuns",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            "$currentPartnershipBalls balls",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                        )
+                    }
+                    // Batsman 2
+                    Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                        Text(
+                            currentPartnershipBatsman2Name ?: "",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1
+                        )
+                        Text(
+                            "$currentPartnershipBatsman2Runs ($currentPartnershipBatsman2Balls)",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(4.dp))
 
@@ -172,6 +240,37 @@ fun LiveScoreTab(
     }
 }
 
+/**
+ * Derive batting order from deliveries — returns names in the order they first appeared at crease.
+ */
+fun deriveBattingOrder(deliveries: List<DeliveryUI>, inning: Int): List<String> {
+    val order = mutableListOf<String>()
+    deliveries.filter { it.inning == inning }.forEach { d ->
+        if (d.strikerName.isNotBlank() && d.strikerName !in order) order.add(d.strikerName)
+        if (d.nonStrikerName.isNotBlank() && d.nonStrikerName !in order) order.add(d.nonStrikerName)
+    }
+    return order
+}
+
+/**
+ * Derive bowling order from deliveries — returns names in the order they first bowled.
+ */
+fun deriveBowlingOrder(deliveries: List<DeliveryUI>, inning: Int): List<String> {
+    val order = mutableListOf<String>()
+    deliveries.filter { it.inning == inning }.forEach { d ->
+        if (d.bowlerName.isNotBlank() && d.bowlerName !in order) order.add(d.bowlerName)
+    }
+    return order
+}
+
+/**
+ * Sort players according to an ordered name list. Players not in the order come last.
+ */
+fun List<Player>.sortedByOrder(order: List<String>): List<Player> {
+    val orderMap = order.withIndex().associate { (i, name) -> name to i }
+    return sortedBy { orderMap[it.name] ?: Int.MAX_VALUE }
+}
+
 @Composable
 fun ScorecardTab(
     modifier: Modifier = Modifier,
@@ -186,6 +285,7 @@ fun ScorecardTab(
     completedBowlersInnings2: List<Player>,
     firstInningsBattingPlayersList: List<Player>,
     firstInningsBowlingPlayersList: List<Player>,
+    allDeliveries: List<DeliveryUI> = emptyList(),
     currentPartnerships: List<Partnership> = emptyList(),
     firstInningsPartnerships: List<Partnership> = emptyList(),
     currentFallOfWickets: List<FallOfWicket> = emptyList(),
@@ -205,6 +305,20 @@ fun ScorecardTab(
     var currentInningsExpanded by remember { mutableStateOf(true) }
     var firstInningsExpanded by remember { mutableStateOf(false) }
     
+    // Derive batting/bowling order from deliveries
+    val currentBattingOrder = remember(allDeliveries.size, currentInnings) {
+        deriveBattingOrder(allDeliveries, currentInnings)
+    }
+    val currentBowlingOrder = remember(allDeliveries.size, currentInnings) {
+        deriveBowlingOrder(allDeliveries, currentInnings)
+    }
+    val firstInningsBattingOrder = remember(allDeliveries.size) {
+        deriveBattingOrder(allDeliveries, 1)
+    }
+    val firstInningsBowlingOrder = remember(allDeliveries.size) {
+        deriveBowlingOrder(allDeliveries, 1)
+    }
+    
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -212,28 +326,22 @@ fun ScorecardTab(
     ) {
         // Current Innings - Collapsible
         item {
+            val completedBatters = if (currentInnings == 1) completedBattersInnings1 else completedBattersInnings2
+            val completedBowlers = if (currentInnings == 1) completedBowlersInnings1 else completedBowlersInnings2
+            val activeBatters = battingTeamPlayers.filter { player ->
+                player.ballsFaced > 0 || player.runs > 0 || player.isRetired ||
+                player.name == striker?.name || player.name == nonStriker?.name
+            }
+            val activeBowlers = bowlingTeamPlayers.filter { it.ballsBowled > 0 || it.wickets > 0 || it.runsConceded > 0 }
+            
             InningsScorecardCard(
                 title = "Current Innings • $battingTeamName batting",
                 isExpanded = currentInningsExpanded,
                 onToggleExpand = { currentInningsExpanded = !currentInningsExpanded },
                 battingTeam = battingTeamName,
                 bowlingTeam = bowlingTeamName,
-                batters = if (currentInnings == 1) {
-                    (battingTeamPlayers.filter { player ->
-                        player.ballsFaced > 0 || player.runs > 0 || player.isRetired ||
-                        player.name == striker?.name || player.name == nonStriker?.name
-                    } + completedBattersInnings1).distinctBy { it.name }
-                } else {
-                    (battingTeamPlayers.filter { player ->
-                        player.ballsFaced > 0 || player.runs > 0 || player.isRetired ||
-                        player.name == striker?.name || player.name == nonStriker?.name
-                    } + completedBattersInnings2).distinctBy { it.name }
-                },
-                bowlers = if (currentInnings == 1) {
-                    (bowlingTeamPlayers.filter { it.ballsBowled > 0 || it.wickets > 0 || it.runsConceded > 0 } + completedBowlersInnings1).distinctBy { it.name }
-                } else {
-                    (bowlingTeamPlayers.filter { it.ballsBowled > 0 || it.wickets > 0 || it.runsConceded > 0 } + completedBowlersInnings2).distinctBy { it.name }
-                },
+                batters = (completedBatters + activeBatters).distinctBy { it.name }.sortedByOrder(currentBattingOrder),
+                bowlers = (completedBowlers + activeBowlers).distinctBy { it.name }.sortedByOrder(currentBowlingOrder),
                 partnerships = currentPartnerships,
                 fallOfWickets = currentFallOfWickets,
                 striker = striker,
@@ -258,10 +366,10 @@ fun ScorecardTab(
                     title = "First Innings",
                     isExpanded = firstInningsExpanded,
                     onToggleExpand = { firstInningsExpanded = !firstInningsExpanded },
-                    battingTeam = "", // Team names are swapped in 2nd innings
+                    battingTeam = "",
                     bowlingTeam = "",
-                    batters = firstInningsBattingPlayersList,
-                    bowlers = firstInningsBowlingPlayersList,
+                    batters = firstInningsBattingPlayersList.sortedByOrder(firstInningsBattingOrder),
+                    bowlers = firstInningsBowlingPlayersList.sortedByOrder(firstInningsBowlingOrder),
                     partnerships = firstInningsPartnerships,
                     fallOfWickets = firstInningsFallOfWickets,
                     striker = null,

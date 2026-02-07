@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -354,7 +356,7 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Default.List, contentDescription = "View All")
+                            Icon(Icons.AutoMirrored.Filled.List, contentDescription = "View All")
                             Spacer(Modifier.width(8.dp))
                             Text("View All Players Stats")
                         }
@@ -669,7 +671,7 @@ fun PlayerStatsCard(
             // Arrow indicator
             Spacer(modifier = Modifier.width(8.dp))
             Icon(
-                Icons.Default.KeyboardArrowRight,
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = "View details",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp)
