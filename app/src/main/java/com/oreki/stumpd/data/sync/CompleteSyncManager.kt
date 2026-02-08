@@ -591,7 +591,18 @@ class CompleteSyncManager(
             groupsData.forEachIndexed { index, groupData ->
                 _syncState.value = SyncState.Syncing(2, 6, "Saving group ${index + 1}/${groupsData.size}...", index + 1, groupsData.size)
                 try {
-                    db.groupDao().upsertGroup(groupData.group)
+                    // Preserve local claim code if download didn't include one
+                    val groupToSave = if (groupData.group.claimCode == null) {
+                        val existingLocal = db.groupDao().getGroupById(groupData.group.id)
+                        if (existingLocal?.claimCode != null) {
+                            groupData.group.copy(claimCode = existingLocal.claimCode)
+                        } else {
+                            groupData.group
+                        }
+                    } else {
+                        groupData.group
+                    }
+                    db.groupDao().upsertGroup(groupToSave)
 
                     // Clear existing members before inserting
                     db.groupDao().clearMembers(groupData.group.id)

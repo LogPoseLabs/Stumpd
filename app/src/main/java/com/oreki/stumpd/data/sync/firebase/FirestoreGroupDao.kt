@@ -349,7 +349,7 @@ class FirestoreGroupDao(
             id = doc.getString("id") ?: doc.id,
             name = doc.getString("name") ?: "",
             inviteCode = doc.getString("inviteCode"),
-            claimCode = null, // Claim code is secret - don't expose to non-owners
+            claimCode = if (isOwner) doc.getString("claimCode") else null, // Only owner gets claim code
             isOwner = isOwner
         )
 
