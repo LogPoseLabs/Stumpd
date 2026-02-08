@@ -59,8 +59,8 @@ android {
         applicationId = "com.oreki.stumpd"
         minSdk = 24
         targetSdk = 34
-        versionCode = 19
-        versionName = "1.1.7"
+        versionCode = 20
+        versionName = "1.1.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -167,5 +167,6 @@ dependencies {
     implementation(libs.androidx.sqlite.bundled)
     implementation(libs.androidx.datastore.preferences)
     implementation("androidx.activity:activity-compose:1.8.0")
+    implementation("androidx.biometric:biometric:1.1.0")
 
 }

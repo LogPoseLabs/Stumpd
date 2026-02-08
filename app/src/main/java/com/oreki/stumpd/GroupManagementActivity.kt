@@ -55,9 +55,13 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.DisposableEffect
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 
 
-class GroupManagementActivity : ComponentActivity() {
+class GroupManagementActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         actionBar?.hide()
@@ -215,7 +219,13 @@ fun GroupManagementScreen() {
                         context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Invite Code"))
                     },
                     onShowRecoveryCode = { recoveryCode ->
-                        showRecoveryCodeDialog = g.name to recoveryCode
+                        // Require biometric/device authentication before showing recovery code
+                        val activity = context as? FragmentActivity
+                        if (activity != null) {
+                            authenticateToViewRecoveryCode(activity) {
+                                showRecoveryCodeDialog = g.name to recoveryCode
+                            }
+                        }
                     },
                     onClaimOwnership = {
                         showClaimDialog = g.id
@@ -360,6 +370,59 @@ fun GroupManagementScreen() {
             }
         )
     }
+}
+
+/**
+ * Requires biometric (fingerprint/face) or device credential (PIN/pattern)
+ * authentication before showing the recovery code.
+ * This prevents someone borrowing the phone from viewing the code.
+ */
+private fun authenticateToViewRecoveryCode(
+    activity: FragmentActivity,
+    onSuccess: () -> Unit
+) {
+    val executor = ContextCompat.getMainExecutor(activity)
+
+    val biometricManager = BiometricManager.from(activity)
+    val canAuth = biometricManager.canAuthenticate(
+        BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                BiometricManager.Authenticators.DEVICE_CREDENTIAL
+    )
+
+    if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
+        // No biometric or device credential available -- show the code anyway
+        // (device has no lock screen set up, so no way to protect it further)
+        onSuccess()
+        return
+    }
+
+    val callback = object : BiometricPrompt.AuthenticationCallback() {
+        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+            super.onAuthenticationSucceeded(result)
+            onSuccess()
+        }
+
+        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+            super.onAuthenticationError(errorCode, errString)
+            // User cancelled or error -- don't show the code
+        }
+
+        override fun onAuthenticationFailed() {
+            super.onAuthenticationFailed()
+            // Biometric didn't match -- prompt stays open for retry
+        }
+    }
+
+    val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        .setTitle("Verify identity")
+        .setSubtitle("Authenticate to view recovery code")
+        .setAllowedAuthenticators(
+            BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                    BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        )
+        .build()
+
+    BiometricPrompt(activity, executor, callback).authenticate(promptInfo)
 }
 
 @Composable
