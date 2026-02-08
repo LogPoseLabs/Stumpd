@@ -48,7 +48,7 @@ class PlayerDetailActivity : ComponentActivity() {
         val playerName = intent.getStringExtra("player_name") ?: ""
         // Get filter information from intent
         val filterGroupId = intent.getStringExtra("filter_group_id")
-        val filterGroupName = intent.getStringExtra("filter_group_name") ?: "All Groups"
+        val filterGroupName = intent.getStringExtra("filter_group_name") ?: "Select Group"
         val filterPitchType = if (intent.hasExtra("filter_pitch_type")) {
             intent.getBooleanExtra("filter_pitch_type", false)
         } else false // Default to Long Pitch
@@ -79,7 +79,7 @@ class PlayerDetailActivity : ComponentActivity() {
 fun PlayerDetailScreen(
     playerName: String,
     initialGroupId: String? = null,
-    initialGroupName: String = "All Groups",
+    initialGroupName: String = "Select Group",
     initialPitchType: Boolean? = false,
     initialDateFilter: String = "All Time"
 ) {
@@ -112,8 +112,8 @@ fun PlayerDetailScreen(
         val summaries = groupRepo.listGroupSummaries()
         groups = summaries.map { (g, d, _) -> g.toDomain(d, emptyList()) }
         allMatches = matchRepo.getAllMatchesWithStats(null)
-        // Auto-select if only one group
-        if (groups.size == 1 && selectedGroupId == null) {
+        // Auto-select first group if none selected
+        if (groups.isNotEmpty() && selectedGroupId == null) {
             selectedGroupId = groups[0].id
             selectedGroupName = groups[0].name
         }
@@ -366,19 +366,6 @@ fun PlayerDetailScreen(
             title = { Text("Filter by Group") },
             text = {
                 LazyColumn(Modifier.height(360.dp)) {
-                    // Only show "All Groups" when user belongs to more than one group
-                    if (groups.size > 1) {
-                        item {
-                            ListItem(
-                                headlineContent = { Text("All Groups") },
-                                modifier = Modifier.clickable {
-                                    selectedGroupId = null
-                                    selectedGroupName = "All Groups"
-                                    showGroupPicker = false
-                                }
-                            )
-                        }
-                    }
                     items(groups) { g ->
                         ListItem(
                             headlineContent = { Text(g.name) },

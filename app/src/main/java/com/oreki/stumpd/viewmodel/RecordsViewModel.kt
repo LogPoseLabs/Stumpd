@@ -36,7 +36,7 @@ class RecordsViewModel(application: Application) : AndroidViewModel(application)
     var records by mutableStateOf<List<RecordEntry>>(emptyList())
 
     var selectedGroupId by mutableStateOf<String?>(null)
-    var selectedGroupName by mutableStateOf("All Groups")
+    var selectedGroupName by mutableStateOf("Select Group")
 
     var selectedFilter by mutableStateOf("All Time")
     var showFilterDialog by mutableStateOf(false)
@@ -58,8 +58,8 @@ class RecordsViewModel(application: Application) : AndroidViewModel(application)
             isLoading = true
             allMatches = matchRepo.getAllMatchesWithStats()
             groups = groupRepo.listGroups()
-            // Auto-select if only one group
-            if (groups.size == 1 && selectedGroupId == null) {
+            // Auto-select first group if none selected
+            if (groups.isNotEmpty() && selectedGroupId == null) {
                 selectedGroupId = groups[0].id
                 selectedGroupName = groups[0].name
             }

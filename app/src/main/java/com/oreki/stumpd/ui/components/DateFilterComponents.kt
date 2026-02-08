@@ -144,17 +144,17 @@ fun GroupFilterDropdown(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    // If there's exactly one group, auto-select it
+    // Auto-select first group if none is selected
     LaunchedEffect(groups) {
-        if (groups.size == 1 && selectedGroupId == null) {
+        if (groups.isNotEmpty() && selectedGroupId == null) {
             onGroupSelected(groups[0].id, groups[0].name)
         }
     }
 
     val selectedGroupName = if (selectedGroupId == null) {
-        "All Groups"
+        "Select Group"
     } else {
-        groups.find { it.id == selectedGroupId }?.name ?: "All Groups"
+        groups.find { it.id == selectedGroupId }?.name ?: "Select Group"
     }
 
     ExposedDropdownMenuBox(
@@ -179,16 +179,6 @@ fun GroupFilterDropdown(
             expanded = expanded,
             onDismissRequest = { expanded = false }
         ) {
-            // Only show "All Groups" when user belongs to more than one group
-            if (groups.size > 1) {
-                DropdownMenuItem(
-                    text = { Text("All Groups") },
-                    onClick = {
-                        onGroupSelected(null, "All Groups")
-                        expanded = false
-                    }
-                )
-            }
             groups.forEach { group ->
                 DropdownMenuItem(
                     text = { Text(group.name) },

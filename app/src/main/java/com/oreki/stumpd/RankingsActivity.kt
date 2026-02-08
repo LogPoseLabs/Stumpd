@@ -84,10 +84,11 @@ fun RankingsScreen() {
 
     var isLoading by remember { mutableStateOf(true) }
     var players by remember { mutableStateOf<List<PlayerDetailedStats>>(emptyList()) }
+    var groupMatchContext by remember { mutableStateOf<List<Pair<String, Long>>?>(null) }
 
     // Filters
     var selectedGroupId by rememberSaveable { mutableStateOf<String?>(null) }
-    var selectedGroupName by rememberSaveable { mutableStateOf("All Groups") }
+    var selectedGroupName by rememberSaveable { mutableStateOf("Select Group") }
     var selectedPitchType by rememberSaveable { mutableStateOf<Boolean?>(false) } // Default to Long Pitch
     var selectedFilter by rememberSaveable { mutableStateOf("All Time") }
 
@@ -103,7 +104,7 @@ fun RankingsScreen() {
     LaunchedEffect(Unit) {
         val summaries = groupRepo.listGroupSummaries()
         groups = summaries.map { (g, d, _) -> g.toDomain(d, emptyList()) }
-        if (groups.size == 1 && selectedGroupId == null) {
+        if (groups.isNotEmpty() && selectedGroupId == null) {
             selectedGroupId = groups[0].id
             selectedGroupName = groups[0].name
         }
@@ -138,6 +139,13 @@ fun RankingsScreen() {
                     d in start..end
                 }
             }
+        }
+
+        // Build group match context for missed-match penalty (only when a specific group is selected)
+        groupMatchContext = if (selectedGroupId != null) {
+            filtered.map { Pair(it.id, it.matchDate) }
+        } else {
+            null
         }
 
         players = playerRepo.getPlayerDetailedStats(filtered)
@@ -279,19 +287,19 @@ fun RankingsScreen() {
                 modifier = Modifier.fillMaxSize().padding(padding)
             ) { page ->
                 val tab = tabs[page]
-                val ranked = remember(players, page) {
+                val ranked = remember(players, page, groupMatchContext) {
                     when (page) {
                         0 -> players
                             .filter { (it.totalRuns > 0 || it.totalBallsFaced > 0) && it.matchPerformances.count { p -> p.ballsFaced > 0 || p.runs > 0 } >= 3 }
-                            .map { Pair(it, RankingUtils.calculateBattingRating(it.matchPerformances)) }
+                            .map { Pair(it, RankingUtils.calculateBattingRating(it.matchPerformances, groupMatchContext)) }
                             .sortedByDescending { it.second }
                         1 -> players
                             .filter { it.totalBallsBowled > 0 && it.matchPerformances.count { p -> p.ballsBowled > 0 } >= 3 }
-                            .map { Pair(it, RankingUtils.calculateBowlingRating(it.matchPerformances)) }
+                            .map { Pair(it, RankingUtils.calculateBowlingRating(it.matchPerformances, groupMatchContext)) }
                             .sortedByDescending { it.second }
                         2 -> players
                             .filter { it.totalMatches >= 3 && (it.totalRuns > 0 || it.totalBallsFaced > 0) && it.totalBallsBowled > 0 }
-                            .map { Pair(it, RankingUtils.calculateOverallRating(it)) }
+                            .map { Pair(it, RankingUtils.calculateOverallRating(it, groupMatchContext)) }
                             .sortedByDescending { it.second }
                         else -> emptyList()
                     }
@@ -382,26 +390,6 @@ fun RankingsScreen() {
                 title = { Text("Select Group") },
                 text = {
                     LazyColumn {
-                        if (groups.size > 1) {
-                            item {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().clickable {
-                                        selectedGroupId = null
-                                        selectedGroupName = "All Groups"
-                                        showGroupPicker = false
-                                    }.padding(vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(selected = selectedGroupId == null, onClick = {
-                                        selectedGroupId = null
-                                        selectedGroupName = "All Groups"
-                                        showGroupPicker = false
-                                    })
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("All Groups")
-                                }
-                            }
-                        }
                         items(groups.size) { index ->
                             val group = groups[index]
                             Row(

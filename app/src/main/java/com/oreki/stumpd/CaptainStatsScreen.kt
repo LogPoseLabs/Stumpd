@@ -79,7 +79,7 @@ fun CaptainStatsScreen(onBack: () -> Unit) {
 
     // Group filter
     var selectedGroupId by remember { mutableStateOf<String?>(null) }
-    var selectedGroupName by remember { mutableStateOf("All Groups") }
+    var selectedGroupName by remember { mutableStateOf("Select Group") }
 
     // Pitch type filter
     var selectedPitchType by remember { mutableStateOf<Boolean?>(false) } // Default to Long Pitch
@@ -101,8 +101,8 @@ fun CaptainStatsScreen(onBack: () -> Unit) {
             isLoading = true
             allMatches = matchRepo.getAllMatches()
             groups = groupRepo.listGroups()
-            // Auto-select if only one group
-            if (groups.size == 1 && selectedGroupId == null) {
+            // Auto-select first group if none selected
+            if (groups.isNotEmpty() && selectedGroupId == null) {
                 selectedGroupId = groups[0].id
                 selectedGroupName = groups[0].name
             }

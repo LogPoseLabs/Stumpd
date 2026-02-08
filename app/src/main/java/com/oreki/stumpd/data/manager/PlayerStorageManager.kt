@@ -215,7 +215,10 @@ data class MatchPerformance(
     val isWinner: Boolean = false,
     val isJoker: Boolean = false,
     val groupId: String? = null,
-    val isShortPitch: Boolean = false
+    val isShortPitch: Boolean = false,
+    // Format context for ranking calibration
+    val matchTotalOvers: Int = 5,
+    val maidenOvers: Int = 0
 )
 
 /**
@@ -439,6 +442,7 @@ class EnhancedPlayerStorageManager(
                             isOut = playerStat.isOut,
                             isWinner = match.winnerTeam == match.team1Name,
                             isJoker = playerStat.isJoker,
+                            matchTotalOvers = match.matchSettings?.totalOvers ?: 5,
                         ),
                     )
                 }
@@ -467,6 +471,7 @@ class EnhancedPlayerStorageManager(
                             wickets = playerStat.wickets,
                             runsConceded = playerStat.runsConceded,
                             ballsBowled = (playerStat.oversBowled * 6).toInt(),
+                            maidenOvers = playerStat.maidenOvers,
                         )
                 } else {
                     player.totalMatches++
@@ -481,6 +486,8 @@ class EnhancedPlayerStorageManager(
                             ballsBowled = (playerStat.oversBowled * 6).toInt(),
                             isWinner = match.winnerTeam == match.team2Name,
                             isJoker = playerStat.isJoker,
+                            matchTotalOvers = match.matchSettings?.totalOvers ?: 5,
+                            maidenOvers = playerStat.maidenOvers,
                         ),
                     )
                 }
@@ -523,6 +530,7 @@ class EnhancedPlayerStorageManager(
                             isOut = playerStat.isOut,
                             isWinner = match.winnerTeam == match.team2Name,
                             isJoker = playerStat.isJoker,
+                            matchTotalOvers = match.matchSettings?.totalOvers ?: 5,
                         ),
                     )
                 } else {
@@ -561,6 +569,7 @@ class EnhancedPlayerStorageManager(
                             wickets = existingPerf.wickets + playerStat.wickets,
                             runsConceded = existingPerf.runsConceded + playerStat.runsConceded,
                             ballsBowled = existingPerf.ballsBowled + (playerStat.oversBowled * 6).toInt(),
+                            maidenOvers = existingPerf.maidenOvers + playerStat.maidenOvers,
                         )
                 } else {
                     player.totalMatches++
@@ -575,6 +584,8 @@ class EnhancedPlayerStorageManager(
                             ballsBowled = (playerStat.oversBowled * 6).toInt(),
                             isWinner = match.winnerTeam == match.team1Name,
                             isJoker = playerStat.isJoker,
+                            matchTotalOvers = match.matchSettings?.totalOvers ?: 5,
+                            maidenOvers = playerStat.maidenOvers,
                         ),
                     )
                 }
@@ -743,7 +754,8 @@ class EnhancedPlayerStorageManager(
             isWinner = match.winnerTeam == myTeam,
             isJoker = p.isJoker,
             isShortPitch = match.shortPitch,
-            groupId = match.groupId
+            groupId = match.groupId,
+            matchTotalOvers = match.matchSettings?.totalOvers ?: 5
         )
     }
 
@@ -762,7 +774,8 @@ class EnhancedPlayerStorageManager(
                 runsConceded = existing.runsConceded + p.runsConceded,
                 ballsBowled = existing.ballsBowled + (p.oversBowled * 6).toInt(),
                 isWinner = match.winnerTeam == myTeam || existing.isWinner,
-                isJoker = existing.isJoker || p.isJoker
+                isJoker = existing.isJoker || p.isJoker,
+                maidenOvers = existing.maidenOvers + p.maidenOvers
             )
         } else {
             player.totalMatches++
@@ -776,7 +789,9 @@ class EnhancedPlayerStorageManager(
                     runsConceded = p.runsConceded,
                     ballsBowled = (p.oversBowled * 6).toInt(),
                     isWinner = match.winnerTeam == myTeam,
-                    isJoker = p.isJoker
+                    isJoker = p.isJoker,
+                    matchTotalOvers = match.matchSettings?.totalOvers ?: 5,
+                    maidenOvers = p.maidenOvers
                 )
             )
         }

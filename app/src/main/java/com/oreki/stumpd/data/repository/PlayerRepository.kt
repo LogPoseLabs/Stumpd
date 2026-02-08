@@ -324,7 +324,9 @@ class PlayerRepository(private val db: StumpdDb) {
                 isWinner = match.winnerTeam == entity.team,
                 isJoker = entity.isJoker,
                 isShortPitch = match.shortPitch,
-                groupId = match.groupId
+                groupId = match.groupId,
+                matchTotalOvers = match.matchSettings?.totalOvers ?: 5,
+                maidenOvers = if (isBowl) entity.maidenOvers else 0
             )
         )
     }
@@ -390,7 +392,8 @@ class PlayerRepository(private val db: StumpdDb) {
             catches = if (existing.catches == 0) entity.catches else existing.catches,
             runOuts = if (existing.runOuts == 0) entity.runOuts else existing.runOuts,
             stumpings = if (existing.stumpings == 0) entity.stumpings else existing.stumpings,
-            isOut = existing.isOut || (isBat && entity.isOut)
+            isOut = existing.isOut || (isBat && entity.isOut),
+            maidenOvers = existing.maidenOvers + (if (isBowl) entity.maidenOvers else 0)
         )
     }
 

@@ -93,6 +93,7 @@ fun AllPlayersStatsScreen(
     
     var isLoading by remember { mutableStateOf(true) }
     var players by remember { mutableStateOf<List<PlayerDetailedStats>>(emptyList()) }
+    var groupMatchContext by remember { mutableStateOf<List<Pair<String, Long>>?>(null) }
     var sortBy by rememberSaveable { mutableStateOf(initialSortBy) }
     var showSortDialog by remember { mutableStateOf(false) }
     
@@ -159,11 +160,18 @@ fun AllPlayersStatsScreen(
             }
         }
         
+        // Build group match context for missed-match penalty (only when a specific group is selected)
+        groupMatchContext = if (selectedGroupId != null) {
+            filtered.map { Pair(it.id, it.matchDate) }
+        } else {
+            null
+        }
+
         players = playerRepo.getPlayerDetailedStats(filtered)
         isLoading = false
     }
     
-    val sortedPlayers = remember(players, sortBy) {
+    val sortedPlayers = remember(players, sortBy, groupMatchContext) {
         when (sortBy) {
             "Runs" -> players.sortedByDescending { it.totalRuns }
             "Balls Faced" -> players.sortedByDescending { it.totalBallsFaced }
@@ -191,17 +199,17 @@ fun AllPlayersStatsScreen(
             "Consistency" -> players.filter { it.matchPerformances.size >= 2 }.sortedBy { it.consistency } // Lower is better
             "Batting Ranking" -> players
                 .filter { (it.totalRuns > 0 || it.totalBallsFaced > 0) && it.matchPerformances.count { p -> p.ballsFaced > 0 || p.runs > 0 } >= 3 }
-                .map { player -> Pair(player, RankingUtils.calculateBattingRating(player.matchPerformances)) }
+                .map { player -> Pair(player, RankingUtils.calculateBattingRating(player.matchPerformances, groupMatchContext)) }
                 .sortedByDescending { it.second }
                 .map { it.first }
             "Bowling Ranking" -> players
                 .filter { it.totalBallsBowled > 0 && it.matchPerformances.count { p -> p.ballsBowled > 0 } >= 3 }
-                .map { player -> Pair(player, RankingUtils.calculateBowlingRating(player.matchPerformances)) }
+                .map { player -> Pair(player, RankingUtils.calculateBowlingRating(player.matchPerformances, groupMatchContext)) }
                 .sortedByDescending { it.second }
                 .map { it.first }
             "All-Rounder Ranking" -> players
                 .filter { it.totalMatches >= 3 && (it.totalRuns > 0 || it.totalBallsFaced > 0) && it.totalBallsBowled > 0 }
-                .map { player -> Pair(player, RankingUtils.calculateOverallRating(player)) }
+                .map { player -> Pair(player, RankingUtils.calculateOverallRating(player, groupMatchContext)) }
                 .sortedByDescending { it.second }
                 .map { it.first }
             else -> players
@@ -347,9 +355,9 @@ fun AllPlayersStatsScreen(
                             rank = if (isRanking) index + 1 else null,
                             showRankingScore = isRanking,
                             rankingScore = when (sortBy) {
-                                "Batting Ranking" -> RankingUtils.calculateBattingRating(player.matchPerformances)
-                                "Bowling Ranking" -> RankingUtils.calculateBowlingRating(player.matchPerformances)
-                                "All-Rounder Ranking" -> RankingUtils.calculateOverallRating(player)
+                                "Batting Ranking" -> RankingUtils.calculateBattingRating(player.matchPerformances, groupMatchContext)
+                                "Bowling Ranking" -> RankingUtils.calculateBowlingRating(player.matchPerformances, groupMatchContext)
+                                "All-Rounder Ranking" -> RankingUtils.calculateOverallRating(player, groupMatchContext)
                                 else -> 0.0
                             },
                             sortBy = sortBy,

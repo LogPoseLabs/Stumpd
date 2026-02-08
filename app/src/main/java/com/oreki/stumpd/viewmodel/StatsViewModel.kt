@@ -42,7 +42,7 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
     var showDateRangePicker by mutableStateOf(false)
 
     var selectedGroupId by mutableStateOf<String?>(defaultGroupId)
-    var selectedGroupName by mutableStateOf(if (defaultGroupId != null) "" else "All Groups")
+    var selectedGroupName by mutableStateOf(if (defaultGroupId != null) "" else "Select Group")
     var showGroupPicker by mutableStateOf(false)
 
     var selectedPitchType by mutableStateOf<Boolean?>(false) // Default to Long Pitch
@@ -100,10 +100,10 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
 
             // Set group name if default group is set
             if (selectedGroupId != null && selectedGroupName.isEmpty()) {
-                selectedGroupName = groups.firstOrNull { it.id == selectedGroupId }?.name ?: "All Groups"
+                selectedGroupName = groups.firstOrNull { it.id == selectedGroupId }?.name ?: "Select Group"
             }
-            // Auto-select if only one group
-            if (groups.size == 1 && selectedGroupId == null) {
+            // Auto-select first group if none selected
+            if (groups.isNotEmpty() && selectedGroupId == null) {
                 selectedGroupId = groups[0].id
                 selectedGroupName = groups[0].name
             }

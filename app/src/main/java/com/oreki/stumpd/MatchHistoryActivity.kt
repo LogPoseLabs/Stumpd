@@ -83,7 +83,7 @@ fun MatchHistoryScreen() {
     // Group filter state
     var groups by remember { mutableStateOf<List<GroupEntity>>(emptyList()) }
     var selectedGroupId by remember { mutableStateOf<String?>(null) }
-    var selectedGroupName by remember { mutableStateOf("All Groups") }
+    var selectedGroupName by remember { mutableStateOf("Select Group") }
 
     // Pitch type filter
     var selectedPitchType by remember { mutableStateOf<Boolean?>(false) } // Default: Long Pitch
@@ -101,9 +101,14 @@ fun MatchHistoryScreen() {
         // Load default group from Room DB (auto-select handled by GroupFilterDropdown for single group)
         val defaultGroupId = groupRepo.getDefaultGroupId()
         if (defaultGroupId != null) {
-            val groupName = groups.firstOrNull { it.id == defaultGroupId }?.name ?: "All Groups"
+            val groupName = groups.firstOrNull { it.id == defaultGroupId }?.name ?: "Select Group"
             selectedGroupId = defaultGroupId
             selectedGroupName = groupName
+        }
+        // Auto-select first group if none selected (GroupFilterDropdown also does this)
+        if (groups.isNotEmpty() && selectedGroupId == null) {
+            selectedGroupId = groups[0].id
+            selectedGroupName = groups[0].name
         }
 
         // Load ALL matches (we'll filter in UI)
