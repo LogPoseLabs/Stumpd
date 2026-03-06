@@ -59,8 +59,8 @@ android {
         applicationId = "com.oreki.stumpd"
         minSdk = 24
         targetSdk = 34
-        versionCode = 21
-        versionName = "1.1.9"
+        versionCode = 23
+        versionName = "1.1.11"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
