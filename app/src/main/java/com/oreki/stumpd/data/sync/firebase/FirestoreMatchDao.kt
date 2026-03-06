@@ -3,6 +3,7 @@ package com.oreki.stumpd.data.sync.firebase
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.google.gson.Gson
 import com.oreki.stumpd.domain.model.*
 import com.oreki.stumpd.data.sync.FirebaseConfig
 import kotlinx.coroutines.tasks.await
@@ -126,15 +127,21 @@ class FirestoreMatchDao(
     /**
      * Download all matches (GLOBAL - returns all matches from all users)
      */
-    suspend fun downloadAllMatches(): List<MatchHistory> {
+    /**
+     * Get all match document IDs from Firestore
+     */
+    suspend fun getMatchDocIds(): List<String> {
         val querySnapshot = firestore
             .collection(FirebaseConfig.COLLECTION_MATCHES)
             .get()
             .await()
-        
-        return querySnapshot.documents.mapNotNull { doc ->
+        return querySnapshot.documents.map { it.id }
+    }
+
+    suspend fun downloadAllMatches(): List<MatchHistory> {
+        return getMatchDocIds().mapNotNull { matchId ->
             try {
-                downloadCompleteMatch(doc.id)
+                downloadCompleteMatch(matchId)
             } catch (e: Exception) {
                 null
             }
@@ -181,6 +188,9 @@ class FirestoreMatchDao(
             .collection(FirebaseConfig.COLLECTION_MATCHES)
             .document(match.id)
         
+        // Serialize match settings to JSON if available
+        val matchSettingsJson = match.matchSettings?.let { Gson().toJson(it) }
+        
         val data = mapOf(
             "id" to match.id,
             "team1Name" to match.team1Name,
@@ -203,6 +213,7 @@ class FirestoreMatchDao(
             "playerOfTheMatchTeam" to match.playerOfTheMatchTeam,
             "playerOfTheMatchImpact" to match.playerOfTheMatchImpact,
             "playerOfTheMatchSummary" to match.playerOfTheMatchSummary,
+            "matchSettingsJson" to matchSettingsJson,
             FirebaseConfig.FIELD_OWNER_ID to ownerId, // Track who created the match
             FirebaseConfig.FIELD_UPDATED_AT to System.currentTimeMillis(),
             FirebaseConfig.FIELD_CREATED_AT to match.matchDate
@@ -262,13 +273,15 @@ class FirestoreMatchDao(
     }
     
     private suspend fun uploadPartnerships(match: MatchHistory) {
-        val allPartnerships = match.firstInningsPartnerships + match.secondInningsPartnerships
+        val firstInnings = match.firstInningsPartnerships.mapIndexed { i, p -> Triple(1, i, p) }
+        val secondInnings = match.secondInningsPartnerships.mapIndexed { i, p -> Triple(2, i, p) }
+        val allPartnerships = firstInnings + secondInnings
         
         if (allPartnerships.isEmpty()) return
         
         val batch = firestore.batch()
         
-        allPartnerships.forEachIndexed { index, partnership ->
+        allPartnerships.forEachIndexed { index, (innings, partnershipNum, partnership) ->
             val docRef = firestore
                 .collection(FirebaseConfig.COLLECTION_MATCHES)
                 .document(match.id)
@@ -283,6 +296,8 @@ class FirestoreMatchDao(
                 "batsman1Runs" to partnership.batsman1Runs,
                 "batsman2Runs" to partnership.batsman2Runs,
                 "isActive" to partnership.isActive,
+                "innings" to innings,
+                "partnershipNumber" to partnershipNum + 1,
                 "index" to index
             )
             
@@ -325,16 +340,34 @@ class FirestoreMatchDao(
     private suspend fun uploadDeliveries(match: MatchHistory) {
         if (match.allDeliveries.isEmpty()) return
         
+        // Delete old deliveries first to avoid orphaned docs from the old ID scheme
+        // (old scheme: delivery_{inning}_{over}_{ballInOver} — collided on NB/WD)
+        val existingDocs = firestore
+            .collection(FirebaseConfig.COLLECTION_MATCHES)
+            .document(match.id)
+            .collection("deliveries")
+            .get()
+            .await()
+        if (existingDocs.documents.isNotEmpty()) {
+            existingDocs.documents.chunked(500).forEach { chunk ->
+                val deleteBatch = firestore.batch()
+                chunk.forEach { deleteBatch.delete(it.reference) }
+                deleteBatch.commit().await()
+            }
+        }
+        
         // For large delivery lists, use batches of 500 (Firestore limit)
+        // Use global index for unique doc IDs (NB/WD share same ballInOver as the reattempt)
+        var globalIndex = 0
         match.allDeliveries.chunked(500).forEach { chunk ->
             val batch = firestore.batch()
             
-            chunk.forEachIndexed { index, delivery ->
+            chunk.forEach { delivery ->
                 val docRef = firestore
                     .collection(FirebaseConfig.COLLECTION_MATCHES)
                     .document(match.id)
                     .collection("deliveries")
-                    .document("delivery_${delivery.inning}_${delivery.over}_${delivery.ballInOver}")
+                    .document("delivery_${delivery.inning}_${globalIndex}")
                 
                 val data = mapOf(
                     "inning" to delivery.inning,
@@ -349,6 +382,7 @@ class FirestoreMatchDao(
                 )
                 
                 batch.set(docRef, data, SetOptions.merge())
+                globalIndex++
             }
             
             batch.commit().await()
@@ -528,6 +562,11 @@ class FirestoreMatchDao(
     }
     
     private fun firestoreToMatch(doc: DocumentSnapshot): MatchHistory {
+        // Deserialize match settings from JSON if available
+        val matchSettings = try {
+            doc.getString("matchSettingsJson")?.let { Gson().fromJson(it, MatchSettings::class.java) }
+        } catch (_: Exception) { null }
+        
         return MatchHistory(
             id = doc.getString("id") ?: doc.id,
             team1Name = doc.getString("team1Name") ?: "",
@@ -542,6 +581,7 @@ class FirestoreMatchDao(
             winnerTeam = doc.getString("winnerTeam") ?: "",
             winningMargin = doc.getString("winningMargin") ?: "",
             matchDate = doc.getLong("matchDate") ?: System.currentTimeMillis(),
+            matchSettings = matchSettings,
             groupId = doc.getString("groupId"),
             groupName = doc.getString("groupName"),
             shortPitch = doc.getBoolean("shortPitch") ?: false,

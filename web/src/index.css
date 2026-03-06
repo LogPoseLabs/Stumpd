@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+/* ==================== Custom CSS variables ==================== */
+:root {
+  --color-primary: #2563eb;
+  --color-primary-dark: #1d4ed8;
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-text: #0f172a;
+  --color-text-secondary: #64748b;
+  --color-border: #e2e8f0;
+  --color-success: #16a34a;
+  --color-danger: #dc2626;
+  --color-warning: #d97706;
+  --color-accent: #7c3aed;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-primary: #3b82f6;
+    --color-primary-dark: #2563eb;
+    --color-bg: #0f172a;
+    --color-surface: #1e293b;
+    --color-text: #f1f5f9;
+    --color-text-secondary: #94a3b8;
+    --color-border: #334155;
+    --color-success: #22c55e;
+    --color-danger: #ef4444;
+    --color-warning: #f59e0b;
+    --color-accent: #a78bfa;
+  }
+}
+
+/* ==================== Base styles ==================== */
+body {
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ==================== Scrollbar ==================== */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+/* ==================== Utility classes ==================== */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.badge-win { background: #dcfce7; color: #166534; }
+.badge-loss { background: #fee2e2; color: #991b1b; }
+
+@media (prefers-color-scheme: dark) {
+  .badge-win { background: #14532d; color: #86efac; }
+  .badge-loss { background: #7f1d1d; color: #fca5a5; }
+}
+
+/* ==================== Delivery ball indicators ==================== */
+.ball {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.ball-dot { background: #e2e8f0; color: #475569; }
+.ball-run { background: #dbeafe; color: #1d4ed8; }
+.ball-four { background: #dcfce7; color: #166534; }
+.ball-six { background: #fef3c7; color: #92400e; }
+.ball-wicket { background: #fee2e2; color: #991b1b; }
+.ball-wide { background: #f3e8ff; color: #6b21a8; }
+.ball-noball { background: #fff7ed; color: #9a3412; }
+
+@media (prefers-color-scheme: dark) {
+  .ball-dot { background: #334155; color: #94a3b8; }
+  .ball-run { background: #1e3a5f; color: #93c5fd; }
+  .ball-four { background: #14532d; color: #86efac; }
+  .ball-six { background: #451a03; color: #fcd34d; }
+  .ball-wicket { background: #7f1d1d; color: #fca5a5; }
+  .ball-wide { background: #3b0764; color: #d8b4fe; }
+  .ball-noball { background: #431407; color: #fdba74; }
+}
+
+/* ==================== Tab styles ==================== */
+.tab-active {
+  border-bottom: 2px solid var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+.tab-inactive {
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-secondary);
+}
+
+/* ==================== Animations ==================== */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.live-indicator {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* ==================== Skeleton loader ==================== */
+.skeleton {
+  background: linear-gradient(90deg, var(--color-border) 25%, transparent 50%, var(--color-border) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}

@@ -39,14 +39,23 @@ class MatchRepository(
             val matchEntity = convertMatchToEntity(match)
             val statsEntities = convertStatsToEntities(match)
             val impactEntities = convertImpactsToEntities(match)
+            val partnershipEntities = convertPartnershipsToEntities(match)
+            val fowEntities = convertFallOfWicketsToEntities(match)
             
             Log.d(TAG, "Saving match: ${match.team1Name} vs ${match.team2Name}, " +
                     "stats: ${statsEntities.size}, impacts: ${impactEntities.size}, " +
+                    "partnerships: ${partnershipEntities.size}, fow: ${fowEntities.size}, " +
                     "batting1: ${match.firstInningsBatting.size}, bowling1: ${match.firstInningsBowling.size}, " +
                     "batting2: ${match.secondInningsBatting.size}, bowling2: ${match.secondInningsBowling.size}")
 
             db.withTransaction {
                 db.matchDao().insertFullMatch(matchEntity, statsEntities, impactEntities)
+                if (partnershipEntities.isNotEmpty()) {
+                    db.partnershipDao().insertPartnerships(partnershipEntities)
+                }
+                if (fowEntities.isNotEmpty()) {
+                    db.fallOfWicketDao().insertFallOfWickets(fowEntities)
+                }
             }
             
             Log.d(TAG, "Saved match: ${match.team1Name} vs ${match.team2Name}")
@@ -54,6 +63,76 @@ class MatchRepository(
             Log.e(TAG, "Failed to save match: ${match.id}", e)
             throw e
         }
+    }
+
+    /**
+     * Converts partnerships from MatchHistory to PartnershipEntity list
+     */
+    private fun convertPartnershipsToEntities(match: MatchHistory): List<PartnershipEntity> {
+        val entities = mutableListOf<PartnershipEntity>()
+        match.firstInningsPartnerships.forEachIndexed { index, p ->
+            entities.add(PartnershipEntity(
+                matchId = match.id,
+                innings = 1,
+                partnershipNumber = index + 1,
+                batsman1Name = p.batsman1Name,
+                batsman2Name = p.batsman2Name,
+                runs = p.runs,
+                balls = p.balls,
+                batsman1Runs = p.batsman1Runs,
+                batsman2Runs = p.batsman2Runs,
+                isActive = p.isActive
+            ))
+        }
+        match.secondInningsPartnerships.forEachIndexed { index, p ->
+            entities.add(PartnershipEntity(
+                matchId = match.id,
+                innings = 2,
+                partnershipNumber = index + 1,
+                batsman1Name = p.batsman1Name,
+                batsman2Name = p.batsman2Name,
+                runs = p.runs,
+                balls = p.balls,
+                batsman1Runs = p.batsman1Runs,
+                batsman2Runs = p.batsman2Runs,
+                isActive = p.isActive
+            ))
+        }
+        return entities
+    }
+
+    /**
+     * Converts fall of wickets from MatchHistory to FallOfWicketEntity list
+     */
+    private fun convertFallOfWicketsToEntities(match: MatchHistory): List<FallOfWicketEntity> {
+        val entities = mutableListOf<FallOfWicketEntity>()
+        match.firstInningsFallOfWickets.forEach { fow ->
+            entities.add(FallOfWicketEntity(
+                matchId = match.id,
+                innings = 1,
+                wicketNumber = fow.wicketNumber,
+                batsmanName = fow.batsmanName,
+                runs = fow.runs,
+                overs = fow.overs,
+                dismissalType = fow.dismissalType,
+                bowlerName = fow.bowlerName,
+                fielderName = fow.fielderName
+            ))
+        }
+        match.secondInningsFallOfWickets.forEach { fow ->
+            entities.add(FallOfWicketEntity(
+                matchId = match.id,
+                innings = 2,
+                wicketNumber = fow.wicketNumber,
+                batsmanName = fow.batsmanName,
+                runs = fow.runs,
+                overs = fow.overs,
+                dismissalType = fow.dismissalType,
+                bowlerName = fow.bowlerName,
+                fielderName = fow.fielderName
+            ))
+        }
+        return entities
     }
 
     /**
@@ -661,6 +740,10 @@ class MatchRepository(
 
             matches.map { matchEntity ->
                 val stats = db.matchDao().statsForMatch(matchEntity.id)
+                val firstInningsPartnerships = db.partnershipDao().getPartnershipsForInnings(matchEntity.id, 1)
+                val secondInningsPartnerships = db.partnershipDao().getPartnershipsForInnings(matchEntity.id, 2)
+                val firstInningsFOW = db.fallOfWicketDao().getFallOfWicketsForInnings(matchEntity.id, 1)
+                val secondInningsFOW = db.fallOfWicketDao().getFallOfWicketsForInnings(matchEntity.id, 2)
 
                 if (stats.isNotEmpty()) {
                     val team1 = matchEntity.team1Name
@@ -684,10 +767,19 @@ class MatchRepository(
                         firstInningsBatting = firstBat,
                         firstInningsBowling = firstBowl,
                         secondInningsBatting = secondBat,
-                        secondInningsBowling = secondBowl
+                        secondInningsBowling = secondBowl,
+                        firstInningsPartnerships = firstInningsPartnerships.map { it.toPartnership() },
+                        secondInningsPartnerships = secondInningsPartnerships.map { it.toPartnership() },
+                        firstInningsFallOfWickets = firstInningsFOW.map { it.toFallOfWicket() },
+                        secondInningsFallOfWickets = secondInningsFOW.map { it.toFallOfWicket() }
                     )
                 } else {
-                    matchEntity.toDomain()
+                    matchEntity.toDomain().copy(
+                        firstInningsPartnerships = firstInningsPartnerships.map { it.toPartnership() },
+                        secondInningsPartnerships = secondInningsPartnerships.map { it.toPartnership() },
+                        firstInningsFallOfWickets = firstInningsFOW.map { it.toFallOfWicket() },
+                        secondInningsFallOfWickets = secondInningsFOW.map { it.toFallOfWicket() }
+                    )
                 }
             }
         } catch (e: Exception) {
@@ -841,6 +933,104 @@ class MatchRepository(
             }
         }
         return successCount
+    }
+
+    /**
+     * Recalculate maidens and wicket counts from delivery data for all matches.
+     * Fixes two historical bugs:
+     *   1. Maidens were never recorded (ballsInOver was reset before the check)
+     *   2. Wickets on the 6th ball of an over may have been missed in the innings count
+     * Updates the local Room DB; the next sync will push corrected data to Firestore.
+     */
+    suspend fun recalculateDerivedStats(): Int = withContext(Dispatchers.IO) {
+        var fixedCount = 0
+        try {
+            val allMatches = db.matchDao().list(null, 9999)
+            
+            for (matchEntity in allMatches) {
+                val deliveries = matchEntity.toDomain().allDeliveries
+                if (deliveries.isEmpty()) continue
+                
+                val stats = db.matchDao().statsForMatch(matchEntity.id).toMutableList()
+                if (stats.isEmpty()) continue
+                
+                var changed = false
+                
+                // --- Recalculate maidens per bowler ---
+                // Group deliveries by (innings, over, bowlerName)
+                // A maiden = a completed over (6 legal balls) with 0 runs conceded
+                val byInningsOver = deliveries.groupBy { Pair(it.inning, it.over) }
+                val bowlerMaidens = mutableMapOf<String, Int>() // "bowlerName_team_BOWL" -> maiden count
+                
+                for ((_, overDeliveries) in byInningsOver) {
+                    // Count legal deliveries (not wides or no-balls)
+                    val legalBalls = overDeliveries.filter { d ->
+                        val o = d.outcome.uppercase()
+                        !o.startsWith("WD") && !o.contains("WIDE") &&
+                        !o.startsWith("NB") && !o.contains("NO BALL") && !o.contains("NOBALL")
+                    }
+                    if (legalBalls.size < 6) continue // incomplete over
+                    
+                    // Check if any runs were conceded in this over (including extras)
+                    val totalRunsInOver = overDeliveries.sumOf { it.runs }
+                    if (totalRunsInOver == 0) {
+                        val bowlerName = overDeliveries.firstOrNull()?.bowlerName ?: continue
+                        val key = bowlerName.lowercase().trim()
+                        bowlerMaidens[key] = (bowlerMaidens[key] ?: 0) + 1
+                    }
+                }
+                
+                // Update bowling stats with recalculated maidens
+                for (i in stats.indices) {
+                    val stat = stats[i]
+                    if (stat.role != "BOWL") continue
+                    val key = stat.name.lowercase().trim()
+                    val newMaidens = bowlerMaidens[key] ?: 0
+                    if (newMaidens != stat.maidenOvers) {
+                        stats[i] = stat.copy(maidenOvers = newMaidens)
+                        changed = true
+                    }
+                }
+                
+                // --- Recalculate wicket counts per innings ---
+                val team1 = matchEntity.team1Name
+                val team2 = matchEntity.team2Name
+                val firstInningsWickets = stats.count { it.team == team1 && it.role == "BAT" && it.isOut }
+                val secondInningsWickets = stats.count { it.team == team2 && it.role == "BAT" && it.isOut }
+                
+                var matchChanged = false
+                if (firstInningsWickets != matchEntity.firstInningsWickets ||
+                    secondInningsWickets != matchEntity.secondInningsWickets) {
+                    val updatedMatch = matchEntity.copy(
+                        firstInningsWickets = firstInningsWickets,
+                        secondInningsWickets = secondInningsWickets
+                    )
+                    db.matchDao().update(updatedMatch)
+                    matchChanged = true
+                }
+                
+                // Persist updated stats
+                if (changed) {
+                    db.withTransaction {
+                        stats.forEach { stat ->
+                            db.matchDao().updateStat(stat)
+                        }
+                    }
+                }
+                
+                if (changed || matchChanged) {
+                    fixedCount++
+                    Log.d(TAG, "Recalculated stats for match ${matchEntity.id}: " +
+                        "maidens=${bowlerMaidens.values.sum()}, " +
+                        "wickets=${firstInningsWickets}/${secondInningsWickets}")
+                }
+            }
+            
+            Log.d(TAG, "Recalculation complete: $fixedCount matches updated")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to recalculate derived stats", e)
+        }
+        fixedCount
     }
 }
 

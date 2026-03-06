@@ -103,6 +103,14 @@ service cloud.firestore {
                    && get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid;
     }
     
+    // ========== GROUP SECRETS (claim code hash - defense in depth) ==========
+    // Separate top-level collection so the groups wildcard rule doesn't grant read access.
+    // Only the group owner can read or write secrets.
+    match /group_secrets/{groupId} {
+      allow read, write: if request.auth != null
+                         && get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid;
+    }
+    
     // ========== MATCHES ==========
     match /matches/{matchId} {
       allow read: if request.auth != null;

@@ -1,8 +1,13 @@
 package com.oreki.stumpd
 
+import android.content.Intent
 import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -17,6 +22,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.oreki.stumpd.data.sync.SyncState
+import com.oreki.stumpd.data.sync.firebase.EnhancedFirebaseAuthHelper
+import kotlinx.coroutines.launch
 
 /**
  * Enhanced Cloud Sync Activity
@@ -46,10 +53,32 @@ fun EnhancedCloudSyncScreen() {
     val context = LocalContext.current
     val app = context.applicationContext as StumpdApplication
     val syncManager = app.syncManager
+    val scope = rememberCoroutineScope()
 
     val syncState by syncManager.syncState.collectAsState()
     val syncMetadata by syncManager.syncMetadata.collectAsState()
 
+    val authHelper = remember { EnhancedFirebaseAuthHelper(context) }
+    var isGoogleLinked by remember { mutableStateOf(authHelper.isGoogleSignedIn()) }
+    var userEmail by remember { mutableStateOf(authHelper.getUserEmail()) }
+    var userName by remember { mutableStateOf(authHelper.getUserDisplayName()) }
+
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        scope.launch {
+            val signInResult = authHelper.handleGoogleSignInResult(result.data)
+            signInResult.onSuccess {
+                isGoogleLinked = true
+                userEmail = authHelper.getUserEmail()
+                userName = authHelper.getUserDisplayName()
+                Toast.makeText(context, "Signed in with Google", Toast.LENGTH_SHORT).show()
+            }.onFailure { e ->
+                Log.e("EnhancedCloudSync", "Google sign-in failed", e)
+                Toast.makeText(context, "Sign-in failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -71,6 +100,73 @@ fun EnhancedCloudSyncScreen() {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Google Account Card (Sign-in / account status)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isGoogleLinked)
+                        MaterialTheme.colorScheme.primaryContainer
+                    else
+                        MaterialTheme.colorScheme.errorContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isGoogleLinked) Icons.Default.CheckCircle else Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = if (isGoogleLinked)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            text = if (isGoogleLinked) "Google Account Linked" else "Account Not Secured",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    if (isGoogleLinked) {
+                        Text(
+                            text = "$userName ($userEmail)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            text = "Your data is protected. You can recover your groups and matches by signing in with this Google account on any device.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
+                    } else {
+                        Text(
+                            text = "Your data is tied to this device only. If you reinstall the app or clear data, you will lose access to your groups and matches.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Button(
+                            onClick = {
+                                googleSignInLauncher.launch(authHelper.getGoogleSignInIntent())
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Icon(Icons.Default.AccountCircle, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Sign in with Google")
+                        }
+                    }
+                }
+            }
+
             // Device Info Card
             Card(
                 modifier = Modifier.fillMaxWidth(),

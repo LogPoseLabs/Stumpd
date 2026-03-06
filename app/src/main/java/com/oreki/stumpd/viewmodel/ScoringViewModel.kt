@@ -575,8 +575,10 @@ class ScoringViewModel(
                 completedBowlersInnings2 = completedBowlersInnings2.map { it.copy() },
             )
         )
-        if (!com.oreki.stumpd.utils.FeatureFlags.isUnlimitedUndoEnabled(context)) {
-            if (deliveryHistory.size > 2) deliveryHistory.removeAt(0)
+        // Only trim history when unlimited undo is off (check both in-memory and prefs so toggling takes effect immediately)
+        val unlimitedOn = unlimitedUndoEnabled || com.oreki.stumpd.utils.FeatureFlags.isUnlimitedUndoEnabled(context)
+        if (!unlimitedOn && deliveryHistory.size > 2) {
+            deliveryHistory.removeAt(0)
         }
     }
 
@@ -801,9 +803,9 @@ class ScoringViewModel(
     /** Call AFTER incrementing ballsInOver. Handles over completion. */
     fun handleOverCompletionIfNeeded() {
         if (ballsInOver == 6) {
+            recordCurrentBowlerIfAny()
             currentOver += 1
             ballsInOver = 0
-            recordCurrentBowlerIfAny()
             previousBowlerName = bowler?.name
             bowlerIndex = null
             currentBowlerSpell = 0
@@ -935,9 +937,9 @@ class ScoringViewModel(
                 addDelivery(if (extraType == ExtraType.BYE) "B+$totalRuns" else "Lb+$totalRuns", runs = totalRuns)
                 ballsInOver += 1
                 if (ballsInOver == 6) {
+                    recordCurrentBowlerIfAny()
                     currentOver += 1
                     ballsInOver = 0
-                    recordCurrentBowlerIfAny()
                     previousBowlerName = bowler?.name
                     bowlerIndex = null
                     currentBowlerSpell = 0

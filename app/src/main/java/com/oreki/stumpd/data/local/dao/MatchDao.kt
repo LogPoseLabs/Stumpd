@@ -61,4 +61,10 @@ interface MatchDao {
     
     @Query("UPDATE player_match_stats SET name = :newName WHERE playerId = :playerId")
     suspend fun updatePlayerNameInStats(playerId: String, newName: String): Int
+
+    @Update
+    suspend fun update(match: MatchEntity)
+
+    @Update
+    suspend fun updateStat(stat: PlayerMatchStatsEntity)
 }

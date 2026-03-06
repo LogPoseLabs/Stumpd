@@ -327,15 +327,18 @@ fun GroupManagementScreen() {
         )
     }
     
-    // Claim Ownership Dialog (for non-owners to claim with recovery code)
+    // Claim Ownership Dialog (for non-owners to claim with recovery code or Google)
     showClaimDialog?.let { groupId ->
         val groupName = groups.find { it.id == groupId }?.name ?: "Group"
+        val authHelper = remember { com.oreki.stumpd.data.sync.firebase.EnhancedFirebaseAuthHelper(context) }
+        val isGoogleLinked = authHelper.isGoogleSignedIn()
+
         ClaimOwnershipDialog(
             groupName = groupName,
             onDismiss = { showClaimDialog = null },
+            isGoogleLinked = isGoogleLinked,
             onClaim = { recoveryCode ->
                 scope.launch {
-                    // Get current user ID
                     val app = context.applicationContext as StumpdApplication
                     val userId = app.syncManager.getUserId()
                     
@@ -352,7 +355,6 @@ fun GroupManagementScreen() {
                         }
                         
                         if (success) {
-                            // Update local ownership via repository
                             withContext(Dispatchers.IO) {
                                 groupRepo.claimLocalOwnership(groupId, normalizedCode)
                             }
@@ -367,7 +369,41 @@ fun GroupManagementScreen() {
                     
                     showClaimDialog = null
                 }
-            }
+            },
+            onClaimWithGoogle = if (isGoogleLinked) {
+                {
+                    scope.launch {
+                        val app = context.applicationContext as StumpdApplication
+                        val userId = app.syncManager.getUserId()
+
+                        if (userId == null) {
+                            snackbarMessage = "Please wait for sync to initialize..."
+                            return@launch
+                        }
+
+                        try {
+                            val firestoreGroupDao = FirestoreGroupDao()
+                            val success = withContext(Dispatchers.IO) {
+                                firestoreGroupDao.claimOwnershipWithGoogle(groupId, userId)
+                            }
+
+                            if (success) {
+                                withContext(Dispatchers.IO) {
+                                    groupRepo.claimLocalOwnership(groupId, "")
+                                }
+                                snackbarMessage = "Ownership reclaimed via Google for \"$groupName\"!"
+                                refreshTrigger++
+                            } else {
+                                snackbarMessage = "Google account does not match the original owner."
+                            }
+                        } catch (e: Exception) {
+                            snackbarMessage = "Failed to claim ownership: ${e.message}"
+                        }
+
+                        showClaimDialog = null
+                    }
+                }
+            } else null
         )
     }
 }
@@ -1096,13 +1132,15 @@ private fun RecoveryCodeDialog(
 }
 
 /**
- * Dialog for non-owners to claim ownership with a recovery code
+ * Dialog for non-owners to claim ownership with a recovery code or Google account
  */
 @Composable
 private fun ClaimOwnershipDialog(
     groupName: String,
     onDismiss: () -> Unit,
-    onClaim: (String) -> Unit
+    onClaim: (String) -> Unit,
+    onClaimWithGoogle: (() -> Unit)? = null,
+    isGoogleLinked: Boolean = false
 ) {
     var code by remember { mutableStateOf("") }
     
@@ -1130,7 +1168,6 @@ private fun ClaimOwnershipDialog(
                 OutlinedTextField(
                     value = code,
                     onValueChange = { 
-                        // Allow alphanumeric and dashes, max 14 characters (12 + 2 dashes)
                         val filtered = it.filter { c -> c.isLetterOrDigit() || c == '-' }
                             .take(14)
                             .uppercase()
@@ -1147,6 +1184,23 @@ private fun ClaimOwnershipDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                if (isGoogleLinked && onClaimWithGoogle != null) {
+                    HorizontalDivider()
+                    Text(
+                        "Or reclaim with your Google account if you were the original owner:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedButton(
+                        onClick = onClaimWithGoogle,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Reclaim with Google")
+                    }
+                }
             }
         },
         confirmButton = {

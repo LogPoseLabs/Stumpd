@@ -1,6 +1,7 @@
 package com.oreki.stumpd.data.sync.firebase
 
 import android.util.Log
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -10,6 +11,7 @@ import com.oreki.stumpd.data.local.entity.GroupEntity
 import com.oreki.stumpd.data.local.entity.GroupMemberEntity
 import com.oreki.stumpd.data.local.entity.GroupUnavailablePlayerEntity
 import com.oreki.stumpd.data.sync.FirebaseConfig
+import com.oreki.stumpd.data.util.ClaimCodeUtils
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -24,6 +26,7 @@ class FirestoreGroupDao(
 
     companion object {
         private const val TAG = "FirestoreGroupDao"
+        private const val COLLECTION_GROUP_SECRETS = "group_secrets"
     }
 
     /**
@@ -52,18 +55,41 @@ class FirestoreGroupDao(
         // Ensure owner is always in memberDeviceIds
         val memberDeviceIds = (existingMemberDeviceIds + ownerId).distinct()
 
+        // Hash the claim code (never store plaintext in Firestore)
+        val claimCodeHash = group.claimCode?.let { ClaimCodeUtils.hashClaimCode(it, group.id) }
+
+        // Write-once fields: only set if not already present in Firestore
+        val existingClaimCodeHash = existingDoc.getString("claimCodeHash")
+        val existingEmailHash = existingDoc.getString("ownerEmailHash")
+
         val data = mutableMapOf<String, Any?>(
             "id" to group.id,
             "name" to group.name,
             "inviteCode" to group.inviteCode,
-            "claimCode" to group.claimCode, // Secret recovery code for ownership transfer
             "isOwner" to group.isOwner,
-            "memberIds" to members.map { it.playerId }, // Player IDs (for cricket players)
-            "memberDeviceIds" to memberDeviceIds, // Device IDs (for access control)
+            "memberIds" to members.map { it.playerId },
+            "memberDeviceIds" to memberDeviceIds,
             "unavailablePlayerIds" to unavailable.map { it.playerId },
             FirebaseConfig.FIELD_OWNER_ID to ownerId,
             FirebaseConfig.FIELD_UPDATED_AT to System.currentTimeMillis()
         )
+
+        // claimCodeHash: write-once — only set if Firestore doesn't already have one
+        if (existingClaimCodeHash == null && claimCodeHash != null) {
+            data["claimCodeHash"] = claimCodeHash
+        }
+
+        // ownerEmailHash: write-once — bind Gmail when the owner first links Google
+        if (existingEmailHash == null) {
+            val email = FirebaseAuth.getInstance().currentUser?.email
+            if (email != null) {
+                data["ownerEmailHash"] = ClaimCodeUtils.hashEmail(email)
+                Log.d(TAG, "Binding ownerEmailHash for group ${group.name}")
+            }
+        }
+
+        // Remove old plaintext claimCode field if it existed (migration cleanup)
+        data["claimCode"] = FieldValue.delete()
 
         // Add defaults if present
         defaults?.let {
@@ -77,6 +103,24 @@ class FirestoreGroupDao(
 
         docRef.set(data, SetOptions.merge()).await()
         Log.d(TAG, "Uploaded group ${group.name} with ${memberDeviceIds.size} device members")
+
+        // Also store hash in restricted group_secrets collection (owner-only read, defense in depth)
+        // Only write if claimCodeHash was newly set (write-once)
+        if (existingClaimCodeHash == null && claimCodeHash != null) {
+            try {
+                firestore
+                    .collection(COLLECTION_GROUP_SECRETS)
+                    .document(group.id)
+                    .set(
+                        mapOf("claimCodeHash" to claimCodeHash),
+                        SetOptions.merge()
+                    )
+                    .await()
+                Log.d(TAG, "Uploaded claim code hash to group_secrets for ${group.id}")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to write group_secrets (non-critical): ${e.message}")
+            }
+        }
     }
 
     /**
@@ -158,12 +202,13 @@ class FirestoreGroupDao(
     }
 
     /**
-     * Claim ownership of an orphaned group (owner device lost/deleted)
-     * This requires special handling - a member can claim if they have the secret claim code
+     * Claim ownership of an orphaned group (owner device lost/deleted).
+     * Accepts EITHER a valid recovery code OR a matching Google account.
+     * Also updates ownerId on all matches belonging to this group.
      *
      * @param groupId The group to claim
-     * @param claimCode A special code that was generated when the group was created
-     * @param newOwnerId The device ID claiming ownership
+     * @param claimCode Recovery code (can be empty if using Google path)
+     * @param newOwnerId The user ID claiming ownership
      * @return true if successful
      */
     suspend fun claimOwnership(groupId: String, claimCode: String, newOwnerId: String): Boolean {
@@ -177,13 +222,34 @@ class FirestoreGroupDao(
             return false
         }
 
-        val storedClaimCode = doc.getString("claimCode")
-        if (storedClaimCode == null || storedClaimCode != claimCode.uppercase()) {
-            Log.w(TAG, "Cannot claim ownership - invalid claim code")
+        // Path A: Verify recovery code
+        var isValid = false
+        if (claimCode.isNotBlank()) {
+            val storedHash = doc.getString("claimCodeHash")
+            isValid = if (storedHash != null) {
+                ClaimCodeUtils.verifyClaimCode(claimCode, storedHash, groupId)
+            } else {
+                val storedClaimCode = doc.getString("claimCode")
+                storedClaimCode != null && storedClaimCode == claimCode.uppercase()
+            }
+        }
+
+        // Path B: Verify matching Google account via ownerEmailHash
+        if (!isValid) {
+            val storedEmailHash = doc.getString("ownerEmailHash")
+            val currentEmail = FirebaseAuth.getInstance().currentUser?.email
+            if (storedEmailHash != null && currentEmail != null) {
+                isValid = ClaimCodeUtils.verifyEmailHash(currentEmail, storedEmailHash)
+                if (isValid) Log.d(TAG, "Ownership verified via Google email match")
+            }
+        }
+
+        if (!isValid) {
+            Log.w(TAG, "Cannot claim ownership - neither recovery code nor Google email matched")
             return false
         }
 
-        // Update owner and ensure claimer is in memberDeviceIds
+        // Update group owner and ensure claimer is in memberDeviceIds
         docRef.update(
             mapOf(
                 FirebaseConfig.FIELD_OWNER_ID to newOwnerId,
@@ -191,8 +257,31 @@ class FirestoreGroupDao(
             )
         ).await()
 
+        // Also update ownerId on all matches belonging to this group
+        try {
+            val matchesQuery = firestore
+                .collection(FirebaseConfig.COLLECTION_MATCHES)
+                .whereEqualTo("groupId", groupId)
+                .get().await()
+
+            matchesQuery.documents.forEach { matchDoc ->
+                matchDoc.reference.update(FirebaseConfig.FIELD_OWNER_ID, newOwnerId).await()
+            }
+            Log.d(TAG, "Updated ownerId on ${matchesQuery.size()} matches for group $groupId")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to update match ownerIds (group claim succeeded): ${e.message}")
+        }
+
         Log.d(TAG, "Claimed ownership of $groupId by $newOwnerId")
         return true
+    }
+
+    /**
+     * Claim ownership using only Google account (no recovery code needed).
+     * Convenience wrapper for the dual-path claim.
+     */
+    suspend fun claimOwnershipWithGoogle(groupId: String, newOwnerId: String): Boolean {
+        return claimOwnership(groupId, "", newOwnerId)
     }
 
     /**
@@ -345,11 +434,13 @@ class FirestoreGroupDao(
             false // Default to non-owner if we can't determine
         }
 
+        // claimCode is NEVER read from Firestore (it's stored as a hash there).
+        // The plaintext claim code lives only in the local Room database on the owner's device.
         val groupEntity = GroupEntity(
             id = doc.getString("id") ?: doc.id,
             name = doc.getString("name") ?: "",
             inviteCode = doc.getString("inviteCode"),
-            claimCode = if (isOwner) doc.getString("claimCode") else null, // Only owner gets claim code
+            claimCode = null, // Plaintext is local-only; Firestore only has the hash
             isOwner = isOwner
         )
 

@@ -611,7 +611,7 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
                 Column {
                     Text(
                         if (vm.pendingUnlimitedUndoValue) {
-                            "Enable unlimited undo to undo all the way back to match start. This is useful for correcting errors but should only be used by the match master."
+                            "Enable unlimited undo to undo all the way back to match start. This is useful for correcting errors but should only be used by the match master.\n\nNote: Only deliveries from this point onward can be undone; earlier ones were not stored."
                         } else {
                             "Lock undo back to 2 balls only."
                         },
@@ -648,8 +648,8 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
                             errorMessage = null
                             Toast.makeText(
                                 context,
-                                if (vm.pendingUnlimitedUndoValue) "✅ Unlimited undo enabled" else "✅ Undo locked to 2 balls",
-                                Toast.LENGTH_SHORT
+                                if (vm.pendingUnlimitedUndoValue) "✅ Unlimited undo on — you can undo back to the start from now on" else "✅ Undo locked to 2 balls",
+                                Toast.LENGTH_LONG
                             ).show()
                         } else if (password == savedPassword) {
                             com.oreki.stumpd.utils.FeatureFlags.setUnlimitedUndoEnabled(context, vm.pendingUnlimitedUndoValue)
@@ -659,8 +659,8 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
                             errorMessage = null
                             Toast.makeText(
                                 context,
-                                if (vm.pendingUnlimitedUndoValue) "✅ Unlimited undo enabled" else "✅ Undo locked to 2 balls",
-                                Toast.LENGTH_SHORT
+                                if (vm.pendingUnlimitedUndoValue) "✅ Unlimited undo on — you can undo back to the start from now on" else "✅ Undo locked to 2 balls",
+                                Toast.LENGTH_LONG
                             ).show()
                         } else {
                             errorMessage = "❌ Incorrect password"

@@ -101,6 +101,17 @@ class CompleteSyncManager(
             Log.w(TAG, "Failed to authenticate - sync will be unavailable")
         }
 
+        // Recalculate maidens and wicket counts from delivery data (fixes historical bugs)
+        // Runs in background so local DB is corrected even without doing a full sync
+        scope.launch {
+            try {
+                val fixed = matchRepository.recalculateDerivedStats()
+                if (fixed > 0) Log.d(TAG, "Recalculated derived stats for $fixed matches on init")
+            } catch (e: Exception) {
+                Log.e(TAG, "Recalculate derived stats on init failed", e)
+            }
+        }
+
         // Monitor network state and sync changes incrementally when online
         // Only syncs data modified since last sync to save Firebase quota
         if (isAutoSyncEnabled()) {
@@ -330,7 +341,7 @@ class CompleteSyncManager(
             return SyncResult.Offline
         }
 
-        _syncState.value = SyncState.Syncing(0, 6, "Preparing to sync...")
+        _syncState.value = SyncState.Syncing(0, 7, "Preparing to sync...")
         _toastEvents.trySend("Starting full sync...")
 
         return try {
@@ -339,15 +350,26 @@ class CompleteSyncManager(
             var totalSynced = 0
             val errors = mutableListOf<String>()
 
+            // 0. Recalculate derived stats (maidens, wicket counts) from delivery data
+            Log.d(TAG, "Step 0/7: Recalculating derived stats...")
+            _syncState.value = SyncState.Syncing(0, 7, "Recalculating stats...", 0, 0)
+            try {
+                val fixed = matchRepository.recalculateDerivedStats()
+                Log.d(TAG, "Recalculated stats: $fixed matches updated")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to recalculate derived stats", e)
+            }
+            _syncState.value = SyncState.Syncing(1, 7, "Stats recalculated", 0, 0)
+
             // 1. Sync all matches (with stats included for proper subcollection upload)
-            Log.d(TAG, "Step 1/6: Syncing matches...")
-            _syncState.value = SyncState.Syncing(0, 6, "Uploading matches...", 0, 0)
+            Log.d(TAG, "Step 1/7: Syncing matches...")
+            _syncState.value = SyncState.Syncing(1, 7, "Uploading matches...", 0, 0)
             try {
                 val matches = matchRepository.getAllMatchesWithStats()
                 Log.d(TAG, "Syncing ${matches.size} matches...")
 
                 matches.forEachIndexed { index, match ->
-                    _syncState.value = SyncState.Syncing(0, 6, "Uploading match ${index + 1}/${matches.size}...", index + 1, matches.size)
+                    _syncState.value = SyncState.Syncing(1, 7, "Uploading match ${index + 1}/${matches.size}...", index + 1, matches.size)
                     try {
                         firestoreMatchDao.uploadCompleteMatch(userId, match)
                         totalSynced++
@@ -362,15 +384,15 @@ class CompleteSyncManager(
                 errors.add("Failed to fetch matches: ${e.message}")
                 Log.e(TAG, "Failed to fetch matches", e)
             }
-            _syncState.value = SyncState.Syncing(1, 6, "Matches uploaded", 0, 0)
+            _syncState.value = SyncState.Syncing(2, 7, "Matches uploaded", 0, 0)
 
             // 2. Sync all players
-            Log.d(TAG, "Step 2/6: Syncing players...")
-            _syncState.value = SyncState.Syncing(1, 6, "Uploading players...", 0, 0)
+            Log.d(TAG, "Step 2/7: Syncing players...")
+            _syncState.value = SyncState.Syncing(2, 7, "Uploading players...", 0, 0)
             try {
                 val players = db.playerDao().list()
                 Log.d(TAG, "Syncing ${players.size} players...")
-                _syncState.value = SyncState.Syncing(1, 6, "Uploading ${players.size} players...", 1, 1)
+                _syncState.value = SyncState.Syncing(2, 7, "Uploading ${players.size} players...", 1, 1)
 
                 firestorePlayerDao.uploadPlayers(userId, players)
                 totalSynced += players.size
@@ -380,11 +402,11 @@ class CompleteSyncManager(
                 errors.add("Failed to sync players: ${e.message}")
                 Log.e(TAG, "Failed to sync players", e)
             }
-            _syncState.value = SyncState.Syncing(2, 6, "Players uploaded", 0, 0)
+            _syncState.value = SyncState.Syncing(3, 7, "Players uploaded", 0, 0)
 
             // 3. Sync owned groups with their members and settings
-            Log.d(TAG, "Step 3/6: Syncing groups...")
-            _syncState.value = SyncState.Syncing(2, 6, "Uploading groups...", 0, 0)
+            Log.d(TAG, "Step 3/7: Syncing groups...")
+            _syncState.value = SyncState.Syncing(3, 7, "Uploading groups...", 0, 0)
             try {
                 val groups = db.groupDao().getAllGroups().filter { it.isOwner }
                 Log.d(TAG, "Syncing ${groups.size} owned groups...")
@@ -393,7 +415,7 @@ class CompleteSyncManager(
                 val allUnavailable = db.groupDao().getAllGroupUnavailablePlayers()
 
                 groups.forEachIndexed { index, group ->
-                    _syncState.value = SyncState.Syncing(2, 6, "Uploading group ${index + 1}/${groups.size}...", index + 1, groups.size)
+                    _syncState.value = SyncState.Syncing(3, 7, "Uploading group ${index + 1}/${groups.size}...", index + 1, groups.size)
                     try {
                         val members = allMembers.filter { it.groupId == group.id }
                         val unavailable = allUnavailable.filter { it.groupId == group.id }
@@ -412,15 +434,15 @@ class CompleteSyncManager(
                 errors.add("Failed to sync groups: ${e.message}")
                 Log.e(TAG, "Failed to sync groups", e)
             }
-            _syncState.value = SyncState.Syncing(3, 6, "Groups uploaded", 0, 0)
+            _syncState.value = SyncState.Syncing(4, 7, "Groups uploaded", 0, 0)
 
             // 4. Sync in-progress matches (ongoing games)
-            Log.d(TAG, "Step 4/6: Syncing in-progress matches...")
-            _syncState.value = SyncState.Syncing(3, 6, "Uploading live match data...", 0, 1)
+            Log.d(TAG, "Step 4/7: Syncing in-progress matches...")
+            _syncState.value = SyncState.Syncing(4, 7, "Uploading live match data...", 0, 1)
             try {
                 val inProgressMatch = db.inProgressMatchDao().getLatest()
                 if (inProgressMatch != null) {
-                    _syncState.value = SyncState.Syncing(3, 6, "Uploading live match...", 1, 1)
+                    _syncState.value = SyncState.Syncing(4, 7, "Uploading live match...", 1, 1)
                     Log.d(TAG, "Syncing in-progress match...")
                     firestoreInProgressMatchDao.uploadInProgressMatch(userId, inProgressMatch)
                     totalSynced++
@@ -430,15 +452,15 @@ class CompleteSyncManager(
                 errors.add("Failed to sync in-progress match: ${e.message}")
                 Log.e(TAG, "Failed to sync in-progress match", e)
             }
-            _syncState.value = SyncState.Syncing(4, 6, "Live match data uploaded", 0, 0)
+            _syncState.value = SyncState.Syncing(5, 7, "Live match data uploaded", 0, 0)
 
             // 5. Sync user preferences (app settings)
-            Log.d(TAG, "Step 5/6: Syncing preferences...")
-            _syncState.value = SyncState.Syncing(4, 6, "Uploading preferences...", 0, 0)
+            Log.d(TAG, "Step 5/7: Syncing preferences...")
+            _syncState.value = SyncState.Syncing(5, 7, "Uploading preferences...", 0, 0)
             try {
                 val preferences = db.userPreferencesDao().getAll()
                 if (preferences.isNotEmpty()) {
-                    _syncState.value = SyncState.Syncing(4, 6, "Uploading ${preferences.size} preferences...", 1, 1)
+                    _syncState.value = SyncState.Syncing(5, 7, "Uploading ${preferences.size} preferences...", 1, 1)
                     Log.d(TAG, "Syncing ${preferences.size} user preferences...")
                     firestoreUserPreferencesDao.uploadPreferences(userId, preferences)
                     totalSynced += preferences.size
@@ -448,15 +470,15 @@ class CompleteSyncManager(
                 errors.add("Failed to sync preferences: ${e.message}")
                 Log.e(TAG, "Failed to sync preferences", e)
             }
-            _syncState.value = SyncState.Syncing(5, 6, "Preferences uploaded", 0, 0)
+            _syncState.value = SyncState.Syncing(6, 7, "Preferences uploaded", 0, 0)
 
             // 6. Sync group last teams configurations
-            Log.d(TAG, "Step 6/6: Syncing group last teams...")
-            _syncState.value = SyncState.Syncing(5, 6, "Uploading team configurations...", 0, 0)
+            Log.d(TAG, "Step 6/7: Syncing group last teams...")
+            _syncState.value = SyncState.Syncing(6, 7, "Uploading team configurations...", 0, 0)
             try {
                 val groupLastTeams = db.groupDao().getAllGroupLastTeams()
                 if (groupLastTeams.isNotEmpty()) {
-                    _syncState.value = SyncState.Syncing(5, 6, "Uploading ${groupLastTeams.size} team configs...", 1, 1)
+                    _syncState.value = SyncState.Syncing(6, 7, "Uploading ${groupLastTeams.size} team configs...", 1, 1)
                     Log.d(TAG, "Syncing ${groupLastTeams.size} group last teams configs...")
                     firestoreGroupLastTeamsDao.uploadGroupLastTeams(userId, groupLastTeams)
                     totalSynced += groupLastTeams.size
@@ -466,7 +488,7 @@ class CompleteSyncManager(
                 errors.add("Failed to sync group last teams: ${e.message}")
                 Log.e(TAG, "Failed to sync group last teams", e)
             }
-            _syncState.value = SyncState.Syncing(6, 6, "Finalizing...", 0, 0)
+            _syncState.value = SyncState.Syncing(7, 7, "Finalizing...", 0, 0)
 
             // Update metadata and timestamps
             val currentTime = System.currentTimeMillis()
@@ -548,19 +570,22 @@ class CompleteSyncManager(
 
             var totalDownloaded = 0
 
-            // 1. Download all matches
+            // 1. Download all matches (fetch IDs first, then download each with progress)
             Log.d(TAG, "Step 1/6: Downloading matches...")
-            _syncState.value = SyncState.Syncing(0, 6, "Downloading matches...", 0, 0)
-            val matches = firestoreMatchDao.downloadAllMatches(userId)
-            Log.d(TAG, "Step 1/6: Downloaded ${matches.size} matches from cloud")
+            _syncState.value = SyncState.Syncing(0, 6, "Fetching match list...", 0, 0)
+            val matchIds = firestoreMatchDao.getMatchDocIds()
+            Log.d(TAG, "Step 1/6: Found ${matchIds.size} matches in cloud")
 
-            matches.forEachIndexed { index, match ->
-                _syncState.value = SyncState.Syncing(0, 6, "Saving match ${index + 1}/${matches.size}...", index + 1, matches.size)
+            matchIds.forEachIndexed { index, matchId ->
+                _syncState.value = SyncState.Syncing(0, 6, "Downloading match ${index + 1}/${matchIds.size}...", index + 1, matchIds.size)
                 try {
-                    matchRepository.saveMatch(match)
-                    totalDownloaded++
+                    val match = firestoreMatchDao.downloadCompleteMatch(matchId)
+                    if (match != null) {
+                        matchRepository.saveMatch(match)
+                        totalDownloaded++
+                    }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to save match locally: ${match.id}", e)
+                    Log.e(TAG, "Failed to download/save match: $matchId", e)
                 }
             }
             _syncState.value = SyncState.Syncing(1, 6, "Matches downloaded", 0, 0)
@@ -591,14 +616,11 @@ class CompleteSyncManager(
             groupsData.forEachIndexed { index, groupData ->
                 _syncState.value = SyncState.Syncing(2, 6, "Saving group ${index + 1}/${groupsData.size}...", index + 1, groupsData.size)
                 try {
-                    // Preserve local claim code if download didn't include one
-                    val groupToSave = if (groupData.group.claimCode == null) {
-                        val existingLocal = db.groupDao().getGroupById(groupData.group.id)
-                        if (existingLocal?.claimCode != null) {
-                            groupData.group.copy(claimCode = existingLocal.claimCode)
-                        } else {
-                            groupData.group
-                        }
+                    // Claim code is NEVER in the Firestore download (only a hash is stored there).
+                    // Always preserve the local plaintext claim code from Room DB.
+                    val existingLocal = db.groupDao().getGroupById(groupData.group.id)
+                    val groupToSave = if (existingLocal?.claimCode != null) {
+                        groupData.group.copy(claimCode = existingLocal.claimCode)
                     } else {
                         groupData.group
                     }

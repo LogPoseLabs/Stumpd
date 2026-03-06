@@ -194,7 +194,7 @@ fun AllPlayersStatsScreen(
             "Duck %" -> players.filter { it.totalMatches > 0 }.sortedByDescending { it.duckPercentage }
             "Boundary %" -> players.filter { it.totalRuns > 0 }.sortedByDescending { it.boundaryPercentage }
             "Dot Ball %" -> players.filter { it.totalBallsFaced > 0 }.sortedBy { it.dotBallPercentage } // Lower is better
-            "Maidens" -> players.filter { it.totalMaidenOvers > 0 }.sortedByDescending { it.maidenOverPercentage }
+            "Maidens" -> players.filter { it.totalMaidenOvers > 0 }.sortedByDescending { it.totalMaidenOvers }
             "Pressure Index" -> players.filter { it.totalBallsBowled > 0 }.sortedByDescending { it.pressureIndex }
             "Consistency" -> players.filter { it.matchPerformances.size >= 2 }.sortedBy { it.consistency } // Lower is better
             "Batting Ranking" -> players
