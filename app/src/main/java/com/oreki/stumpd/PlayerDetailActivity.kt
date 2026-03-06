@@ -517,19 +517,21 @@ fun PlayerDetailScreen(
                 DateRangePicker(state = dateRangeState)
             },
             confirmButton = {
-                TextButton(onClick = {
-                    val startMillis = dateRangeState.selectedStartDateMillis
-                    val endMillis = dateRangeState.selectedEndDateMillis
-                    if (startMillis != null && endMillis != null) {
-                        val startLocal = Instant.ofEpochMilli(startMillis).atZone(ZoneId.systemDefault()).toLocalDate()
-                        val endLocal = Instant.ofEpochMilli(endMillis).atZone(ZoneId.systemDefault()).toLocalDate()
-                        // store as ISO for parsing later
-                        selectedFilter = "CustomRange:${startLocal}|${endLocal}"
-                    }
-                    showDateRangePicker = false
-                    showFilterDialog = false
-                }) {
-                    Text("Apply")
+                TextButton(
+                    onClick = {
+                        val startMillis = dateRangeState.selectedStartDateMillis
+                        val endMillis = dateRangeState.selectedEndDateMillis
+                        if (startMillis != null && endMillis != null) {
+                            val startLocal = Instant.ofEpochMilli(startMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+                            val endLocal = Instant.ofEpochMilli(endMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+                            selectedFilter = "CustomRange:${startLocal}|${endLocal}"
+                        }
+                        showDateRangePicker = false
+                        showFilterDialog = false
+                    },
+                    enabled = dateRangeState.selectedStartDateMillis != null && dateRangeState.selectedEndDateMillis != null
+                ) {
+                    Text("OK")
                 }
             },
             dismissButton = {

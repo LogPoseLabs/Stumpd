@@ -512,10 +512,10 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                                 vm.onDateRangeSelected(startMillis, endMillis)
                             }
                         },
-                        enabled = dateRangeState.selectedStartDateMillis != null && 
+                        enabled = dateRangeState.selectedStartDateMillis != null &&
                                   dateRangeState.selectedEndDateMillis != null
                     ) {
-                        Text("Apply Range")
+                        Text("OK")
                     }
                 },
                 dismissButton = {

@@ -31,6 +31,7 @@ import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.history.rememberPlayerRepository
 import com.oreki.stumpd.data.local.entity.GroupEntity
+import com.oreki.stumpd.data.manager.ScoringAccessManager
 import com.oreki.stumpd.data.update.AppUpdateManager
 import com.oreki.stumpd.data.update.UpdateInfo
 import com.oreki.stumpd.data.update.UpdateState
@@ -93,6 +94,8 @@ fun MainScreen() {
     // Join Group dialog state
     var showJoinDialog by remember { mutableStateOf(false) }
     var joinMessage by remember { mutableStateOf<String?>(null) }
+
+    val scoringAccessManager = remember { ScoringAccessManager(context) }
 
     // OTA Update state
     val updateManager = remember { AppUpdateManager(context) }
@@ -321,8 +324,11 @@ fun MainScreen() {
 
     Scaffold(
         floatingActionButton = {
-            // Only show Start Match when the selected group is owned by this user
-            if (selectedGroup?.isOwner == true) {
+            // Show Start Match when the selected group is owned by this user or has temporary scoring access
+            val canStartMatch = selectedGroup != null && (
+                selectedGroup!!.isOwner || scoringAccessManager.hasTemporaryScoringAccess(selectedGroup!!.id)
+            )
+            if (canStartMatch) {
                 ExtendedFloatingActionButton(
                     onClick = {
                         val intent = Intent(context, TeamSetupActivity::class.java)

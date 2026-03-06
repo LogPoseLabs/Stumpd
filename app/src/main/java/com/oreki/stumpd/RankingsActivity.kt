@@ -96,6 +96,7 @@ fun RankingsScreen() {
     var showPitchPicker by remember { mutableStateOf(false) }
     var showFilterDialog by remember { mutableStateOf(false) }
     var showDateRangePicker by remember { mutableStateOf(false) }
+    var baseMatchesForFilter by remember { mutableStateOf<List<MatchHistory>>(emptyList()) }
 
     var groups by remember { mutableStateOf<List<PlayerGroup>>(emptyList()) }
 
@@ -120,6 +121,7 @@ fun RankingsScreen() {
         selectedPitchType?.let { type ->
             filtered = filtered.filter { it.shortPitch == type }
         }
+        baseMatchesForFilter = filtered
         when {
             selectedFilter == "All Time" -> { /* no-op */ }
             selectedFilter.startsWith("Date:") -> {
@@ -446,40 +448,70 @@ fun RankingsScreen() {
 
         // Date Filter Dialog
         if (showFilterDialog) {
+            val last3Dates = baseMatchesForFilter
+                .map { Instant.ofEpochMilli(it.matchDate).atZone(ZoneId.systemDefault()).toLocalDate() }
+                .distinct()
+                .sortedDescending()
+                .take(3)
             AlertDialog(
                 onDismissRequest = { showFilterDialog = false },
                 title = { Text("Filter by Date") },
                 text = {
                     Column {
-                        listOf("All Time", "Custom Range").forEach { option ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedFilter = "All Time"; showFilterDialog = false }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedFilter == "All Time",
+                                onClick = { selectedFilter = "All Time"; showFilterDialog = false }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("All Time")
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text("Last 3 Match Dates", fontWeight = FontWeight.SemiBold)
+                        last3Dates.forEach { date ->
+                            val iso = date.toString()
+                            val label = date.format(DateTimeFormatter.ofPattern("dd MMM yyyy"))
                             Row(
-                                modifier = Modifier.fillMaxWidth().clickable {
-                                    if (option == "Custom Range") {
-                                        showFilterDialog = false
-                                        showDateRangePicker = true
-                                    } else {
-                                        selectedFilter = option
-                                        showFilterDialog = false
-                                    }
-                                }.padding(vertical = 12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedFilter = "Date:$iso"; showFilterDialog = false }
+                                    .padding(vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                RadioButton(selected = selectedFilter == option, onClick = {
-                                    if (option == "Custom Range") {
-                                        showFilterDialog = false
-                                        showDateRangePicker = true
-                                    } else {
-                                        selectedFilter = option
-                                        showFilterDialog = false
-                                    }
-                                })
+                                RadioButton(
+                                    selected = selectedFilter == "Date:$iso",
+                                    onClick = { selectedFilter = "Date:$iso"; showFilterDialog = false }
+                                )
                                 Spacer(Modifier.width(8.dp))
-                                Text(option)
+                                Text(label)
                             }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showFilterDialog = false; showDateRangePicker = true }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedFilter.startsWith("CustomRange"),
+                                onClick = { showFilterDialog = false; showDateRangePicker = true }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Custom Date Range…")
                         }
                     }
                 },
-                confirmButton = {}
+                confirmButton = {
+                    TextButton(onClick = { showFilterDialog = false }) { Text("Close") }
+                }
             )
         }
 
@@ -501,7 +533,7 @@ fun RankingsScreen() {
                         },
                         enabled = dateRangePickerState.selectedStartDateMillis != null &&
                                 dateRangePickerState.selectedEndDateMillis != null
-                    ) { Text("Apply Range") }
+                    ) { Text("OK") }
                 },
                 dismissButton = {
                     TextButton(onClick = { showDateRangePicker = false }) { Text("Cancel") }

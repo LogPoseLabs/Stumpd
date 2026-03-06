@@ -44,4 +44,9 @@ object FirebaseConfig {
     const val FIELD_SYNCED_AT = "syncedAt"
     const val FIELD_DEVICE_ID = "deviceId"
     const val FIELD_OWNER_ID = "ownerId" // Track who created the data
+
+    // Scoring OTP (temporary scoring access for group members)
+    const val FIELD_SCORING_OTP_HASH = "scoringOtpHash"
+    const val FIELD_SCORING_OTP_EXPIRY_AT = "scoringOtpExpiryAt"
+    const val FIELD_SCORING_ACCESS_DURATION_MINUTES = "scoringAccessDurationMinutes"
 }

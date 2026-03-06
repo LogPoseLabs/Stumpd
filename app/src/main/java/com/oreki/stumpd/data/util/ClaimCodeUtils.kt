@@ -60,4 +60,24 @@ object ClaimCodeUtils {
     fun verifyEmailHash(email: String, storedHash: String): Boolean {
         return hashEmail(email) == storedHash
     }
+
+    /**
+     * Hash a scoring OTP using SHA-256 with groupId as salt.
+     * Used for temporary scoring access: only the hash is stored in Firestore.
+     */
+    fun hashScoringOtp(otp: String, groupId: String): String {
+        val normalized = otp.replace(Regex("[^0-9]"), "")
+        val input = "scoring_otp:$groupId:$normalized"
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hashBytes = digest.digest(input.toByteArray(Charsets.UTF_8))
+        return hashBytes.joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * Verify a scoring OTP against a stored hash.
+     */
+    fun verifyScoringOtp(inputOtp: String, storedHash: String, groupId: String): Boolean {
+        val inputHash = hashScoringOtp(inputOtp, groupId)
+        return inputHash == storedHash
+    }
 }

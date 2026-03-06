@@ -2,6 +2,7 @@ package com.oreki.stumpd
 
 import com.oreki.stumpd.domain.model.*
 import android.os.Bundle
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.*
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -41,9 +42,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.LocalTextStyle
+import com.oreki.stumpd.data.manager.ScoringAccessManager
 import com.oreki.stumpd.data.mappers.toDomain
 import com.oreki.stumpd.data.mappers.toEntityWithId
 import com.oreki.stumpd.data.sync.firebase.FirestoreGroupDao
+import com.oreki.stumpd.data.util.ClaimCodeUtils
 import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberPlayerRepository
 import com.oreki.stumpd.ui.theme.StumpdTheme
@@ -91,6 +94,10 @@ fun GroupManagementScreen() {
     var showJoinDialog by remember { mutableStateOf(false) }
     var showClaimDialog by remember { mutableStateOf<String?>(null) } // Group ID to claim
     var showRecoveryCodeDialog by remember { mutableStateOf<Pair<String, String>?>(null) } // (groupName, claimCode)
+    var showGenerateOtpDialogForGroupId by remember { mutableStateOf<String?>(null) }
+    var showEnterOtpDialogForGroupId by remember { mutableStateOf<String?>(null) }
+    var scoringAccessTrigger by remember { mutableIntStateOf(0) }
+    val scoringAccessManager = remember { ScoringAccessManager(context) }
     var memberCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var unavailableCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
@@ -192,6 +199,8 @@ fun GroupManagementScreen() {
                     inviteCode = inviteCode,
                     claimCode = claimCode,
                     isOwner = isOwner,
+                    hasScoringAccess = scoringAccessManager.hasTemporaryScoringAccess(g.id),
+                    scoringAccessTrigger = scoringAccessTrigger,
                     onEdit = {
                         val intent = android.content.Intent(context, EditGroupActivity::class.java)
                         intent.putExtra("group_id", g.id)
@@ -229,7 +238,9 @@ fun GroupManagementScreen() {
                     },
                     onClaimOwnership = {
                         showClaimDialog = g.id
-                    }
+                    },
+                    onGenerateScoringOtp = { showGenerateOtpDialogForGroupId = g.id },
+                    onEnterScoringOtp = { showEnterOtpDialogForGroupId = g.id }
                 )
             }
         }
@@ -327,6 +338,36 @@ fun GroupManagementScreen() {
         )
     }
     
+    // Generate Scoring OTP Dialog (owner)
+    showGenerateOtpDialogForGroupId?.let { groupId ->
+        val groupName = groups.find { it.id == groupId }?.name ?: "Group"
+        GenerateScoringOtpDialog(
+            groupId = groupId,
+            groupName = groupName,
+            onDismiss = { showGenerateOtpDialogForGroupId = null },
+            onGenerated = { showGenerateOtpDialogForGroupId = null }
+        )
+    }
+
+    // Enter Scoring OTP Dialog (member)
+    showEnterOtpDialogForGroupId?.let { groupId ->
+        val groupName = groups.find { it.id == groupId }?.name ?: "Group"
+        EnterScoringOtpDialog(
+            groupId = groupId,
+            groupName = groupName,
+            scoringAccessManager = scoringAccessManager,
+            onDismiss = { showEnterOtpDialogForGroupId = null },
+            onSuccess = {
+                scoringAccessTrigger++
+                snackbarMessage = "You have temporary scoring access for this group."
+                showEnterOtpDialogForGroupId = null
+            },
+            onError = { msg ->
+                snackbarMessage = msg
+            }
+        )
+    }
+
     // Claim Ownership Dialog (for non-owners to claim with recovery code or Google)
     showClaimDialog?.let { groupId ->
         val groupName = groups.find { it.id == groupId }?.name ?: "Group"
@@ -469,12 +510,16 @@ private fun GroupCard(
     inviteCode: String? = null,
     claimCode: String? = null,
     isOwner: Boolean = true,
+    hasScoringAccess: Boolean = false,
+    scoringAccessTrigger: Int = 0,
     onEdit: () -> Unit, 
     onDelete: (() -> Unit)? = null,
     onGenerateCode: (() -> Unit)? = null,
     onShareCode: ((String) -> Unit)? = null,
     onShowRecoveryCode: ((String) -> Unit)? = null,
-    onClaimOwnership: (() -> Unit)? = null
+    onClaimOwnership: (() -> Unit)? = null,
+    onGenerateScoringOtp: (() -> Unit)? = null,
+    onEnterScoringOtp: (() -> Unit)? = null
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -711,6 +756,65 @@ private fun GroupCard(
                     }
                 }
             }
+
+            // Scoring access section (owner: generate OTP; member: enter OTP or show access status)
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Scoring access",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (hasScoringAccess) {
+                        Text(
+                            "You can start and score matches",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else if (isOwner) {
+                        Text(
+                            "Generate OTP for members to score",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text(
+                            "Enter OTP to score matches",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (isOwner && onGenerateScoringOtp != null) {
+                        FilledTonalButton(
+                            onClick = onGenerateScoringOtp,
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Icon(Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Generate OTP", fontSize = 12.sp)
+                        }
+                    }
+                    if (!isOwner && !hasScoringAccess && onEnterScoringOtp != null) {
+                        FilledTonalButton(
+                            onClick = onEnterScoringOtp,
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Icon(Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Enter OTP", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
             
             Spacer(Modifier.height(12.dp))
             HorizontalDivider()
@@ -826,6 +930,297 @@ private fun JoinGroupDialog(
                 enabled = code.length == 6
             ) {
                 Text("Join Group")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+private enum class OtpDurationUnit(val label: String, val maxValue: Int) {
+    MINUTES("Minutes", 60),
+    HOURS("Hours", 24),
+    DAYS("Days", 20)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GenerateScoringOtpDialog(
+    groupId: String,
+    groupName: String,
+    onDismiss: () -> Unit,
+    onGenerated: () -> Unit
+) {
+    var selectedUnit by remember { mutableStateOf(OtpDurationUnit.HOURS) }
+    var selectedNumber by remember { mutableStateOf(1) }
+    var generatedOtp by remember { mutableStateOf<String?>(null) }
+    var durationLabel by remember { mutableStateOf("1 hour") }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var isGenerating by remember { mutableStateOf(false) }
+
+    val durationMinutes: Int = when (selectedUnit) {
+        OtpDurationUnit.MINUTES -> selectedNumber
+        OtpDurationUnit.HOURS -> selectedNumber * 60
+        OtpDurationUnit.DAYS -> selectedNumber * 24 * 60
+    }
+
+    fun buildDurationLabel(): String = when (selectedUnit) {
+        OtpDurationUnit.MINUTES -> if (selectedNumber == 1) "1 minute" else "$selectedNumber minutes"
+        OtpDurationUnit.HOURS -> if (selectedNumber == 1) "1 hour" else "$selectedNumber hours"
+        OtpDurationUnit.DAYS -> if (selectedNumber == 1) "1 day" else "$selectedNumber days"
+    }
+
+    fun generateAndUpload() {
+        isGenerating = true
+        val otp = (100_000..999_999).random().toString()
+        val hash = ClaimCodeUtils.hashScoringOtp(otp, groupId)
+        val now = System.currentTimeMillis()
+        val expiryAt = now + FirestoreGroupDao.OTP_VALIDITY_MINUTES * 60 * 1000
+        scope.launch {
+            try {
+                val dao = FirestoreGroupDao()
+                withContext(Dispatchers.IO) {
+                    dao.setScoringOtp(groupId, hash, expiryAt, durationMinutes)
+                }
+                durationLabel = buildDurationLabel()
+                generatedOtp = otp
+            } catch (e: Exception) {
+                isGenerating = false
+            }
+            isGenerating = false
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.LockOpen, contentDescription = null) },
+        title = { Text("Scoring access OTP") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (generatedOtp == null) {
+                    Text(
+                        "Choose how long members can score after entering this OTP:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        var unitExpanded by remember { mutableStateOf(false) }
+                        var numberExpanded by remember { mutableStateOf(false) }
+                        val numberOptions = (1..selectedUnit.maxValue).toList()
+                        ExposedDropdownMenuBox(
+                            expanded = unitExpanded,
+                            onExpandedChange = { unitExpanded = it }
+                        ) {
+                            OutlinedTextField(
+                                value = selectedUnit.label,
+                                onValueChange = {},
+                                readOnly = true,
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .weight(1f),
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = unitExpanded) },
+                                label = { Text("Unit") }
+                            )
+                            ExposedDropdownMenu(
+                                expanded = unitExpanded,
+                                onDismissRequest = { unitExpanded = false }
+                            ) {
+                                OtpDurationUnit.entries.forEach { unit ->
+                                    DropdownMenuItem(
+                                        text = { Text(unit.label) },
+                                        onClick = {
+                                            selectedUnit = unit
+                                            if (selectedNumber > unit.maxValue) selectedNumber = unit.maxValue
+                                            unitExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        ExposedDropdownMenuBox(
+                            expanded = numberExpanded,
+                            onExpandedChange = { numberExpanded = it }
+                        ) {
+                            OutlinedTextField(
+                                value = selectedNumber.toString(),
+                                onValueChange = {},
+                                readOnly = true,
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .weight(1f),
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = numberExpanded) },
+                                label = { Text("Value") }
+                            )
+                            ExposedDropdownMenu(
+                                expanded = numberExpanded,
+                                onDismissRequest = { numberExpanded = false }
+                            ) {
+                                numberOptions.forEach { n ->
+                                    DropdownMenuItem(
+                                        text = { Text(n.toString()) },
+                                        onClick = {
+                                            selectedNumber = n
+                                            numberExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        "OTP valid for 15 min. Access lasts $durationLabel.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        generatedOtp!!,
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            letterSpacing = 4.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                    Text(
+                        "Share this code with the member. They enter it in the group card.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            if (generatedOtp == null) {
+                Button(
+                    onClick = { generateAndUpload() },
+                    enabled = !isGenerating
+                ) {
+                    Text(if (isGenerating) "Generating…" else "Generate OTP")
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            val clip = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            clip.setPrimaryClip(android.content.ClipData.newPlainText("OTP", generatedOtp))
+                        }
+                    ) {
+                        Text("Copy")
+                    }
+                    Button(onClick = onGenerated) {
+                        Text("Done")
+                    }
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+private fun EnterScoringOtpDialog(
+    groupId: String,
+    groupName: String,
+    scoringAccessManager: ScoringAccessManager,
+    onDismiss: () -> Unit,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit
+) {
+    var otpInput by remember { mutableStateOf("") }
+    var isSubmitting by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    fun submit() {
+        val normalized = otpInput.replace(Regex("[^0-9]"), "")
+        if (normalized.length != 6) {
+            onError("Please enter a 6-digit code.")
+            return
+        }
+        isSubmitting = true
+        scope.launch {
+            try {
+                val dao = FirestoreGroupDao()
+                val groupData = withContext(Dispatchers.IO) {
+                    dao.getGroupById(groupId)
+                }
+                if (groupData == null) {
+                    onError("Could not load group. Try again.")
+                    isSubmitting = false
+                    return@launch
+                }
+                val hash = groupData.scoringOtpHash
+                val expiryAt = groupData.scoringOtpExpiryAt
+                val durationMinutes = groupData.scoringAccessDurationMinutes ?: 60
+                if (hash == null || expiryAt == null) {
+                    onError("No OTP has been set for this group. Ask the owner to generate one.")
+                    isSubmitting = false
+                    return@launch
+                }
+                if (System.currentTimeMillis() > expiryAt) {
+                    onError("This OTP has expired. Ask the owner for a new one.")
+                    isSubmitting = false
+                    return@launch
+                }
+                if (!ClaimCodeUtils.verifyScoringOtp(normalized, hash, groupId)) {
+                    onError("Invalid code. Please check and try again.")
+                    isSubmitting = false
+                    return@launch
+                }
+                val expiresAt = System.currentTimeMillis() + durationMinutes * 60L * 1000L
+                scoringAccessManager.setTemporaryAccess(groupId, expiresAt)
+                onSuccess()
+            } catch (e: Exception) {
+                onError("Failed: ${e.message}")
+            }
+            isSubmitting = false
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.LockOpen, contentDescription = null) },
+        title = { Text("Enter scoring OTP") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Enter the 6-digit code from the group owner to get temporary scoring access for \"$groupName\":",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                OutlinedTextField(
+                    value = otpInput,
+                    onValueChange = {
+                        val digits = it.filter { c -> c.isDigit() }.take(6)
+                        otpInput = digits
+                    },
+                    label = { Text("OTP") },
+                    placeholder = { Text("123456") },
+                    singleLine = true,
+                    textStyle = LocalTextStyle.current.copy(
+                        fontSize = 24.sp,
+                        letterSpacing = 4.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { submit() },
+                enabled = otpInput.length == 6 && !isSubmitting
+            ) {
+                Text(if (isSubmitting) "Checking…" else "Submit")
             }
         },
         dismissButton = {

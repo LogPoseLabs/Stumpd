@@ -27,6 +27,7 @@ class FirestoreGroupDao(
     companion object {
         private const val TAG = "FirestoreGroupDao"
         private const val COLLECTION_GROUP_SECRETS = "group_secrets"
+        const val OTP_VALIDITY_MINUTES = 15L
     }
 
     /**
@@ -465,16 +466,55 @@ class FirestoreGroupDao(
             )
         }
 
-        return GroupData(groupEntity, members, unavailable, defaults)
+        val scoringOtpHash = doc.getString(FirebaseConfig.FIELD_SCORING_OTP_HASH)
+        val scoringOtpExpiryAt = (doc.get(FirebaseConfig.FIELD_SCORING_OTP_EXPIRY_AT) as? Number)?.toLong()
+        val scoringAccessDurationMinutes = (doc.get(FirebaseConfig.FIELD_SCORING_ACCESS_DURATION_MINUTES) as? Number)?.toInt()
+
+        return GroupData(
+            group = groupEntity,
+            members = members,
+            unavailable = unavailable,
+            defaults = defaults,
+            scoringOtpHash = scoringOtpHash,
+            scoringOtpExpiryAt = scoringOtpExpiryAt,
+            scoringAccessDurationMinutes = scoringAccessDurationMinutes
+        )
+    }
+
+    /**
+     * Set scoring OTP for a group (owner only). Caller must ensure current user is the group owner.
+     * OTP is valid for [OTP_VALIDITY_MINUTES] from now; temporary access duration is [accessDurationMinutes].
+     */
+    suspend fun setScoringOtp(
+        groupId: String,
+        otpHash: String,
+        otpExpiryAtMillis: Long,
+        accessDurationMinutes: Int
+    ) {
+        val docRef = firestore
+            .collection(FirebaseConfig.COLLECTION_GROUPS)
+            .document(groupId)
+        docRef.update(
+            mapOf(
+                FirebaseConfig.FIELD_SCORING_OTP_HASH to otpHash,
+                FirebaseConfig.FIELD_SCORING_OTP_EXPIRY_AT to otpExpiryAtMillis,
+                FirebaseConfig.FIELD_SCORING_ACCESS_DURATION_MINUTES to accessDurationMinutes,
+                FirebaseConfig.FIELD_UPDATED_AT to System.currentTimeMillis()
+            )
+        ).await()
     }
 }
 
 /**
- * Container for group data with all related entities
+ * Container for group data with all related entities.
+ * Optional scoring OTP fields are used for temporary scoring access (members validate OTP against these).
  */
 data class GroupData(
     val group: GroupEntity,
     val members: List<GroupMemberEntity>,
     val unavailable: List<GroupUnavailablePlayerEntity>,
-    val defaults: GroupDefaultEntity?
+    val defaults: GroupDefaultEntity?,
+    val scoringOtpHash: String? = null,
+    val scoringOtpExpiryAt: Long? = null,
+    val scoringAccessDurationMinutes: Int? = null
 )

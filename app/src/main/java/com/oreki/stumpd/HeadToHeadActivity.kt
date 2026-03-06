@@ -794,7 +794,9 @@ fun DateFilterDialog(
                             onFilterSelected("Custom", start, end)
                         }
                         showDatePicker = false
-                    }
+                    },
+                    enabled = dateRangePickerState.selectedStartDateMillis != null &&
+                            dateRangePickerState.selectedEndDateMillis != null
                 ) {
                     Text("OK")
                 }
