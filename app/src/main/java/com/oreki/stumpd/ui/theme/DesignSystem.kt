@@ -1,6 +1,12 @@
 package com.oreki.stumpd.ui.theme
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -11,14 +17,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -42,29 +55,6 @@ fun Label(text: String) = Text(
     color = MaterialTheme.colorScheme.onSurfaceVariant
 )
 
-@Composable
-fun SectionCard(
-    title: String? = null,
-    sectionContainerColor: Color? = null,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = sectionContainerColor ?: MaterialTheme.colorScheme.surfaceContainer
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            if (title != null) {
-                SectionTitle(title)
-                Spacer(Modifier.height(12.dp))
-                HorizontalDivider()
-                Spacer(Modifier.height(12.dp))
-            }
-            content()
-        }
-    }
-}
 
 @Composable
 fun PrimaryCta(
@@ -84,20 +74,6 @@ fun PrimaryCta(
     }
 }
 
-@Composable
-fun ResultChip(text: String, positive: Boolean) {
-    AssistChip(
-        onClick = {},
-        label = { Text(text) },
-        leadingIcon = {
-            Icon(Icons.Default.CheckCircle, contentDescription = null)
-        },
-        colors = AssistChipDefaults.assistChipColors(
-            containerColor = if (positive) successContainerAdaptive() else MaterialTheme.colorScheme.surfaceContainerHigh,
-            labelColor = MaterialTheme.colorScheme.onSurface
-        )
-    )
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -184,163 +160,91 @@ fun StatsTopBar(
 @Composable
 fun sectionContainer(): Color = MaterialTheme.colorScheme.surfaceContainer
 
+/**
+ * The standard card edge: one device pixel of [outlineVariant].
+ *
+ * Cards in this app sit on `surfaceContainer` with no elevation. That reads in dark mode, where
+ * the container is clearly lighter than the background, but in light mode the two are a hair
+ * apart and the cards dissolve into the page. A hairline states the boundary in both modes, and
+ * unlike an elevation shadow it survives a flat palette.
+ */
 @Composable
-fun successContainerAdaptive(): Color =
-    if (isSystemInDarkTheme()) MaterialTheme.colorScheme.surfaceContainerHigh
-    else Color(0xFFDCF7E5) // your SuccessContainer
+fun hairline(): BorderStroke = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
 
-@Composable
-fun warningContainerAdaptive(): Color =
-    if (isSystemInDarkTheme()) MaterialTheme.colorScheme.surfaceContainerHigh
-    else Color(0xFFFFF3D6) // your WarningContainer
 
-// Modern Information Card Component
+
+
+
+/**
+ * Gradient banner for the top of high-traffic screens.
+ *
+ * [shape] defaults to rounded-bottom-only, which suits an edge-to-edge header sitting
+ * directly under a top bar. Pass a fully rounded shape when the header is inset by the
+ * parent's horizontal padding, otherwise the square top corners look clipped.
+ */
 @Composable
-fun InfoCard(
+fun GradientHeroHeader(
     title: String,
-    icon: ImageVector? = null,
-    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    content: @Composable ColumnScope.() -> Unit
+    subtitle: String? = null,
+    emoji: String? = null,
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = containerColor
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 12.dp)
-            ) {
-                if (icon != null) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                // Container roles, not primary/tertiary themselves: those are the *light* end of
+                // the ramp in a dark scheme, so the old gradient turned the header into the
+                // brightest block on a dark screen. The container pair tracks the mode — dark
+                // and rich in dark mode, soft and bright in light mode — with the same hue shift.
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.primaryContainer,
+                        MaterialTheme.colorScheme.tertiaryContainer
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                }
+                ),
+                shape = shape
+            )
+            .padding(horizontal = 24.dp, vertical = 24.dp)
+    ) {
+        Column {
+            if (emoji != null) {
+                Text(text = emoji, fontSize = 32.sp)
+                Spacer(Modifier.height(4.dp))
+            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            if (subtitle != null) {
+                Spacer(Modifier.height(4.dp))
                 Text(
-                    text = title,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
                 )
             }
-            content()
         }
     }
 }
 
-// Stat Display Component
+/**
+ * Shrinks a tappable surface slightly while pressed.
+ * Pass the same [interactionSource] to the clickable component, otherwise it never
+ * observes presses and the scale stays at 1f.
+ */
 @Composable
-fun StatItem(
-    label: String,
-    value: String,
-    icon: ImageVector? = null,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier.padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (icon != null) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-        }
-        Column {
-            Text(
-                text = label,
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = value,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
-    }
-}
-
-// Chip Group Component
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun FilterChip(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    icon: ImageVector? = null
-) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(text) },
-        leadingIcon = if (icon != null) {
-            { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) }
-        } else null,
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-        )
-    )
-}
-
-// Enhanced Section Card with optional actions
-@Composable
-fun ActionSectionCard(
-    title: String,
-    icon: ImageVector? = null,
-    action: (@Composable () -> Unit)? = null,
-    sectionContainerColor: Color? = null,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = sectionContainerColor ?: MaterialTheme.colorScheme.surfaceContainer
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (icon != null) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-                    SectionTitle(title)
-                }
-                action?.invoke()
-            }
-            Spacer(Modifier.height(12.dp))
-            HorizontalDivider()
-            Spacer(Modifier.height(12.dp))
-            content()
-        }
+fun Modifier.pressScale(
+    interactionSource: MutableInteractionSource = remember { MutableInteractionSource() }
+): Modifier {
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.97f else 1f, label = "pressScale")
+    return this.graphicsLayer {
+        scaleX = scale
+        scaleY = scale
     }
 }
 
@@ -367,7 +271,7 @@ fun EmptyState(
         Spacer(modifier = Modifier.height(16.dp))
         Text(
             text = title,
-            fontSize = 18.sp,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -375,7 +279,7 @@ fun EmptyState(
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = description,
-            fontSize = 14.sp,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )

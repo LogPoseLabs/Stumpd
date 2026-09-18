@@ -35,7 +35,7 @@ fun EnhancedInningsBreakDialog(
             ) {
                 Icon(Icons.Default.PlayArrow, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("Start 2nd Innings", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text("Start 2nd Innings", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
             }
         },
         title = {
@@ -67,7 +67,7 @@ fun EnhancedInningsBreakDialog(
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)) {
                         Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(battingTeam, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
-                            Text("$runs/$wickets ($overs.$balls/$totalOvers ov)", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
+                            Text("$runs/$wickets ($overs.$balls/$totalOvers ov)", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
                         }
                     }
                 }
@@ -75,7 +75,13 @@ fun EnhancedInningsBreakDialog(
                 items(battingPlayers.sortedByDescending { it.runs }.take(3)) { p ->
                     StatRowCompact(name = p.name, left = "${p.runs}${if (!p.isOut && p.ballsFaced > 0) "*" else ""} (${p.ballsFaced})", right = if (shortPitch) "4s:${p.fours}" else "4s:${p.fours} 6s:${p.sixes}")
                 }
-                item { Text("Top Bowling", style = MaterialTheme.typography.titleSmall, color = Color(0xFFFF5722)) }
+                item {
+                    Text(
+                        "Top Bowling",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
                 items(bowlingPlayers.sortedByDescending { it.wickets }.take(3)) { p ->
                     StatRowCompact(name = p.name, left = "${p.wickets}/${p.runsConceded}", right = "${"%.1f".format(p.oversBowled)} ov - Eco ${"%.1f".format(p.economy)}")
                 }
@@ -91,9 +97,9 @@ internal fun StatRowCompact(name: String, left: String, right: String) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(name, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-        Text(left, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+        Text(left, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(8.dp))
-        Text(right, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(right, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

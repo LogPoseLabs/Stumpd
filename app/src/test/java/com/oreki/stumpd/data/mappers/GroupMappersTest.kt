@@ -1,10 +1,10 @@
 package com.oreki.stumpd.data.mappers
 
 import com.google.gson.Gson
-import com.oreki.stumpd.BallFormat
-import com.oreki.stumpd.GroupDefaultSettings
-import com.oreki.stumpd.MatchSettings
-import com.oreki.stumpd.TossChoice
+import com.oreki.stumpd.domain.model.BallFormat
+import com.oreki.stumpd.domain.model.GroupDefaultSettings
+import com.oreki.stumpd.domain.model.MatchSettings
+import com.oreki.stumpd.domain.model.TossChoice
 import com.oreki.stumpd.data.local.entity.GroupDefaultEntity
 import com.oreki.stumpd.data.local.entity.GroupEntity
 import org.junit.Assert.*

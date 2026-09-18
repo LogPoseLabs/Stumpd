@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.*
+import com.oreki.stumpd.ui.theme.rememberMessenger
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -25,7 +26,9 @@ import com.oreki.stumpd.data.update.AppUpdateManager
 import com.oreki.stumpd.data.update.UpdateInfo
 import com.oreki.stumpd.data.update.UpdateState
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class AboutActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,6 +48,9 @@ class AboutActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutScreen() {
+    val snackbarHostState = remember { SnackbarHostState() }
+    val messenger = rememberMessenger(snackbarHostState)
+
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     
@@ -57,6 +63,7 @@ fun AboutScreen() {
     var updateCheckMessage by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -102,7 +109,7 @@ fun AboutScreen() {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
                     ),
                     elevation = CardDefaults.cardElevation(2.dp)
                 ) {
@@ -127,7 +134,7 @@ fun AboutScreen() {
                         )
                         Text(
                             text = "Your Digital Cricket Scorebook",
-                            fontSize = 16.sp,
+                            style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Medium
                         )
@@ -140,9 +147,9 @@ fun AboutScreen() {
                         ) {
                             Text(
                                 text = "Version ${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})",
-                                fontSize = 13.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                             )
                         }
@@ -166,15 +173,12 @@ fun AboutScreen() {
                                 }
                             },
                             enabled = !isCheckingUpdate,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.secondary
-                            )
                         ) {
                             if (isCheckingUpdate) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(18.dp),
                                     strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.onSecondary
+                                    color = MaterialTheme.colorScheme.onPrimary
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Checking...")
@@ -194,7 +198,7 @@ fun AboutScreen() {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = message,
-                                fontSize = 13.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Medium
                             )
@@ -208,7 +212,7 @@ fun AboutScreen() {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
                     ),
                     elevation = CardDefaults.cardElevation(2.dp)
                 ) {
@@ -222,12 +226,12 @@ fun AboutScreen() {
                             Icon(
                                 Icons.Default.Info,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.tertiary,
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(24.dp)
                             )
                             Text(
                                 text = "What is Stump'd?",
-                                fontSize = 18.sp,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -237,7 +241,7 @@ fun AboutScreen() {
 
                         Text(
                             text = "Stump'd is a comprehensive cricket scoring application designed for players, coaches, and enthusiasts. Track every ball, analyze performance, and maintain detailed match records with our intuitive Material Design interface.",
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             lineHeight = 20.sp
                         )
@@ -246,7 +250,7 @@ fun AboutScreen() {
                         
                         Text(
                             text = "Perfect for casual matches, league games, or tournament play. Whether you're scoring at the ground or reviewing past performances, Stump'd has you covered!",
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             lineHeight = 20.sp,
                             fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
@@ -260,7 +264,7 @@ fun AboutScreen() {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
                     ),
                     elevation = CardDefaults.cardElevation(2.dp)
                 ) {
@@ -274,12 +278,12 @@ fun AboutScreen() {
                             Icon(
                                 Icons.Default.Star,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.secondary,
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(24.dp)
                             )
                             Text(
                                 text = "Key Features",
-                                fontSize = 18.sp,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -338,7 +342,7 @@ fun AboutScreen() {
                             
                             Text(
                                 text = category,
-                                fontSize = 15.sp,
+                                style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(bottom = 6.dp)
@@ -351,12 +355,12 @@ fun AboutScreen() {
                                 ) {
                                     Text(
                                         text = "• ",
-                                        fontSize = 14.sp,
-                                        color = MaterialTheme.colorScheme.secondary
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.primary
                                     )
                                     Text(
                                         text = feature,
-                                        fontSize = 14.sp,
+                                        style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurface,
                                         lineHeight = 18.sp
                                     )
@@ -370,7 +374,7 @@ fun AboutScreen() {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
                     ),
                     elevation = CardDefaults.cardElevation(2.dp)
                 ) {
@@ -389,7 +393,7 @@ fun AboutScreen() {
                             )
                             Text(
                                 text = "About LogPoseLabs",
-                                fontSize = 18.sp,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -399,7 +403,7 @@ fun AboutScreen() {
 
                         Text(
                             text = "We're passionate about creating simple, elegant solutions for sports enthusiasts. Stump'd is designed to make cricket scoring accessible and enjoyable for players of all levels.",
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             lineHeight = 20.sp
                         )
@@ -408,7 +412,7 @@ fun AboutScreen() {
                         
                         Text(
                             text = "Built with modern Android development practices using Kotlin, Jetpack Compose, and Material Design 3.",
-                            fontSize = 13.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             lineHeight = 18.sp,
                             fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
@@ -421,7 +425,7 @@ fun AboutScreen() {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
                     ),
                     elevation = CardDefaults.cardElevation(2.dp)
                 ) {
@@ -435,12 +439,12 @@ fun AboutScreen() {
                             Icon(
                                 Icons.Default.Email,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.tertiary,
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(24.dp)
                             )
                             Text(
                                 text = "Support & Feedback",
-                                fontSize = 18.sp,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -450,7 +454,7 @@ fun AboutScreen() {
 
                         Text(
                             text = "Have suggestions or found a bug? We'd love to hear from you!",
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             lineHeight = 20.sp
                         )
@@ -463,8 +467,8 @@ fun AboutScreen() {
                         ) {
                             Text(
                                 text = "📧 logposelabs@gmail.com",
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                             )
@@ -483,7 +487,7 @@ fun AboutScreen() {
                 ) {
                     Text(
                         text = "Built with ❤️ for cricket lovers",
-                        fontSize = 13.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium
                     )
@@ -492,7 +496,7 @@ fun AboutScreen() {
 
                     Text(
                         text = "© 2026 LogPoseLabs. All rights reserved.",
-                        fontSize = 11.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -560,7 +564,7 @@ fun AboutScreen() {
                             )
                             Text(
                                 "${(updateState as UpdateState.Downloading).progress.toInt()}%",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -606,11 +610,7 @@ fun AboutScreen() {
                             // Check if we can install packages first
                             if (!updateManager.canInstallPackages()) {
                                 // Need to request permission
-                                android.widget.Toast.makeText(
-                                    context,
-                                    "Please enable 'Install unknown apps' for Stumpd",
-                                    android.widget.Toast.LENGTH_LONG
-                                ).show()
+                                messenger.show("Please enable 'Install unknown apps' for Stumpd", long = true)
                                 updateManager.openInstallPermissionSettings()
                             } else {
                                 scope.launch {

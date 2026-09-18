@@ -46,5 +46,36 @@ data class MatchHistory(
     // NEW: all players' impacts
     val playerImpacts: List<PlayerImpact> = emptyList(),
     // Ball-by-ball deliveries
-    val allDeliveries: List<DeliveryUI> = emptyList()
+    val allDeliveries: List<DeliveryUI> = emptyList(),
+    /**
+     * Who won the super over — a team name, or `"TIE"` if the scorer left it level.
+     *
+     * Null for the overwhelming majority of matches, and its non-nullness is the "a super over was
+     * played" flag, so there is no separate boolean. Read by `resolveMatchResult` as an input, which
+     * is what stops a later correction re-deriving the match back to a tie.
+     */
+    val superOverWinner: String? = null,
+    /** One row per super-over innings, in order. Empty unless a super over was played. */
+    val superOvers: List<SuperOverInnings> = emptyList(),
+    /** The tournament fixture this match settled, if any. Null for an ordinary match. */
+    val tournamentId: String? = null,
+    val tournamentFixtureId: String? = null,
+    /** The two sides as tournament teams, ordered to match [team1Name] and [team2Name]. */
+    val team1Id: String? = null,
+    val team2Id: String? = null,
+)
+
+/**
+ * One innings of a super over.
+ *
+ * The batting side is stored rather than inferred, because [MatchHistory.team1Name] means "batted
+ * first in the match" — which is precisely *not* who bats first in a super over.
+ */
+data class SuperOverInnings(
+    val inning: Int,
+    val battingTeam: String,
+    val bowlingTeam: String,
+    val runs: Int,
+    val wickets: Int,
+    val balls: Int,
 )

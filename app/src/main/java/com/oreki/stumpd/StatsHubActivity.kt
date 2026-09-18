@@ -1,41 +1,55 @@
 package com.oreki.stumpd
 
-import com.oreki.stumpd.domain.model.*
-import android.content.Intent
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.oreki.stumpd.ui.stats.StatsNavHost
+import com.oreki.stumpd.ui.stats.StatsRoute
+import com.oreki.stumpd.ui.theme.GradientHeroHeader
 import com.oreki.stumpd.ui.theme.StumpdTheme
+import androidx.navigation.NavController
+import dagger.hilt.android.AndroidEntryPoint
 
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
+@AndroidEntryPoint
 class StatsHubActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         actionBar?.hide()
         setContent {
             StumpdTheme {
+                val windowSizeClass = calculateWindowSizeClass(this@StatsHubActivity)
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    StatsHubScreen(onBack = { finish() })
+                    StatsNavHost(
+                        onCloseStatsFlow = { finish() },
+                        widthSizeClass = windowSizeClass.widthSizeClass
+                    )
                 }
             }
         }
@@ -51,15 +65,18 @@ data class StatsCategory(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StatsHubScreen(onBack: () -> Unit) {
+fun StatsHubScreen(
+    navController: NavController,
+    onBack: () -> Unit,
+    widthSizeClass: WindowWidthSizeClass,
+) {
     val context = LocalContext.current
-
     val categories = listOf(
         StatsCategory(
-            title = "Statistics",
-            description = "Top batsmen, bowlers & player stats",
+            title = "Player Stats",
+            description = "Every player, sortable by any career figure",
             icon = Icons.Default.Leaderboard,
-            route = "player_rankings"
+            route = "all_players"
         ),
         StatsCategory(
             title = "Rankings",
@@ -89,31 +106,23 @@ fun StatsHubScreen(onBack: () -> Unit) {
 
     Scaffold(
         topBar = {
+            // Title lives in the gradient hero below, so the bar only carries navigation.
             TopAppBar(
-                title = {
-                    Column {
-                        Text("Statistics", fontWeight = FontWeight.Bold)
-                        Text(
-                            "Analyze player & match data",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
     ) { padding ->
         LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
+            columns = GridCells.Fixed(if (widthSizeClass == WindowWidthSizeClass.Expanded) 4 else 2),
             contentPadding = PaddingValues(16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -121,25 +130,39 @@ fun StatsHubScreen(onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                GradientHeroHeader(
+                    title = "Statistics",
+                    subtitle = "Analyze player & match data",
+                    emoji = "📊",
+                    shape = MaterialTheme.shapes.extraLarge
+                )
+            }
+
             items(categories) { category ->
                 StatsCategoryCard(
                     category = category,
                     onClick = {
                         when (category.route) {
-                            "player_rankings" -> {
-                                context.startActivity(Intent(context, StatsActivity::class.java))
+                            "all_players" -> {
+                                // The old "Statistics" screen showed the top five by runs and by
+                                // wickets, both of which this list already covers, so the hub
+                                // goes straight to the full list.
+                                val intent = Intent(context, AllPlayersStatsActivity::class.java)
+                                intent.putExtra("sort_by", "Runs")
+                                context.startActivity(intent)
                             }
                             "rankings" -> {
-                                context.startActivity(Intent(context, RankingsActivity::class.java))
+                                navController.navigate(StatsRoute.Rankings.route)
                             }
                             "head_to_head" -> {
-                                context.startActivity(Intent(context, HeadToHeadActivity::class.java))
+                                navController.navigate(StatsRoute.HeadToHead.route)
                             }
                             "captain_stats" -> {
-                                context.startActivity(Intent(context, CaptainStatsActivity::class.java))
+                                navController.navigate(StatsRoute.CaptainStats.route)
                             }
                             "records" -> {
-                                context.startActivity(Intent(context, RecordsActivity::class.java))
+                                navController.navigate(StatsRoute.Records.route)
                             }
                         }
                     }
@@ -160,8 +183,9 @@ fun StatsCategoryCard(
             .aspectRatio(1f)
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         ),
+        shape = MaterialTheme.shapes.large,
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(

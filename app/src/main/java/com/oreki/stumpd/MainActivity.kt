@@ -26,10 +26,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.background
+import com.oreki.stumpd.ui.theme.GradientHeroHeader
+import com.oreki.stumpd.ui.theme.MicroLabel
+import com.oreki.stumpd.ui.theme.hairline
+import com.oreki.stumpd.ui.theme.StatValue
+import com.oreki.stumpd.ui.theme.animatedInt
+import com.oreki.stumpd.ui.theme.rememberRevealState
+import com.oreki.stumpd.ui.theme.revealOnFirstPaint
 import com.oreki.stumpd.ui.theme.StumpdTheme
+import com.oreki.stumpd.ui.theme.pressScale
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.oreki.stumpd.ui.history.rememberFeatureFlags
 import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.history.rememberPlayerRepository
+import com.oreki.stumpd.ui.tournament.TournamentActivity
+import com.oreki.stumpd.utils.FeatureFlag
+import com.oreki.stumpd.data.local.db.StumpdDb
 import com.oreki.stumpd.data.local.entity.GroupEntity
 import com.oreki.stumpd.data.manager.ScoringAccessManager
 import com.oreki.stumpd.data.update.AppUpdateManager
@@ -48,7 +62,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.oreki.stumpd.BuildConfig
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,6 +112,10 @@ fun MainScreen() {
     var joinMessage by remember { mutableStateOf<String?>(null) }
 
     val scoringAccessManager = remember { ScoringAccessManager(context) }
+
+    // A card that isn't there at all while the feature is dark, rather than one that refuses.
+    val featureFlags = rememberFeatureFlags()
+    val tournamentsEnabled = remember { featureFlags.isEnabled(FeatureFlag.TOURNAMENTS) }
 
     // OTA Update state
     val updateManager = remember { AppUpdateManager(context) }
@@ -207,7 +227,7 @@ fun MainScreen() {
 
         AlertDialog(
             onDismissRequest = { showJoinDialog = false },
-            icon = { Icon(Icons.Default.GroupAdd, contentDescription = null) },
+            icon = { Icon(Icons.Default.GroupAdd, contentDescription = "Join group") },
             title = { Text("Join Group") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -276,13 +296,15 @@ fun MainScreen() {
                                     )
                                     // Save full group data so it shows immediately
                                     withContext(Dispatchers.IO) {
-                                        val db = app.database
+                                        val db = StumpdDb.get(context)
                                         db.groupDao().upsertGroup(groupData.group)
                                         db.groupDao().clearMembers(groupData.group.id)
                                         groupData.members.forEach { member ->
                                             db.groupDao().upsertMembers(listOf(member))
                                         }
-                                        groupData.unavailable.forEach { unavailable ->
+                                        db.groupDao().clearUnavailablePlayers(groupData.group.id)
+                                        val memberIds = groupData.members.map { it.playerId }.toSet()
+                                        groupData.unavailable.filter { it.playerId in memberIds }.forEach { unavailable ->
                                             db.groupDao().markPlayerUnavailable(unavailable)
                                         }
                                         groupData.defaults?.let { defaults ->
@@ -322,6 +344,8 @@ fun MainScreen() {
         )
     }
 
+    val reveal = rememberRevealState()
+
     Scaffold(
         floatingActionButton = {
             // Show Start Match when the selected group is owned by this user or has temporary scoring access
@@ -343,7 +367,7 @@ fun MainScreen() {
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
                         text = "Start Match",
-                        fontSize = 16.sp,
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
@@ -360,42 +384,28 @@ fun MainScreen() {
         ) {
             // Header with App Title
             item {
-                Column(
-                    modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    ) {
-                        Text(
-                            text = "🏏",
-                            fontSize = 32.sp
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Text(
-                            text = "Stump'd",
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    Text(
-                        text = "Your Digital Cricket Scorebook",
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
+                GradientHeroHeader(
+                    title = "Stump'd",
+                    subtitle = "Your Digital Cricket Scorebook",
+                    emoji = "🏏",
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .revealOnFirstPaint(index = 0, key = "hero", state = reveal),
+                    shape = MaterialTheme.shapes.extraLarge
+                )
             }
 
             // Quick Stats Card with Group Filter
             item {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .revealOnFirstPaint(index = 1, key = "quick-stats", state = reveal),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
                     ),
-                    elevation = CardDefaults.cardElevation(2.dp)
+                    border = hairline(),
+                    elevation = CardDefaults.cardElevation(0.dp)
                 ) {
                     Column(modifier = Modifier.padding(20.dp)) {
                         Row(
@@ -403,18 +413,18 @@ fun MainScreen() {
                             horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
                             QuickStatItem(
-                                value = matchCount.toString(),
+                                value = matchCount,
                                 label = "Matches",
                                 icon = Icons.Default.Star
                             )
 
                             VerticalDivider(
                                 modifier = Modifier.height(48.dp),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f)
+                                color = MaterialTheme.colorScheme.outlineVariant
                             )
 
                             QuickStatItem(
-                                value = playerCount.toString(),
+                                value = playerCount,
                                 label = "Players",
                                 icon = Icons.Default.Person
                             )
@@ -425,7 +435,7 @@ fun MainScreen() {
                             )
 
                             QuickStatItem(
-                                value = groups.size.toString(),
+                                value = groups.size,
                                 label = "Groups",
                                 icon = Icons.Default.AccountCircle
                             )
@@ -434,9 +444,7 @@ fun MainScreen() {
                         // Compact Group Selection (only if groups exist)
                         if (groups.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(16.dp))
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f)
-                            )
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             Spacer(modifier = Modifier.height(12.dp))
 
                             ExposedDropdownMenuBox(
@@ -450,7 +458,7 @@ fun MainScreen() {
                                         .fillMaxWidth()
                                         .menuAnchor(),
                                     shape = MaterialTheme.shapes.small,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f)
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
                                 ) {
                                     Row(
                                         modifier = Modifier
@@ -467,20 +475,20 @@ fun MainScreen() {
                                                 Icons.Default.AccountCircle,
                                                 contentDescription = null,
                                                 modifier = Modifier.size(18.dp),
-                                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                                tint = MaterialTheme.colorScheme.primary
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Text(
                                                 text = "Group:",
-                                                fontSize = 12.sp,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text(
                                                 text = selectedGroup?.name ?: "All Groups",
-                                                fontSize = 13.sp,
+                                                style = MaterialTheme.typography.bodyMedium,
                                                 fontWeight = FontWeight.SemiBold,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                color = MaterialTheme.colorScheme.onSurface
                                             )
                                         }
 
@@ -488,7 +496,7 @@ fun MainScreen() {
                                             Icons.Default.ArrowDropDown,
                                             contentDescription = "Select group",
                                             modifier = Modifier.size(20.dp),
-                                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
@@ -504,11 +512,11 @@ fun MainScreen() {
                                             scope.launch { groupRepo.clearDefaultGroupId() }
                                             expanded = false
                                         },
-                                        leadingIcon = {
-                                            if (selectedGroup == null) {
-                                                Icon(Icons.Default.Check, contentDescription = null)
+                                            leadingIcon = {
+                                                if (selectedGroup == null) {
+                                                    Icon(Icons.Default.Check, contentDescription = "Selected")
+                                                }
                                             }
-                                        }
                                     )
 
                                     HorizontalDivider()
@@ -523,7 +531,7 @@ fun MainScreen() {
                                             },
                                             leadingIcon = {
                                                 if (selectedGroup?.id == group.id) {
-                                                    Icon(Icons.Default.Check, contentDescription = null)
+                                                    Icon(Icons.Default.Check, contentDescription = "Selected")
                                                 }
                                             }
                                         )
@@ -558,14 +566,14 @@ fun MainScreen() {
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
                                 text = "Get Started with Groups",
-                                fontSize = 18.sp,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "Create a group to organize players, or join an existing group with an invite code",
-                                fontSize = 13.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
@@ -578,14 +586,14 @@ fun MainScreen() {
                                         context.startActivity(Intent(context, GroupManagementActivity::class.java))
                                     }
                                 ) {
-                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Add, contentDescription = "Create group", modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Create Group")
                                 }
                                 Button(
                                     onClick = { showJoinDialog = true }
                                 ) {
-                                    Icon(Icons.Default.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.GroupAdd, contentDescription = "Join group", modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Join Group")
                                 }
@@ -598,11 +606,12 @@ fun MainScreen() {
             // Section: Matches
             item {
                 Text(
-                    text = "Matches",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(top = 8.dp)
+                    text = "Matches".uppercase(),
+                    style = MicroLabel,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .padding(top = 8.dp, start = 4.dp)
+                        .revealOnFirstPaint(index = 2, key = "Matches-header", state = reveal)
                 )
             }
 
@@ -616,9 +625,8 @@ fun MainScreen() {
                         title = "History",
                         icon = Icons.Default.History,
                         description = "View past matches",
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.weight(1f)
+                            .revealOnFirstPaint(index = 2, key = "history", state = reveal)
                     ) {
                         context.startActivity(Intent(context, MatchHistoryActivity::class.java))
                     }
@@ -627,11 +635,22 @@ fun MainScreen() {
                         title = "Live Matches",
                         icon = Icons.Default.LiveTv,
                         description = "Watch ongoing",
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
                         modifier = Modifier.weight(1f)
+                            .revealOnFirstPaint(index = 3, key = "live-matches", state = reveal)
                     ) {
                         context.startActivity(Intent(context, LiveMatchesActivity::class.java))
+                    }
+
+                    if (tournamentsEnabled) {
+                        MenuCard(
+                            title = "Tournaments",
+                            icon = Icons.Default.EmojiEvents,
+                            description = "Teams, fixtures, table",
+                            modifier = Modifier.weight(1f)
+                                .revealOnFirstPaint(index = 3, key = "tournaments", state = reveal)
+                        ) {
+                            context.startActivity(TournamentActivity.intent(context))
+                        }
                     }
                 }
             }
@@ -639,11 +658,12 @@ fun MainScreen() {
             // Section: Statistics
             item {
                 Text(
-                    text = "Statistics",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(top = 8.dp)
+                    text = "Statistics".uppercase(),
+                    style = MicroLabel,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .padding(top = 8.dp, start = 4.dp)
+                        .revealOnFirstPaint(index = 3, key = "Statistics-header", state = reveal)
                 )
             }
 
@@ -657,9 +677,8 @@ fun MainScreen() {
                         title = "Statistics Hub",
                         icon = Icons.Default.Insights,
                         description = "Stats, rankings, records & more",
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                         modifier = Modifier.fillMaxWidth()
+                            .revealOnFirstPaint(index = 4, key = "statistics-hub", state = reveal)
                     ) {
                         context.startActivity(Intent(context, StatsHubActivity::class.java))
                     }
@@ -669,11 +688,12 @@ fun MainScreen() {
             // Section: Management
             item {
                 Text(
-                    text = "Management",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(top = 8.dp)
+                    text = "Management".uppercase(),
+                    style = MicroLabel,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .padding(top = 8.dp, start = 4.dp)
+                        .revealOnFirstPaint(index = 4, key = "Management-header", state = reveal)
                 )
             }
 
@@ -687,9 +707,8 @@ fun MainScreen() {
                         title = "Players",
                         icon = Icons.Default.Person,
                         description = "Manage players",
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                         modifier = Modifier.weight(1f)
+                            .revealOnFirstPaint(index = 5, key = "players", state = reveal)
                     ) {
                         context.startActivity(Intent(context, AddPlayerActivity::class.java))
                     }
@@ -698,9 +717,8 @@ fun MainScreen() {
                         title = "Groups",
                         icon = Icons.Default.Group,
                         description = "Manage groups",
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                         modifier = Modifier.weight(1f)
+                            .revealOnFirstPaint(index = 5, key = "groups", state = reveal)
                     ) {
                         context.startActivity(Intent(context, GroupManagementActivity::class.java))
                     }
@@ -708,62 +726,17 @@ fun MainScreen() {
             }
 
             // Section: Cloud & Data
+            // Cloud sync and About now live inside Settings, so the home grid stays limited to
+            // things you actively do during a session.
             item {
-                Text(
-                    text = "Cloud & Data",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
-
-            item {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                MenuCard(
+                    title = "Settings",
+                    icon = Icons.Default.Settings,
+                    description = "Appearance, cloud sync, backup & about",
+                    modifier = Modifier.fillMaxWidth()
+                        .revealOnFirstPaint(index = 6, key = "settings", state = reveal)
                 ) {
-                    MenuCard(
-                        title = "Cloud Sync",
-                        icon = Icons.Default.Cloud,
-                        description = "Backup & sync",
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        context.startActivity(Intent(context, EnhancedCloudSyncActivity::class.java))
-                    }
-
-                    MenuCard(
-                        title = "Data",
-                        icon = Icons.Default.Storage,
-                        description = "Import & export",
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        context.startActivity(Intent(context, DataManagementActivity::class.java))
-                    }
-                }
-            }
-
-            item {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    MenuCard(
-                        title = "About",
-                        icon = Icons.Default.Info,
-                        description = "App info & updates",
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        context.startActivity(Intent(context, AboutActivity::class.java))
-                    }
+                    context.startActivity(Intent(context, DataManagementActivity::class.java))
                 }
             }
 
@@ -777,12 +750,12 @@ fun MainScreen() {
                 ) {
                     Text(
                         text = "Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
                         text = "by LogPoseLabs",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium
                     )
@@ -799,7 +772,7 @@ fun MainScreen() {
 
 @Composable
 fun QuickStatItem(
-    value: String,
+    value: Int,
     label: String,
     icon: ImageVector
 ) {
@@ -810,20 +783,21 @@ fun QuickStatItem(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            modifier = Modifier.size(24.dp),
-            tint = MaterialTheme.colorScheme.onPrimaryContainer
+            modifier = Modifier.size(22.dp),
+            tint = MaterialTheme.colorScheme.primary
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = value,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onPrimaryContainer
+            // Tabular so the three counts stay on their own baselines while they roll — with
+            // proportional digits the row twitches sideways as each number lands.
+            text = animatedInt(value).toString(),
+            style = StatValue,
+            color = MaterialTheme.colorScheme.onSurface
         )
         Text(
-            text = label,
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+            text = label.uppercase(),
+            style = MicroLabel,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -834,46 +808,63 @@ fun MenuCard(
     title: String,
     icon: ImageVector,
     description: String,
-    containerColor: Color,
-    contentColor: Color,
     modifier: Modifier = Modifier,
-    onClick: () -> Unit
+    onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Card(
         onClick = onClick,
+        interactionSource = interactionSource,
         modifier = modifier
-            .height(120.dp),
+            .height(120.dp)
+            .pressScale(interactionSource),
         colors = CardDefaults.cardColors(
-            containerColor = containerColor,
-            contentColor = contentColor
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
         ),
-        elevation = CardDefaults.cardElevation(2.dp)
+        // In light mode surfaceContainer sits a hair above surface, so without an edge the tiles
+        // dissolve into the page. A hairline reads in both modes where elevation shadow does not.
+        border = hairline(),
+        elevation = CardDefaults.cardElevation(0.dp),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(28.dp),
-                tint = contentColor
-            )
+            // The tile's only colour. These cards used to carry four unrelated container roles
+            // (primary, error, tertiary, secondary), which read as four unrelated meanings — and
+            // in dark mode made "Live Matches" the loudest thing on the screen. Alpha over the
+            // card surface rather than a second surface role, because several palettes derive
+            // surface and surfaceVariant close enough to be indistinguishable.
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                        shape = RoundedCornerShape(10.dp),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
 
             Column {
                 Text(
                     text = title,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = contentColor
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
                     text = description,
-                    fontSize = 12.sp,
-                    color = contentColor.copy(alpha = 0.8f),
-                    lineHeight = 14.sp
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -1049,7 +1040,7 @@ fun UpdateDialog(
                     Button(onClick = onUpdate) {
                         Icon(
                             Icons.Default.Download,
-                            contentDescription = null,
+                            contentDescription = "Download",
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(8.dp))

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark counterpart of the launch window background. Resolves when the app has declared
+         itself to be in night mode (see StumpdApplication), not merely when the system is. -->
+    <color name="window_background">#FF101413</color>
+</resources>

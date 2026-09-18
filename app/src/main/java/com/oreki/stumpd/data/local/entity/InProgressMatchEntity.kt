@@ -69,6 +69,24 @@ data class InProgressMatchEntity(
     
     // Deliveries (ball-by-ball data, serialized as JSON)
     val allDeliveriesJson: String?,
+
+    /** Undo stack: JSON array of DeliverySnapshot */
+    val deliveryHistoryJson: String? = null,
+    /** PartnershipsPersistenceState JSON */
+    val partnershipsStateJson: String? = null,
+    /** A super over in progress — see SuperOverPersistenceState. */
+    val superOverStateJson: String? = null,
+
+    /**
+     * The tournament fixture being settled, when this is one.
+     *
+     * Carried so a process death mid-match can't orphan the fixture: without it the match would
+     * resume and save as an ordinary one, and the table would never move.
+     */
+    val tournamentId: String? = null,
+    val tournamentFixtureId: String? = null,
+    val team1Id: String? = null,
+    val team2Id: String? = null,
     
     // Timestamps
     val lastSavedAt: Long,

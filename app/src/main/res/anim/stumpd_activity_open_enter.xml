@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Forward navigation: the new screen arrives from the right and fades up. Short on purpose —
+  this plays on 36 startActivity calls, so anything longer than a quarter of a second starts to
+  feel like waiting. Matches StumpdMotion.STANDARD_MS, which the in-app motion uses.
+-->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/fast_out_slow_in"
+    android:shareInterpolator="true">
+    <translate
+        android:fromXDelta="7%p"
+        android:toXDelta="0"
+        android:duration="260" />
+    <alpha
+        android:fromAlpha="0.0"
+        android:toAlpha="1.0"
+        android:duration="180" />
+</set>

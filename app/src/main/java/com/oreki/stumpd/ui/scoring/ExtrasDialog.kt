@@ -49,7 +49,7 @@ fun ExtrasDialog(
                 ) {
                     Text(
                         "🏏",
-                        fontSize = 20.sp,
+                        style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.padding(8.dp)
                     )
                 }
@@ -99,7 +99,7 @@ fun ExtrasDialog(
                                         ) {
                                             Text(
                                                 "+$baseRuns",
-                                                fontSize = 12.sp,
+                                                style = MaterialTheme.typography.bodySmall,
                                                 fontWeight = FontWeight.Bold,
                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                             )
@@ -123,7 +123,7 @@ fun ExtrasDialog(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(extraType.displayName, fontWeight = FontWeight.Medium)
-                                        Text("+$baseRuns", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text("+$baseRuns", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -312,7 +312,7 @@ fun QuickWideDialog(
                 ) {
                     Text(
                         "🏏",
-                        fontSize = 18.sp,
+                        style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(8.dp)
                     )
                 }
@@ -356,7 +356,7 @@ fun QuickWideDialog(
                             ) { 
                                 Text(
                                     text = "$batsmenRuns",
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -396,7 +396,7 @@ fun QuickNoBallDialog(
                     ) { Text("Just additional runs") }
                     Text(
                         "Note: For run-out or boundary-out on no-ball, use 'More Extras' button",
-                        fontSize = 11.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontStyle = FontStyle.Italic,
                         modifier = Modifier.padding(vertical = 4.dp)
@@ -424,7 +424,7 @@ fun QuickNoBallDialog(
                             ) { 
                                 Text(
                                     text = "$batsmenRuns",
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                             }

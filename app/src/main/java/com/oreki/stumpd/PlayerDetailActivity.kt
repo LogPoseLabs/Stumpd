@@ -1,5 +1,6 @@
 package com.oreki.stumpd
 
+import com.oreki.stumpd.domain.model.MatchSettings
 import com.oreki.stumpd.data.manager.*
 import com.oreki.stumpd.domain.model.*
 import android.os.Build
@@ -18,15 +19,23 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.QueryStats
+import com.oreki.stumpd.ui.theme.MicroLabel
+import com.oreki.stumpd.ui.theme.ScoreLarge
+import com.oreki.stumpd.ui.theme.ScoreMedium
+import com.oreki.stumpd.ui.theme.StatValue
+import com.oreki.stumpd.ui.theme.EmptyState
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.horizontalScroll
@@ -39,7 +48,10 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import dagger.hilt.android.AndroidEntryPoint
 
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
+@AndroidEntryPoint
 class PlayerDetailActivity : ComponentActivity() {
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,6 +68,7 @@ class PlayerDetailActivity : ComponentActivity() {
 
         setContent {
             StumpdTheme {
+                val windowSizeClass = calculateWindowSizeClass(this@PlayerDetailActivity)
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
@@ -65,7 +78,8 @@ class PlayerDetailActivity : ComponentActivity() {
                         initialGroupId = filterGroupId,
                         initialGroupName = filterGroupName,
                         initialPitchType = filterPitchType,
-                        initialDateFilter = filterDate
+                        initialDateFilter = filterDate,
+                        widthSizeClass = windowSizeClass.widthSizeClass,
                     )
                 }
             }
@@ -81,7 +95,8 @@ fun PlayerDetailScreen(
     initialGroupId: String? = null,
     initialGroupName: String = "Select Group",
     initialPitchType: Boolean? = false,
-    initialDateFilter: String = "All Time"
+    initialDateFilter: String = "All Time",
+    widthSizeClass: WindowWidthSizeClass = WindowWidthSizeClass.Compact,
 ) {
     val context = LocalContext.current
     val matchRepo = rememberMatchRepository()
@@ -99,6 +114,11 @@ fun PlayerDetailScreen(
     var selectedGroupId by remember { mutableStateOf(initialGroupId) }
     var selectedGroupName by remember { mutableStateOf(initialGroupName) }
     var showGroupPicker by remember { mutableStateOf(false) }
+
+    /** The milestone score for the group in view, for the "20s" style stats. */
+    val battingMilestone = groups.firstOrNull { it.id == selectedGroupId }
+        ?.defaults?.matchSettings?.battingMilestone
+        ?: MatchSettings().battingMilestone
 
     var selectedPitchType by remember { mutableStateOf(initialPitchType) }
     var showPitchPicker by remember { mutableStateOf(false) }
@@ -174,13 +194,13 @@ fun PlayerDetailScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = playerName,
-                            fontSize = 28.sp,
+                            style = ScoreLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
                             text = "${player?.totalMatches ?: 0} matches",
-                            fontSize = 16.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -193,13 +213,13 @@ fun PlayerDetailScreen(
                             ) {
                                 Text(
                                     text = (player?.totalRuns ?: 0).toString(),
-                                    fontSize = 20.sp,
+                                    style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onPrimary
                                 )
                                 Text(
                                     text = "RUNS",
-                                    fontSize = 10.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onPrimary
                                 )
                             }
@@ -212,13 +232,13 @@ fun PlayerDetailScreen(
                             ) {
                                 Text(
                                     text = (player?.totalWickets ?: 0).toString(),
-                                    fontSize = 20.sp,
+                                    style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onPrimary
                                 )
                                 Text(
                                     text = "WICKETS",
-                                    fontSize = 10.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onPrimary
                                 )
                             }
@@ -228,7 +248,7 @@ fun PlayerDetailScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "Last played: ${player?.let { formatDate(it.lastPlayed) } ?: "-"}",
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -254,7 +274,7 @@ fun PlayerDetailScreen(
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(Modifier.width(6.dp))
-                Text(selectedGroupName, fontSize = 12.sp)
+                Text(selectedGroupName, style = MaterialTheme.typography.bodySmall)
             }
 
             // Pitch filter chip
@@ -273,7 +293,7 @@ fun PlayerDetailScreen(
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(Modifier.width(6.dp))
-                Text(pitchLabel, fontSize = 12.sp)
+                Text(pitchLabel, style = MaterialTheme.typography.bodySmall)
             }
 
             // Date Filter Chip
@@ -292,7 +312,7 @@ fun PlayerDetailScreen(
                         selectedFilter.startsWith("CustomRange:") -> "Custom Range"
                         else -> "Filter"
                     },
-                    fontSize = 12.sp
+                    style = MaterialTheme.typography.bodySmall
                 )
             }
         }
@@ -313,15 +333,11 @@ fun PlayerDetailScreen(
             }
         ) {
             val tabs = listOf("Overview", "Performance", "Batting", "Bowling", "Stats")
-            val configuration = LocalConfiguration.current
-            val screenWidth = configuration.screenWidthDp.dp
-            
-            // Calculate dynamic font size based on screen width
-            // Small screens (<360dp): 11sp, Medium (360-400dp): 12sp, Large (>400dp): 13sp
-            val tabFontSize = when {
-                screenWidth < 360.dp -> 11.sp
-                screenWidth < 400.dp -> 12.sp
-                else -> 13.sp
+            val tabFontSize = when (widthSizeClass) {
+                WindowWidthSizeClass.Compact -> 13.sp
+                WindowWidthSizeClass.Medium -> 12.sp
+                WindowWidthSizeClass.Expanded -> 13.sp
+                else -> 12.sp
             }
             
             tabs.forEachIndexed { index, title ->
@@ -350,11 +366,11 @@ fun PlayerDetailScreen(
                 .weight(1f)
         ) { page ->
             when (page) {
-                0 -> if (player != null) PlayerOverviewTab(player!!) else EmptyOverview()
-                1 -> if (player != null) PerformanceGraphTab(player!!) else EmptyPerformance()
-                2 -> if (player != null) BattingTab(player!!) else EmptyBatting()
-                3 -> if (player != null) BowlingTab(player!!) else EmptyBowling()
-                4 -> if (player != null) InterestingStatsTab(player!!) else EmptyStats()
+                0 -> if (player != null) PlayerOverviewTab(player!!) else NoDataForFilter("matches")
+                1 -> if (player != null) PerformanceGraphTab(player!!) else NoDataForFilter("performances")
+                2 -> if (player != null) BattingTab(player!!, battingMilestone) else NoDataForFilter("batting")
+                3 -> if (player != null) BowlingTab(player!!) else NoDataForFilter("bowling")
+                4 -> if (player != null) InterestingStatsTab(player!!, battingMilestone) else NoDataForFilter("statistics")
             }
         }
     }
@@ -569,7 +585,7 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = "Batting Summary",
-                            fontSize = 18.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -620,7 +636,7 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = "Bowling Summary",
-                            fontSize = 18.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.tertiary,
                         )
@@ -660,7 +676,7 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
                     } else {
                         Text(
                             text = "No bowling statistics available",
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -687,7 +703,7 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = "Fielding Stats",
-                            fontSize = 18.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.secondary,
                         )
@@ -724,7 +740,7 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = "Recent Form (Last 5 Matches)",
-                            fontSize = 16.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -738,7 +754,7 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
                             .take(5)
 
                     if (recentMatches.isEmpty()) {
-                        Text("No recent matches", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                        Text("No recent matches", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                     } else {
                         recentMatches.forEach { match ->
                             RecentMatchCard(match)
@@ -755,7 +771,7 @@ fun PlayerOverviewTab(player: PlayerDetailedStats) {
 @Composable
 fun PerformanceGraphTab(player: PlayerDetailedStats) {
     if (player.matchPerformances.isEmpty()) {
-        EmptyPerformance()
+        NoDataForFilter("performances")
         return
     }
     
@@ -790,13 +806,13 @@ fun PerformanceGraphTab(player: PlayerDetailedStats) {
         item {
             Text(
                 text = "📊 Performance Trends",
-                fontSize = 20.sp,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
             Text(
                 text = "Last ${weeklyPerformance.size} weeks",
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -809,11 +825,11 @@ fun PerformanceGraphTab(player: PlayerDetailedStats) {
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("🏏", fontSize = 20.sp)
+                        Text("🏏", style = MaterialTheme.typography.titleLarge)
                         Spacer(Modifier.width(8.dp))
                         Text(
                             "Batting Performance",
-                            fontSize = 16.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
@@ -824,7 +840,7 @@ fun PerformanceGraphTab(player: PlayerDetailedStats) {
                     ) {
                         Text(
                             text = "Matches",
-                            fontSize = 9.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.width(30.dp),
                             textAlign = TextAlign.End,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -843,7 +859,7 @@ fun PerformanceGraphTab(player: PlayerDetailedStats) {
                         ) {
                             Text(
                                 text = weekStr,
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 modifier = Modifier.width(60.dp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -868,7 +884,7 @@ fun PerformanceGraphTab(player: PlayerDetailedStats) {
                                     ) {
                                         Text(
                                             text = "$runs runs",
-                                            fontSize = 11.sp,
+                                            style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Medium,
                                             color = MaterialTheme.colorScheme.onPrimaryContainer
                                         )
@@ -878,7 +894,7 @@ fun PerformanceGraphTab(player: PlayerDetailedStats) {
                             
                             Text(
                                 text = "$matches",
-                                fontSize = 10.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 modifier = Modifier.width(30.dp),
                                 textAlign = TextAlign.End,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -897,11 +913,11 @@ fun PerformanceGraphTab(player: PlayerDetailedStats) {
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("⚾", fontSize = 20.sp)
+                        Text("⚾", style = MaterialTheme.typography.titleLarge)
                         Spacer(Modifier.width(8.dp))
                         Text(
                             "Bowling Performance",
-                            fontSize = 16.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
@@ -912,7 +928,7 @@ fun PerformanceGraphTab(player: PlayerDetailedStats) {
                     ) {
                         Text(
                             text = "Matches",
-                            fontSize = 9.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.width(30.dp),
                             textAlign = TextAlign.End,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -931,7 +947,7 @@ fun PerformanceGraphTab(player: PlayerDetailedStats) {
                         ) {
                             Text(
                                 text = weekStr,
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 modifier = Modifier.width(60.dp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -956,7 +972,7 @@ fun PerformanceGraphTab(player: PlayerDetailedStats) {
                                     ) {
                                         Text(
                                             text = "$wickets wkts",
-                                            fontSize = 11.sp,
+                                            style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Medium,
                                             color = MaterialTheme.colorScheme.onSecondaryContainer
                                         )
@@ -966,7 +982,7 @@ fun PerformanceGraphTab(player: PlayerDetailedStats) {
                             
                             Text(
                                 text = "$matches",
-                                fontSize = 10.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 modifier = Modifier.width(30.dp),
                                 textAlign = TextAlign.End,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -990,7 +1006,7 @@ fun PlayerStatisticsTab(player: PlayerDetailedStats) {
         item {
             Text(
                 text = "Career Statistics",
-                fontSize = 20.sp,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(bottom = 8.dp)
@@ -1014,7 +1030,7 @@ fun PlayerStatisticsTab(player: PlayerDetailedStats) {
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = "Overall Performance",
-                            fontSize = 17.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -1032,7 +1048,7 @@ fun PlayerStatisticsTab(player: PlayerDetailedStats) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "Bowling Records",
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                         )
                         StatRow("Overs Bowled", "%.1f".format(player.oversBowled))
@@ -1061,7 +1077,7 @@ fun PlayerStatisticsTab(player: PlayerDetailedStats) {
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = "Best Performances",
-                            fontSize = 17.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -1115,7 +1131,7 @@ fun StatBox(
         ) {
             Text(
                 text = value,
-                fontSize = 26.sp,
+                style = ScoreMedium,
                 fontWeight = FontWeight.Bold,
                 color = if (isHighlight)
                     MaterialTheme.colorScheme.primary
@@ -1128,7 +1144,7 @@ fun StatBox(
 
             Text(
                 text = title.uppercase(),
-                fontSize = 10.sp,
+                style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -1136,6 +1152,31 @@ fun StatBox(
             )
         }
     }
+}
+
+/** A [StatRow] whose value isn't text — the form dots, for instance. */
+@Composable
+fun StatRow(
+    label: String,
+    value: @Composable () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        value()
+    }
+    HorizontalDivider(
+        color = MaterialTheme.colorScheme.outlineVariant,
+    )
 }
 
 @Composable
@@ -1152,12 +1193,14 @@ fun StatRow(
     ) {
         Text(
             text = label,
-            fontSize = 13.sp,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
             text = value,
-            fontSize = 14.sp,
+            // Tabular figures: this row repeats down the whole tab, so the numbers should form a
+            // column rather than wander with their digit widths.
+            style = StatValue,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface
         )
@@ -1182,12 +1225,12 @@ fun RecentMatchCard(match: MatchPerformance) {
         Column {
             Text(
                 text = "vs ${match.opposingTeam}",
-                fontSize = 12.sp,
+                style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Medium,
             )
             Text(
                 text = formatDate(match.matchDate),
-                fontSize = 10.sp,
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -1196,14 +1239,14 @@ fun RecentMatchCard(match: MatchPerformance) {
             if (match.runs > 0 || match.ballsFaced > 0) {
                 Text(
                     text = "${match.runs} (${match.ballsFaced})",
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
                 )
             }
             if (match.wickets > 0) {
                 Text(
                     text = "${match.wickets}/${match.runsConceded}",
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.tertiary,
                 )
             }
@@ -1241,18 +1284,18 @@ fun MatchPerformanceCard(match: MatchPerformance) {
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (match.isJoker) {
-                            Text("🃏 ", fontSize = 16.sp)
+                            Text("🃏 ", style = MaterialTheme.typography.titleMedium)
                         }
                         Text(
                             text = "${match.myTeam} vs ${match.opposingTeam}",
-                            fontSize = 16.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                         )
                     }
 
                     Text(
                         text = formatDate(match.matchDate),
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -1269,7 +1312,7 @@ fun MatchPerformanceCard(match: MatchPerformance) {
                     Text(
                         text = if (match.isWinner) "WON" else "LOST",
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        fontSize = 10.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = if (match.isWinner)
                             MaterialTheme.colorScheme.onPrimaryContainer
@@ -1289,14 +1332,14 @@ fun MatchPerformanceCard(match: MatchPerformance) {
                 ) {
                     Text(
                         text = "🏏 Batting",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Medium
                     )
 
                     Text(
                         text = "${match.runs}${if (!match.isOut) "*" else ""} (${match.ballsFaced})",
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                     )
                 }
@@ -1304,7 +1347,7 @@ fun MatchPerformanceCard(match: MatchPerformance) {
                 if (match.fours > 0 || match.sixes > 0) {
                     Text(
                         text = "4s: ${match.fours} • 6s: ${match.sixes}",
-                        fontSize = 10.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 2.dp)
                     )
@@ -1321,14 +1364,14 @@ fun MatchPerformanceCard(match: MatchPerformance) {
                 ) {
                     Text(
                         text = "⚾ Bowling",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.tertiary,
                         fontWeight = FontWeight.Medium
                     )
 
                     Text(
                         text = "${match.wickets}/${match.runsConceded} (${match.ballsBowled / 6}.${match.ballsBowled % 6} ov)",
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.tertiary,
                     )
@@ -1338,110 +1381,29 @@ fun MatchPerformanceCard(match: MatchPerformance) {
     }
 }
 
+
+
+/**
+ * What each tab shows when the filters leave a player with nothing.
+ *
+ * There used to be five of these, each designed differently — a titled card, two centred-emoji
+ * cards and two bare lines of text — while the shared [EmptyState] went unused.
+ */
 @Composable
-private fun EmptyOverview() {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 0.dp)
-    ) {
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
-                ) {
-                    Text(
-                        "🏏 Batting Summary",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        "No stats in this filter",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 14.sp
-                    )
-                }
-            }
-        }
-    }
+private fun NoDataForFilter(what: String) {
+    EmptyState(
+        icon = Icons.Default.QueryStats,
+        title = "Nothing to show",
+        description = "No $what for this player under the current filters.",
+    )
 }
 
 @Composable
-private fun EmptyPerformance() {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 0.dp)
-    ) {
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(text = "📊", fontSize = 32.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "No performance data available",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmptyStats() {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 0.dp)
-    ) {
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(text = "📊", fontSize = 32.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "No statistics available",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        }
-    }
-}
-@Composable
-fun BattingTab(player: PlayerDetailedStats) {
+fun BattingTab(
+    player: PlayerDetailedStats,
+    /** The group's milestone score; see [MatchSettings.battingMilestone]. */
+    battingMilestone: Int = MatchSettings().battingMilestone,
+) {
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(bottom = 16.dp)
@@ -1464,7 +1426,7 @@ fun BattingTab(player: PlayerDetailedStats) {
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = "Batting Statistics",
-                            fontSize = 18.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -1475,7 +1437,7 @@ fun BattingTab(player: PlayerDetailedStats) {
                     // Career Stats
                     Text(
                         text = "Career Overview",
-                        fontSize = 15.sp,
+                        style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -1487,8 +1449,7 @@ fun BattingTab(player: PlayerDetailedStats) {
                     StatRow("Batting Average", "%.2f".format(player.battingAverage))
                     StatRow("Strike Rate", "%.2f".format(player.strikeRate))
                     StatRow("Highest Score", player.highestScore.toString())
-                    StatRow("50s", player.fifties.toString())
-                    StatRow("100s", player.hundreds.toString())
+                    StatRow("${battingMilestone}s", player.milestoneScores(battingMilestone).toString())
                     StatRow("Times Out", player.timesOut.toString())
                     StatRow("Not Outs", player.notOuts.toString())
                     
@@ -1499,7 +1460,7 @@ fun BattingTab(player: PlayerDetailedStats) {
                     // Scoring Breakdown
                     Text(
                         text = "Scoring Breakdown",
-                        fontSize = 15.sp,
+                        style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -1532,19 +1493,22 @@ fun BattingTab(player: PlayerDetailedStats) {
                     // Interesting Stats
                     Text(
                         text = "Interesting Stats",
-                        fontSize = 15.sp,
+                        style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    StatRow("Ducks", if (player.ducks > 0) "${player.ducks}/${player.totalMatches} (${"%.1f".format(player.duckPercentage)}% • ${player.goldenDucks} golden 🦆)" else "0")
+                    StatRow("Ducks", if (player.ducks > 0) buildString {
+                        append("${player.ducks}/${player.totalMatches} (${"%.1f".format(player.duckPercentage)}%)")
+                        if (player.goldenDucks > 0) append(" • ${player.goldenDucks} golden 🥇")
+                        if (player.diamondDucks > 0) append(" • ${player.diamondDucks} diamond 💎")
+                    } else "0")
                     StatRow("Boundary %", "%.1f%%".format(player.boundaryPercentage))
                     StatRow("Dot Ball %", "%.1f%%".format(player.dotBallPercentage))
                     StatRow("Run Rate", "%.1f runs/over".format(player.currentRunRate))
                     StatRow("Consistency", "${player.consistencyRating} (σ=%.1f)".format(player.consistency))
-                    StatRow("Form (Last 5)", player.recentForm)
-                }
+                                    }
             }
         }
     }
@@ -1574,9 +1538,9 @@ fun BowlingTab(player: PlayerDetailedStats) {
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = "Bowling Statistics",
-                            fontSize = 18.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.tertiary
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                     
@@ -1585,7 +1549,7 @@ fun BowlingTab(player: PlayerDetailedStats) {
                     if (player.totalWickets > 0 || player.totalBallsBowled > 0) {
                         Text(
                             text = "Career Overview",
-                            fontSize = 15.sp,
+                            style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -1607,7 +1571,7 @@ fun BowlingTab(player: PlayerDetailedStats) {
                         
                         Text(
                             text = "Extras Conceded",
-                            fontSize = 15.sp,
+                            style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -1628,7 +1592,7 @@ fun BowlingTab(player: PlayerDetailedStats) {
                         // Interesting Stats
                         Text(
                             text = "Bowling Effectiveness",
-                            fontSize = 15.sp,
+                            style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -1637,11 +1601,10 @@ fun BowlingTab(player: PlayerDetailedStats) {
                         StatRow("Maiden %", "%.1f%% (%d maidens)".format(player.maidenOverPercentage, player.totalMaidenOvers))
                         StatRow("Wicket Strike Rate", if (player.totalWickets > 0) "%.1f balls/wicket".format(player.wicketStrikeRate) else "-")
                         StatRow("Pressure Index", "${player.pressureRating} (%.0f/100)".format(player.pressureIndex))
-                        StatRow("Form (Last 5)", player.recentForm)
-                    } else {
+                                            } else {
                         Text(
                             text = "No bowling statistics available",
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -1651,22 +1614,13 @@ fun BowlingTab(player: PlayerDetailedStats) {
     }
 }
 
-@Composable
-fun EmptyBatting() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("No batting statistics available", color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
+
 
 @Composable
-fun EmptyBowling() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("No bowling statistics available", color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-fun InterestingStatsTab(player: PlayerDetailedStats) {
+fun InterestingStatsTab(
+    player: PlayerDetailedStats,
+    battingMilestone: Int = MatchSettings().battingMilestone,
+) {
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(bottom = 16.dp)
@@ -1683,12 +1637,12 @@ fun InterestingStatsTab(player: PlayerDetailedStats) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "🏏",
-                            fontSize = 20.sp
+                            style = MaterialTheme.typography.titleLarge
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = "Batting Insights",
-                            fontSize = 18.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -1696,37 +1650,18 @@ fun InterestingStatsTab(player: PlayerDetailedStats) {
                     
                     Spacer(modifier = Modifier.height(16.dp))
                     
-                    StatRow("Ducks 🦆", if (player.ducks > 0) {
-                        "${player.ducks}/${player.totalMatches} (${"%.1f".format(player.duckPercentage)}%)" + 
-                        if (player.goldenDucks > 0) " • ${player.goldenDucks} golden" else ""
+                    StatRow("Ducks 🦆", if (player.ducks > 0) buildString {
+                        append("${player.ducks}/${player.totalMatches} (${"%.1f".format(player.duckPercentage)}%)")
+                        if (player.goldenDucks > 0) append(" • ${player.goldenDucks} golden")
+                        if (player.diamondDucks > 0) append(" • ${player.diamondDucks} diamond")
                     } else "0")
                     StatRow("Boundary %", "%.1f%% of runs".format(player.boundaryPercentage))
                     StatRow("Dot Ball %", "%.1f%% of balls".format(player.dotBallPercentage))
                     StatRow("Run Rate", "%.1f runs/over".format(player.currentRunRate))
+                    // No form strip here: the Overview tab already lists the last five innings
+                    // with the opponent and the actual score, which says more than any colour
+                    // scale can — and one screen shouldn't state the same thing twice.
                     StatRow("Consistency", "${player.consistencyRating} (σ=%.1f)".format(player.consistency))
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    // Form Guide
-                    Text(
-                        text = "Recent Form",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = player.recentForm,
-                        fontSize = 24.sp,
-                        letterSpacing = 4.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "🟢 50+ • 🟡 25-49 • 🟠 10-24 • 🔴 <10",
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
         }
@@ -1744,14 +1679,14 @@ fun InterestingStatsTab(player: PlayerDetailedStats) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = "🎳",
-                                fontSize = 20.sp
+                                style = MaterialTheme.typography.titleLarge
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 text = "Bowling Insights",
-                                fontSize = 18.sp,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.tertiary
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                         
@@ -1784,12 +1719,12 @@ fun InterestingStatsTab(player: PlayerDetailedStats) {
                             ) {
                                 Text(
                                     "Pressure Rating",
-                                    fontSize = 13.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium
                                 )
                                 Text(
                                     player.pressureRating,
-                                    fontSize = 16.sp,
+                                    style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -1812,14 +1747,14 @@ fun InterestingStatsTab(player: PlayerDetailedStats) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = "📊",
-                                fontSize = 20.sp
+                                style = MaterialTheme.typography.titleLarge
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 text = "Scoring Pattern",
-                                fontSize = 18.sp,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.secondary
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                         
@@ -1833,12 +1768,12 @@ fun InterestingStatsTab(player: PlayerDetailedStats) {
                                 ) {
                                     Text(
                                         label,
-                                        fontSize = 13.sp,
+                                        style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.Medium
                                     )
                                     Text(
                                         "%.1f%%".format(percentage),
-                                        fontSize = 13.sp,
+                                        style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -1874,14 +1809,14 @@ fun InterestingStatsTab(player: PlayerDetailedStats) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "🏆",
-                            fontSize = 20.sp
+                            style = MaterialTheme.typography.titleLarge
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = "Milestones",
-                            fontSize = 18.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.secondary
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                     
@@ -1904,14 +1839,14 @@ fun InterestingStatsTab(player: PlayerDetailedStats) {
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
-                                    player.fifties.toString(),
-                                    fontSize = 24.sp,
+                                    player.milestoneScores(battingMilestone).toString(),
+                                    style = ScoreMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
                                 Text(
-                                    "Fifties",
-                                    fontSize = 11.sp,
+                                    "${battingMilestone}+ scores",
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
                             }
@@ -1931,13 +1866,13 @@ fun InterestingStatsTab(player: PlayerDetailedStats) {
                             ) {
                                 Text(
                                     player.hundreds.toString(),
-                                    fontSize = 24.sp,
+                                    style = ScoreMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onTertiaryContainer
                                 )
                                 Text(
                                     "Hundreds",
-                                    fontSize = 11.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onTertiaryContainer
                                 )
                             }
@@ -1957,13 +1892,13 @@ fun InterestingStatsTab(player: PlayerDetailedStats) {
                             ) {
                                 Text(
                                     player.fiveWicketHauls.toString(),
-                                    fontSize = 24.sp,
+                                    style = ScoreMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSecondaryContainer
                                 )
                                 Text(
                                     "5-Wicket",
-                                    fontSize = 11.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSecondaryContainer
                                 )
                             }

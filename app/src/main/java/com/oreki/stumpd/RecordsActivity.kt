@@ -22,6 +22,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.NavController
+import androidx.navigation.compose.rememberNavController
+import com.oreki.stumpd.ui.stats.popBackStackOrFinish
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -29,33 +32,20 @@ import androidx.compose.ui.unit.dp
 import com.oreki.stumpd.data.local.entity.GroupEntity
 import com.oreki.stumpd.ui.components.DateFilterDialog
 import com.oreki.stumpd.ui.components.GroupFilterDropdown
+import com.oreki.stumpd.ui.components.pitchTypeLabel
 import com.oreki.stumpd.ui.components.filterMatchesByGroup
 import com.oreki.stumpd.ui.components.filterMatchesByPitchType
 import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.theme.StumpdTheme
+import com.oreki.stumpd.ui.theme.hairline
 import com.oreki.stumpd.viewmodel.RecordsViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.launch
 import java.time.LocalDate
-
-class RecordsActivity : ComponentActivity() {
-    @RequiresApi(Build.VERSION_CODES.O)
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        actionBar?.hide()
-        setContent {
-            StumpdTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    RecordsScreen(onBack = { finish() })
-                }
-            }
-        }
-    }
-}
+import dagger.hilt.android.AndroidEntryPoint
 
 sealed class RecordCategory(val title: String, val icon: ImageVector) {
     object BattingRecords : RecordCategory("Batting", Icons.Default.SportsCricket)
@@ -85,7 +75,15 @@ enum class FieldingFilter(val label: String) {
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
-fun RecordsScreen(onBack: () -> Unit, vm: RecordsViewModel = viewModel()) {
+fun RecordsScreen(navController: NavController, vm: RecordsViewModel = hiltViewModel()) {
+    // A correction to a saved match changes these standings, and this screen is one back-press
+    // away from the editor, so it re-reads on resume rather than once per process.
+    LifecycleResumeEffect(Unit) {
+        vm.loadData()
+        onPauseOrDispose { }
+    }
+
+    val context = LocalContext.current
     val isLoading = vm.isLoading
     val groups = vm.groups
     val selectedCategory = vm.selectedCategory
@@ -128,7 +126,7 @@ fun RecordsScreen(onBack: () -> Unit, vm: RecordsViewModel = viewModel()) {
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { navController.popBackStackOrFinish(context) }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -140,7 +138,8 @@ fun RecordsScreen(onBack: () -> Unit, vm: RecordsViewModel = viewModel()) {
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -167,11 +166,7 @@ fun RecordsScreen(onBack: () -> Unit, vm: RecordsViewModel = viewModel()) {
                 )
 
                 // Pitch type filter button
-                val pitchLabel = when (selectedPitchType) {
-                    true -> "Short"
-                    false -> "Long"
-                    null -> "All Pitches"
-                }
+                val pitchLabel = pitchTypeLabel(selectedPitchType, abbreviated = true)
                 FilledTonalButton(
                     onClick = { vm.showPitchPicker = true },
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
@@ -360,6 +355,9 @@ fun RecordsScreen(onBack: () -> Unit, vm: RecordsViewModel = viewModel()) {
 
 @Composable
 fun RecordCard(record: RecordEntry) {
+    val recordDateFormat = remember {
+        java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault())
+    }
     val context = LocalContext.current
 
     Card(
@@ -368,16 +366,18 @@ fun RecordCard(record: RecordEntry) {
             .then(
                 if (record.matchId != null) {
                     Modifier.clickable {
-                        val intent = Intent(context, MatchDetailActivity::class.java).apply {
+                        val intent = Intent(context, FullScorecardActivity::class.java).apply {
                             putExtra("match_id", record.matchId)
+                            putExtra("initial_tab", "Summary")
                         }
                         context.startActivity(intent)
                     }
                 } else Modifier
             ),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        ),
+        border = hairline()
     ) {
         Row(
             modifier = Modifier
@@ -403,7 +403,7 @@ fun RecordCard(record: RecordEntry) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "${record.matchInfo} • ${java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(record.matchDate))}",
+                        "${record.matchInfo} • ${recordDateFormat.format(java.util.Date(record.matchDate))}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -829,7 +829,7 @@ fun calculateRecords(
                 }
 
                 // Lowest team score (must be all out)
-                if (match.firstInningsWickets >= (match.matchSettings?.maxPlayersPerTeam ?: 11) - 1) {
+                if (wasAllOut(match, innings = 1)) {
                     val currentLowest = lowestTeamScore?.value?.substringBefore("/")?.toIntOrNull() ?: Int.MAX_VALUE
                     if (team1Score < currentLowest) {
                         lowestTeamScore = RecordEntry(
@@ -842,7 +842,7 @@ fun calculateRecords(
                         )
                     }
                 }
-                if (match.secondInningsWickets >= (match.matchSettings?.maxPlayersPerTeam ?: 11) - 1) {
+                if (wasAllOut(match, innings = 2)) {
                     val currentLowest = lowestTeamScore?.value?.substringBefore("/")?.toIntOrNull() ?: Int.MAX_VALUE
                     if (team2Score < currentLowest) {
                         lowestTeamScore = RecordEntry(
@@ -941,7 +941,7 @@ private fun processBattingRecord(
             val currentHighestSR = highestStrikeRate?.value?.toDoubleOrNull() ?: 0.0
             if (sr > currentHighestSR) {
                 newHighestStrikeRate = RecordEntry(
-                    title = "Highest Strike Rate (min 10 balls)",
+                    title = "Highest Strike Rate in an Innings (min 10 balls)",
                     value = String.format("%.1f", sr),
                     holder = "$name ($runs off $ballsFaced)",
                     matchInfo = "${match.team1Name} vs ${match.team2Name}",
@@ -1021,7 +1021,7 @@ private fun processBowlingRecord(
         val currentBest = bestBowlingFigures
         if (currentBest == null) {
             newBestBowling = RecordEntry(
-                title = "Best Bowling Figures",
+                title = "Best Bowling Figures in a Match",
                 value = "$wickets/$runsConceded",
                 holder = name,
                 matchInfo = "${match.team1Name} vs ${match.team2Name}",
@@ -1032,7 +1032,7 @@ private fun processBowlingRecord(
             val (currentW, currentR) = parseBowlingFigures(currentBest.value)
             if (wickets > currentW || (wickets == currentW && runsConceded < currentR)) {
                 newBestBowling = RecordEntry(
-                    title = "Best Bowling Figures",
+                    title = "Best Bowling Figures in a Match",
                     value = "$wickets/$runsConceded",
                     holder = name,
                     matchInfo = "${match.team1Name} vs ${match.team2Name}",
@@ -1052,7 +1052,7 @@ private fun processBowlingRecord(
         val currentBestEconomy = bestEconomy?.value?.toDoubleOrNull() ?: Double.MAX_VALUE
         if (economy < currentBestEconomy) {
             newBestEconomy = RecordEntry(
-                title = "Best Economy Rate (min 2 overs)",
+                title = "Best Economy Rate in a Match (min 2 overs)",
                 value = String.format("%.2f", economy),
                 holder = "$name ($wickets/$runsConceded)",
                 matchInfo = "${match.team1Name} vs ${match.team2Name}",
@@ -1067,7 +1067,7 @@ private fun processBowlingRecord(
         val currentMostMaidens = mostMaidens?.value?.toIntOrNull() ?: 0
         if (maidenOvers > currentMostMaidens) {
             newMostMaidens = RecordEntry(
-                title = "Most Maiden Overs",
+                title = "Most Maiden Overs in a Match",
                 value = "$maidenOvers",
                 holder = "$name ($wickets/$runsConceded)",
                 matchInfo = "${match.team1Name} vs ${match.team2Name}",

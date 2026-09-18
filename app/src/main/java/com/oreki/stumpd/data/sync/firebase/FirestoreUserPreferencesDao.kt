@@ -21,25 +21,28 @@ class FirestoreUserPreferencesDao(
     suspend fun uploadPreferences(userId: String, preferences: List<UserPreferencesEntity>) {
         if (preferences.isEmpty()) return
         
-        val batch = firestore.batch()
-        
-        preferences.forEach { pref ->
-            val docRef = firestore
-                .collection(FirebaseConfig.COLLECTION_USERS)
-                .document(userId)
-                .collection("preferences")
-                .document(pref.key)
-            
-            val data = mapOf(
-                "key" to pref.key,
-                "value" to pref.value,
-                FirebaseConfig.FIELD_UPDATED_AT to System.currentTimeMillis()
-            )
-            
-            batch.set(docRef, data, SetOptions.merge())
+        // Chunked because Firestore rejects batches over 500 operations.
+        preferences.chunked(FirebaseConfig.MAX_BATCH_OPERATIONS).forEach { chunk ->
+            val batch = firestore.batch()
+
+            chunk.forEach { pref ->
+                val docRef = firestore
+                    .collection(FirebaseConfig.COLLECTION_USERS)
+                    .document(userId)
+                    .collection("preferences")
+                    .document(pref.key)
+
+                val data = mapOf(
+                    "key" to pref.key,
+                    "value" to pref.value,
+                    FirebaseConfig.FIELD_UPDATED_AT to System.currentTimeMillis()
+                )
+
+                batch.set(docRef, data, SetOptions.merge())
+            }
+
+            batch.commit().await()
         }
-        
-        batch.commit().await()
     }
     
     /**

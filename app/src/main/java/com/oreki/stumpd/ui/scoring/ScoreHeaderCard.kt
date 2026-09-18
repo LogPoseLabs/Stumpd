@@ -1,16 +1,26 @@
 package com.oreki.stumpd.ui.scoring
 
 import com.oreki.stumpd.*
+import com.oreki.stumpd.domain.match.isSuperOverInnings
+import com.oreki.stumpd.domain.match.inningsLabel
+import com.oreki.stumpd.domain.match.SUPER_OVER_OVERS
 import com.oreki.stumpd.domain.model.*
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import com.oreki.stumpd.ui.theme.MicroLabel
+import com.oreki.stumpd.ui.theme.ScoreLarge
+import com.oreki.stumpd.ui.theme.StatValue
+import com.oreki.stumpd.ui.theme.animatedInt
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -18,6 +28,8 @@ import androidx.compose.ui.unit.sp
 fun ScoreHeaderCard(
     battingTeamName: String,
     currentInnings: Int,
+    /** What the side in progress must beat, or null while it is setting the target. */
+    runsToChase: Int? = null,
     matchSettings: MatchSettings,
     calculatedTotalRuns: Int,
     totalWickets: Int,
@@ -30,19 +42,27 @@ fun ScoreHeaderCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
-        ),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        shape = MaterialTheme.shapes.large,
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
     ) {
         Column(
-            modifier = Modifier.padding(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primaryContainer,
+                            MaterialTheme.colorScheme.surface
+                        )
+                    )
+                )
+                .padding(horizontal = 8.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "$battingTeamName • Innings $currentInnings",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
+                text = "${battingTeamName.uppercase()} • ${inningsLabel(currentInnings).uppercase()}",
+                style = MicroLabel,
                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
             )
             
@@ -54,7 +74,7 @@ fun ScoreHeaderCard(
                 ) {
                     Text(
                         text = "⚡ PP (${currentOver + 1}/${matchSettings.powerplayOvers})",
-                        fontSize = 9.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSecondary,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
@@ -65,11 +85,9 @@ fun ScoreHeaderCard(
             Spacer(modifier = Modifier.height(4.dp))
             
             Text(
-                text = "$calculatedTotalRuns/$totalWickets",
-                fontSize = 34.sp,
-                fontWeight = FontWeight.Bold,
+                text = "${animatedInt(calculatedTotalRuns)}/$totalWickets",
+                style = ScoreLarge,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
-                letterSpacing = (-1).sp
             )
             Spacer(modifier = Modifier.height(4.dp))
             
@@ -80,13 +98,13 @@ fun ScoreHeaderCard(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = "$currentOver.$ballsInOver",
-                        fontSize = 13.sp,
+                        style = StatValue,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
                     Text(
-                        text = "of ${matchSettings.totalOvers} ov",
-                        fontSize = 9.sp,
+                        text = "OF ${matchSettings.totalOvers} OV",
+                        style = MicroLabel,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
                     )
                 }
@@ -96,13 +114,13 @@ fun ScoreHeaderCard(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = "${"%.2f".format(runRate)}",
-                        fontSize = 13.sp,
+                        style = StatValue,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
                     Text(
-                        text = "Run Rate",
-                        fontSize = 9.sp,
+                        text = "RUN RATE",
+                        style = MicroLabel,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
                     )
                 }
@@ -111,24 +129,28 @@ fun ScoreHeaderCard(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = "$totalExtras",
-                            fontSize = 13.sp,
+                            style = StatValue,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.tertiary,
                         )
                         Text(
-                            text = "Extras",
-                            fontSize = 9.sp,
+                            text = "EXTRAS",
+                            style = MicroLabel,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
                         )
                     }
                 }
             }
             
-            if (currentInnings == 2) {
+            // Any side chasing, not just the second innings — a super over chases too, and its
+            // balls remaining come from its own one-over allotment, not the match's.
+            if (runsToChase != null) {
                 Spacer(modifier = Modifier.height(4.dp))
-                val target = firstInningsRuns + 1
+                val target = runsToChase + 1
                 val required = target - calculatedTotalRuns
-                val ballsLeft = (matchSettings.totalOvers - currentOver) * 6 - ballsInOver
+                val oversAllotted =
+                    if (isSuperOverInnings(currentInnings)) SUPER_OVER_OVERS else matchSettings.totalOvers
+                val ballsLeft = (oversAllotted - currentOver) * 6 - ballsInOver
                 val requiredRunRate = if (ballsLeft > 0) (required.toDouble() / ballsLeft) * 6 else 0.0
                 
                 Card(
@@ -146,7 +168,7 @@ fun ScoreHeaderCard(
                         } else {
                             "🎉 Target achieved!"
                         },
-                        fontSize = 11.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = if (required > 0) 
                             MaterialTheme.colorScheme.onTertiaryContainer 

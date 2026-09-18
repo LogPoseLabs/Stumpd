@@ -42,7 +42,7 @@ fun RetirementDialog(
                 }
                 Text(
                     "Retire Batsman",
-                    fontSize = 18.sp,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -54,7 +54,7 @@ fun RetirementDialog(
             ) {
                 Text(
                     "Select which batsman to retire:",
-                    fontSize = 14.sp,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 
@@ -76,18 +76,18 @@ fun RetirementDialog(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         s.name,
-                                        fontSize = 15.sp,
+                                        style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
                                         "Striker",
-                                        fontSize = 11.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                                 Text(
                                     "${s.runs}(${s.ballsFaced})",
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.SemiBold
                                 )
                             }
@@ -113,18 +113,18 @@ fun RetirementDialog(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         ns.name,
-                                        fontSize = 15.sp,
+                                        style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
                                         "Non-striker",
-                                        fontSize = 11.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                                 Text(
                                     "${ns.runs}(${ns.ballsFaced})",
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.SemiBold
                                 )
                             }

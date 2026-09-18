@@ -1,0 +1,164 @@
+rules_version = '2';
+// Stumpd Firestore rules — deploy via Firebase Console or `firebase deploy --only firestore:rules`
+//
+// Design goals:
+// - users/{userId}/** : only that signed-in Firebase user may read or write
+// - in_progress_matches : public read (spectators / live boards); writes require auth + ownerId
+// - groups : membership-aware writes (join/leave vs owner edits); reads need auth (invite-code lookup)
+// - All writes elsewhere require authentication (no anonymous/guest writes to protected data)
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isGroupOwnerData() {
+      return resource.data.ownerId == request.auth.uid;
+    }
+
+    function isGroupOwnerResource() {
+      return request.resource.data.ownerId == request.auth.uid;
+    }
+
+    function groupDoc(groupId) {
+      return get(/databases/$(database)/documents/groups/$(groupId));
+    }
+
+    function isDestinationGroupOwner(groupId) {
+      return signedIn()
+        && groupId != null
+        && groupId is string
+        && groupId.size() > 0
+        && groupDoc(groupId).data.ownerId == request.auth.uid;
+    }
+
+    function canWriteGroupedMatch(groupId) {
+      return isDestinationGroupOwner(groupId);
+    }
+
+    function canWriteMatchData(matchId) {
+      let match = get(/databases/$(database)/documents/matches/$(matchId)).data;
+      return signedIn()
+        && ((match.groupId == null && match.ownerId == request.auth.uid)
+            || (match.groupId != null && canWriteGroupedMatch(match.groupId)));
+    }
+
+    // -------------------------------------------------------------------------
+    // User-private subtree (preferences, group_last_teams, any future subpaths)
+    // -------------------------------------------------------------------------
+    match /users/{userId}/{document=**} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+
+    // -------------------------------------------------------------------------
+    // In-progress matches — live scoring & spectating
+    // -------------------------------------------------------------------------
+    match /in_progress_matches/{matchId} {
+      // Spectator feature: unauthenticated clients may read live state.
+      allow read: if true;
+
+      allow create: if signedIn() && isGroupOwnerResource();
+
+      allow update, delete: if signedIn()
+                            && resource.data.ownerId == request.auth.uid;
+    }
+
+    // -------------------------------------------------------------------------
+    // Groups
+    // -------------------------------------------------------------------------
+    // Reads are allowed for any signed-in user so invite-code queries and web join flows can resolve a group
+    // document before the user is in memberDeviceIds. The Android app restricts downloads with
+    // whereArrayContains("memberDeviceIds", userId). Writes enforce owner vs member join/leave.
+    match /groups/{groupId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn() && isGroupOwnerResource();
+
+      // Owner: full document updates. Non-owner: only memberDeviceIds (arrayUnion/arrayRemove for join/leave).
+      // Claim path: only ownerId + memberDeviceIds may change, and the new ownerId must be the caller.
+      allow update: if signedIn()
+                    && (isGroupOwnerData()
+                        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberDeviceIds']))
+                        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ownerId', 'memberDeviceIds'])
+                            && request.resource.data.ownerId == request.auth.uid));
+
+      allow delete: if signedIn() && isGroupOwnerData();
+    }
+
+    match /groups/{groupId}/{subcollection=**} {
+      allow read: if signedIn();
+      allow write: if signedIn()
+                   && get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid;
+    }
+
+    // Claim-code hash — only the group owner may read or write (defense in depth).
+    match /group_secrets/{groupId} {
+      allow read, write: if signedIn()
+                         && get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId == request.auth.uid;
+    }
+
+    // -------------------------------------------------------------------------
+    // Completed matches + subcollections (stats, deliveries, etc.)
+    // -------------------------------------------------------------------------
+    match /matches/{matchId} {
+      allow read: if signedIn();
+
+      // Ungrouped: writer must own the document. Grouped: only the destination group's owner may write.
+      allow create: if signedIn()
+                    && request.resource.data.ownerId == request.auth.uid
+                    && (!('groupId' in request.resource.data)
+                        || request.resource.data.groupId == null
+                        || isDestinationGroupOwner(request.resource.data.groupId));
+
+      allow update: if signedIn()
+                    && request.resource.data.ownerId == request.auth.uid
+                    && (resource.data.groupId == null
+                        || isDestinationGroupOwner(resource.data.groupId));
+
+      allow delete: if signedIn()
+                    && (resource.data.groupId == null
+                        && resource.data.ownerId == request.auth.uid)
+                    || (resource.data.groupId != null
+                        && isDestinationGroupOwner(resource.data.groupId)
+                        && resource.data.ownerId == request.auth.uid);
+    }
+
+    match /matches/{matchId}/{subcollection=**} {
+      allow read: if signedIn();
+      allow write: if canWriteMatchData(matchId);
+    }
+
+    // -------------------------------------------------------------------------
+    // Players (shared profiles)
+    // -------------------------------------------------------------------------
+    match /players/{playerId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn();
+      allow delete: if signedIn()
+                    && (resource.data.ownerId == null
+                        || resource.data.ownerId == request.auth.uid);
+    }
+
+    // -------------------------------------------------------------------------
+    // Legacy / web live sharing
+    // -------------------------------------------------------------------------
+    match /shared_matches/{shareCode} {
+      allow read: if signedIn();
+
+      allow create: if signedIn() && isGroupOwnerResource();
+
+      allow update: if signedIn()
+                    && resource.data.ownerId == request.auth.uid;
+
+      allow delete: if signedIn()
+                    && resource.data.ownerId == request.auth.uid;
+    }
+
+    // Deny anything not matched above.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

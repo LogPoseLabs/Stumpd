@@ -63,17 +63,30 @@ class FirestoreGroupDao(
         val existingClaimCodeHash = existingDoc.getString("claimCodeHash")
         val existingEmailHash = existingDoc.getString("ownerEmailHash")
 
+        // Never write null inviteCode: merge would delete the field in Firestore after a bad local row
+        // (e.g. rename used to upsert GroupEntity with only id+name).
+        val inviteCodeForFirestore = group.inviteCode ?: existingDoc.getString("inviteCode")
+
+        val memberIds = members.map { it.playerId }
+        val memberIdSet = memberIds.toSet()
+
         val data = mutableMapOf<String, Any?>(
             "id" to group.id,
             "name" to group.name,
-            "inviteCode" to group.inviteCode,
             "isOwner" to group.isOwner,
-            "memberIds" to members.map { it.playerId },
+            "memberIds" to memberIds,
             "memberDeviceIds" to memberDeviceIds,
-            "unavailablePlayerIds" to unavailable.map { it.playerId },
+            "unavailablePlayerIds" to unavailable
+                .map { it.playerId }
+                .filter { it in memberIdSet }
+                .distinct(),
             FirebaseConfig.FIELD_OWNER_ID to ownerId,
-            FirebaseConfig.FIELD_UPDATED_AT to System.currentTimeMillis()
+            FirebaseConfig.FIELD_UPDATED_AT to group.updatedAt
         )
+
+        if (inviteCodeForFirestore != null) {
+            data["inviteCode"] = inviteCodeForFirestore
+        }
 
         // claimCodeHash: write-once — only set if Firestore doesn't already have one
         if (existingClaimCodeHash == null && claimCodeHash != null) {
@@ -321,6 +334,17 @@ class FirestoreGroupDao(
         return deviceId in memberDeviceIds
     }
 
+    /** True if [userId] is the Firestore owner of this group (only they may upload group-scoped matches). */
+    suspend fun isGroupOwner(groupId: String, userId: String): Boolean {
+        val doc = firestore
+            .collection(FirebaseConfig.COLLECTION_GROUPS)
+            .document(groupId)
+            .get()
+            .await()
+        if (!doc.exists()) return false
+        return doc.getString(FirebaseConfig.FIELD_OWNER_ID) == userId
+    }
+
     /**
      * Download only groups where this device is a member
      * @param deviceId The current device's user ID
@@ -442,17 +466,19 @@ class FirestoreGroupDao(
             name = doc.getString("name") ?: "",
             inviteCode = doc.getString("inviteCode"),
             claimCode = null, // Plaintext is local-only; Firestore only has the hash
-            isOwner = isOwner
+            isOwner = isOwner,
+            updatedAt = doc.getLong(FirebaseConfig.FIELD_UPDATED_AT) ?: 0L
         )
 
         val memberIds = doc.get("memberIds") as? List<*>
         val members = memberIds?.mapNotNull { id ->
             (id as? String)?.let { GroupMemberEntity(groupEntity.id, it) }
         } ?: emptyList()
+        val memberIdSet = members.map { it.playerId }.toSet()
 
         val unavailableIds = doc.get("unavailablePlayerIds") as? List<*>
         val unavailable = unavailableIds?.mapNotNull { id ->
-            (id as? String)?.let { GroupUnavailablePlayerEntity(groupEntity.id, it) }
+            (id as? String)?.takeIf { it in memberIdSet }?.let { GroupUnavailablePlayerEntity(groupEntity.id, it) }
         } ?: emptyList()
 
         val defaultsMap = doc.get("defaults") as? Map<*, *>

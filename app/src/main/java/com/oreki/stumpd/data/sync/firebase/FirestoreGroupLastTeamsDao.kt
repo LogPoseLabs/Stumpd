@@ -22,28 +22,31 @@ class FirestoreGroupLastTeamsDao(
     suspend fun uploadGroupLastTeams(userId: String, lastTeams: List<GroupLastTeamsEntity>) {
         if (lastTeams.isEmpty()) return
         
-        val batch = firestore.batch()
-        
-        lastTeams.forEach { config ->
-            val docRef = firestore
-                .collection(FirebaseConfig.COLLECTION_USERS)
-                .document(userId)
-                .collection("group_last_teams")
-                .document(config.groupId)
-            
-            val data = mapOf(
-                "groupId" to config.groupId,
-                "team1PlayerIdsJson" to config.team1PlayerIdsJson,
-                "team2PlayerIdsJson" to config.team2PlayerIdsJson,
-                "team1Name" to config.team1Name,
-                "team2Name" to config.team2Name,
-                FirebaseConfig.FIELD_UPDATED_AT to System.currentTimeMillis()
-            )
-            
-            batch.set(docRef, data, SetOptions.merge())
+        // Chunked because Firestore rejects batches over 500 operations.
+        lastTeams.chunked(FirebaseConfig.MAX_BATCH_OPERATIONS).forEach { chunk ->
+            val batch = firestore.batch()
+
+            chunk.forEach { config ->
+                val docRef = firestore
+                    .collection(FirebaseConfig.COLLECTION_USERS)
+                    .document(userId)
+                    .collection("group_last_teams")
+                    .document(config.groupId)
+
+                val data = mapOf(
+                    "groupId" to config.groupId,
+                    "team1PlayerIdsJson" to config.team1PlayerIdsJson,
+                    "team2PlayerIdsJson" to config.team2PlayerIdsJson,
+                    "team1Name" to config.team1Name,
+                    "team2Name" to config.team2Name,
+                    FirebaseConfig.FIELD_UPDATED_AT to System.currentTimeMillis()
+                )
+
+                batch.set(docRef, data, SetOptions.merge())
+            }
+
+            batch.commit().await()
         }
-        
-        batch.commit().await()
     }
     
     /**

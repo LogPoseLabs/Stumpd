@@ -46,7 +46,14 @@ fun PlayerMatchStatsEntity.toDomain(): PlayerMatchStats {
 /**
  * Converts overs (double) to total balls (int)
  */
-fun Double.oversToBalls(): Int = (this * Constants.BALLS_PER_OVER).toInt()
+fun Double.oversToBalls(): Int {
+    if (this <= 0.0) return 0
+    // Cricket notation, not a decimal: 1.3 overs is nine balls, so it cannot be `overs * 6`
+    // (which gives seven). The fractional digit counts balls out of six.
+    val completedOvers = kotlin.math.floor(this + 1e-6).toInt()
+    val balls = ((this - completedOvers) * 10).let { Math.round(it).toInt() }.coerceIn(0, 5)
+    return completedOvers * Constants.BALLS_PER_OVER + balls
+}
 
 /**
  * Converts balls (int) to overs (double format: 2.3 means 2 overs and 3 balls)

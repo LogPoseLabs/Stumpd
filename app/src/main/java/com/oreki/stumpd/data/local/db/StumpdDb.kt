@@ -8,13 +8,19 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.oreki.stumpd.data.local.dao.GroupDao
+import com.oreki.stumpd.data.local.entity.TournamentFixtureEntity
+import com.oreki.stumpd.data.local.entity.TournamentSquadPlayerEntity
+import com.oreki.stumpd.data.local.entity.TournamentTeamEntity
+import com.oreki.stumpd.data.local.entity.TournamentEntity
+import com.oreki.stumpd.data.local.dao.TournamentDao
 import com.oreki.stumpd.data.local.dao.InProgressMatchDao
 import com.oreki.stumpd.data.local.dao.MatchDao
 import com.oreki.stumpd.data.local.dao.PlayerDao
-import com.oreki.stumpd.data.local.dao.TeamDao
 import com.oreki.stumpd.data.local.dao.UserPreferencesDao
 import com.oreki.stumpd.data.local.dao.PartnershipDao
 import com.oreki.stumpd.data.local.dao.FallOfWicketDao
+import com.oreki.stumpd.data.local.dao.MatchCorrectionLogDao
+import com.oreki.stumpd.data.local.dao.SyncProgressDao
 import com.oreki.stumpd.data.local.entity.*
 // Add this migration constant in your StumpdDb class or a separate migrations file
 val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -442,30 +448,343 @@ val MIGRATION_17_18 = object : Migration(17, 18) {
     }
 }
 
+
+val MIGRATION_18_19 = object : Migration(18, 19) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE in_progress_matches ADD COLUMN deliveryHistoryJson TEXT")
+        database.execSQL("ALTER TABLE in_progress_matches ADD COLUMN partnershipsStateJson TEXT")
+    }
+}
+
+val MIGRATION_19_20 = object : Migration(19, 20) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        val now = System.currentTimeMillis()
+        database.execSQL("ALTER TABLE matches ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT $now")
+        database.execSQL("ALTER TABLE players ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT $now")
+        database.execSQL("ALTER TABLE groups ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT $now")
+    }
+}
+
+/**
+ * Repairs group availability data corrupted by earlier bugs that removed group members
+ * without clearing their group_unavailable_players rows. Those orphans made the Groups
+ * screen show a negative "Available" count, and nothing else prunes historical rows.
+ */
+val MIGRATION_20_21 = object : Migration(20, 21) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            DELETE FROM group_unavailable_players
+            WHERE NOT EXISTS (
+                SELECT 1 FROM group_members m
+                WHERE m.groupId = group_unavailable_players.groupId
+                  AND m.playerId = group_unavailable_players.playerId
+            )
+            """.trimIndent()
+        )
+    }
+}
+
+/**
+ * Adds per-record upload progress so a large backlog can be uploaded across several days
+ * without re-sending what already made it to the cloud.
+ */
+val MIGRATION_21_22 = object : Migration(21, 22) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS sync_progress (
+                collection TEXT NOT NULL,
+                recordId TEXT NOT NULL,
+                syncedUpdatedAt INTEGER NOT NULL,
+                PRIMARY KEY(collection, recordId)
+            )
+            """.trimIndent()
+        )
+    }
+}
+
+/**
+ * Gives `player_impacts` a real identity — `(matchId, playerId)` — and sweeps rows orphaned by
+ * earlier deletes.
+ *
+ * The table's key was a generated row id, so re-saving a match appended a second full set of
+ * impact rows rather than replacing them; adopt, merge and every cloud download did exactly that,
+ * and `ImpactListActivity` read them all. The de-duplicating copy keeps the **last** row written
+ * for each pair, which is the most recently computed one.
+ *
+ * The orphan sweep is here because `deleteMatch` only ever deleted the `matches` row, and
+ * `playerCareerSummaries()` / `squadSizes()` scan `player_match_stats` without joining `matches` —
+ * so figures from deleted matches were still counting toward career totals.
+ */
+val MIGRATION_22_23 = object : Migration(22, 23) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS player_impacts_new (
+                matchId TEXT NOT NULL,
+                playerId TEXT NOT NULL,
+                name TEXT NOT NULL,
+                team TEXT NOT NULL,
+                impact REAL NOT NULL,
+                summary TEXT NOT NULL,
+                isJoker INTEGER NOT NULL,
+                runs INTEGER NOT NULL,
+                balls INTEGER NOT NULL,
+                dots INTEGER NOT NULL,
+                singles INTEGER NOT NULL,
+                twos INTEGER NOT NULL,
+                threes INTEGER NOT NULL,
+                fours INTEGER NOT NULL,
+                sixes INTEGER NOT NULL,
+                wickets INTEGER NOT NULL,
+                runsConceded INTEGER NOT NULL,
+                oversBowled REAL NOT NULL,
+                PRIMARY KEY(matchId, playerId)
+            )
+            """.trimIndent()
+        )
+        // Ordered by the old row id so the newest duplicate is the one that survives the REPLACE.
+        database.execSQL(
+            """
+            INSERT OR REPLACE INTO player_impacts_new (
+                matchId, playerId, name, team, impact, summary, isJoker, runs, balls,
+                dots, singles, twos, threes, fours, sixes, wickets, runsConceded, oversBowled
+            )
+            SELECT matchId, playerId, name, team, impact, summary, isJoker, runs, balls,
+                   dots, singles, twos, threes, fours, sixes, wickets, runsConceded, oversBowled
+            FROM player_impacts
+            ORDER BY pk
+            """.trimIndent()
+        )
+        database.execSQL("DROP TABLE player_impacts")
+        database.execSQL("ALTER TABLE player_impacts_new RENAME TO player_impacts")
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_player_impacts_matchId ON player_impacts (matchId)"
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_player_impacts_playerId ON player_impacts (playerId)"
+        )
+
+        for (table in listOf(
+            "player_match_stats", "player_impacts", "partnerships", "fall_of_wickets",
+        )) {
+            database.execSQL(
+                "DELETE FROM $table WHERE matchId NOT IN (SELECT id FROM matches)"
+            )
+        }
+    }
+}
+
+/**
+ * Adds the record of corrections applied to a match.
+ *
+ * Corrections sync silently to the rest of a group, so without this a member finds a changed
+ * number and no explanation. Keeping the match as it was alongside the summary also makes a
+ * correction reversible.
+ */
+val MIGRATION_23_24 = object : Migration(23, 24) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS match_corrections (
+                matchId TEXT NOT NULL,
+                appliedAt INTEGER NOT NULL,
+                deviceLabel TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                beforeJson TEXT,
+                PRIMARY KEY(matchId, appliedAt)
+            )
+            """.trimIndent()
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_match_corrections_matchId ON match_corrections (matchId)"
+        )
+    }
+}
+
+/**
+ * Room for a super over: the winner, and a row per eliminator innings.
+ *
+ * Both nullable and additive, so every existing match reads back as "no super over" and no query
+ * changes. The winner is a scalar rather than part of the blob because it is the load-bearing
+ * field — `resolveMatchResult` takes it as an input, which is what stops a later correction
+ * re-deriving a super-over win back into a tie — and because its non-nullness is the "a super over
+ * was played" flag.
+ *
+ * The per-innings figures are a JSON list rather than a fixed set of columns because the scorer can
+ * choose to play another super over when the first is also level, so there is no fixed number of
+ * them.
+ */
+val MIGRATION_24_25 = object : Migration(24, 25) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE matches ADD COLUMN superOverWinner TEXT")
+        database.execSQL("ALTER TABLE matches ADD COLUMN superOversJson TEXT")
+        // The live counterpart: a match interrupted mid-eliminator has to resume into it.
+        database.execSQL("ALTER TABLE in_progress_matches ADD COLUMN superOverStateJson TEXT")
+    }
+}
+
+
+/**
+ * Tournaments: persistent teams with fixed squads, a schedule, and a table.
+ *
+ * Everything new is additive. The four columns on `matches` and the one on `player_match_stats` are
+ * nullable and outside every primary key, so existing matches read back exactly as before and every
+ * existing query keeps working — a match simply isn't part of a tournament.
+ *
+ * It also drops `teams` and `team_players`, which have been in the schema unused since the app was
+ * written: their primary key is the team *name*, which is the very thing a tournament has to escape
+ * (a name is part of the primary key of `player_match_stats`, so a renamed team orphans its own
+ * scorecard). Both were verified empty on every device before removal.
+ */
+val MIGRATION_25_26 = object : Migration(25, 26) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS tournaments (
+                tournamentId TEXT NOT NULL PRIMARY KEY,
+                groupId TEXT NOT NULL,
+                name TEXT NOT NULL,
+                format TEXT NOT NULL,
+                teamCount INTEGER NOT NULL,
+                squadSize INTEGER NOT NULL,
+                poolCount INTEGER NOT NULL DEFAULT 0,
+                advancePerPool INTEGER NOT NULL DEFAULT 0,
+                pointsWin INTEGER NOT NULL DEFAULT 2,
+                pointsTie INTEGER NOT NULL DEFAULT 1,
+                pointsLoss INTEGER NOT NULL DEFAULT 0,
+                pointsNoResult INTEGER NOT NULL DEFAULT 1,
+                status TEXT NOT NULL DEFAULT 'DRAFT',
+                matchSettingsJson TEXT,
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_tournaments_groupId ON tournaments (groupId)")
+
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS tournament_teams (
+                teamId TEXT NOT NULL PRIMARY KEY,
+                tournamentId TEXT NOT NULL,
+                name TEXT NOT NULL,
+                shortName TEXT,
+                captainPlayerId TEXT,
+                captainName TEXT,
+                seed INTEGER NOT NULL,
+                poolOrdinal INTEGER NOT NULL DEFAULT 0,
+                updatedAt INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_tournament_teams_tournamentId ON tournament_teams (tournamentId)")
+        database.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_tournament_teams_tournamentId_seed " +
+                "ON tournament_teams (tournamentId, seed)"
+        )
+
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS tournament_squad_players (
+                tournamentId TEXT NOT NULL,
+                teamId TEXT NOT NULL,
+                playerId TEXT NOT NULL,
+                battingOrder INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(teamId, playerId)
+            )
+            """.trimIndent()
+        )
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_tournament_squad_players_tournamentId ON tournament_squad_players (tournamentId)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_tournament_squad_players_playerId ON tournament_squad_players (playerId)")
+
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS tournament_fixtures (
+                fixtureId TEXT NOT NULL PRIMARY KEY,
+                tournamentId TEXT NOT NULL,
+                stage TEXT NOT NULL,
+                poolOrdinal INTEGER NOT NULL DEFAULT 0,
+                round INTEGER NOT NULL,
+                slot INTEGER NOT NULL,
+                leg INTEGER NOT NULL DEFAULT 1,
+                homeTeamId TEXT,
+                awayTeamId TEXT,
+                homeSourceRef TEXT,
+                awaySourceRef TEXT,
+                label TEXT NOT NULL,
+                status TEXT NOT NULL,
+                matchId TEXT,
+                winnerTeamId TEXT,
+                updatedAt INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_tournament_fixtures_tournamentId ON tournament_fixtures (tournamentId)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_tournament_fixtures_matchId ON tournament_fixtures (matchId)")
+
+        // A match can belong to a fixture. Nullable, and not in any key.
+        database.execSQL("ALTER TABLE matches ADD COLUMN tournamentId TEXT")
+        database.execSQL("ALTER TABLE matches ADD COLUMN tournamentFixtureId TEXT")
+        database.execSQL("ALTER TABLE matches ADD COLUMN team1Id TEXT")
+        database.execSQL("ALTER TABLE matches ADD COLUMN team2Id TEXT")
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_matches_tournamentId ON matches (tournamentId)")
+
+        // Written but not yet read: the first step off name-keyed team identity, without
+        // backfilling 265 matches or touching a primary key.
+        database.execSQL("ALTER TABLE player_match_stats ADD COLUMN teamId TEXT")
+
+        database.execSQL("DROP TABLE IF EXISTS team_players")
+        database.execSQL("DROP TABLE IF EXISTS teams")
+    }
+}
+
+/**
+ * A match in flight remembers the fixture it is settling.
+ *
+ * Without this, a process death between the first ball and the last would orphan the fixture: the
+ * match would save as an ordinary one and the table would never move.
+ */
+val MIGRATION_26_27 = object : Migration(26, 27) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE in_progress_matches ADD COLUMN tournamentId TEXT")
+        database.execSQL("ALTER TABLE in_progress_matches ADD COLUMN tournamentFixtureId TEXT")
+        database.execSQL("ALTER TABLE in_progress_matches ADD COLUMN team1Id TEXT")
+        database.execSQL("ALTER TABLE in_progress_matches ADD COLUMN team2Id TEXT")
+    }
+}
+
 @Database(
     entities = [
-        PlayerEntity::class, TeamEntity::class, TeamPlayerX::class,
+        PlayerEntity::class,
         GroupEntity::class, GroupDefaultEntity::class,
         GroupMemberEntity::class, GroupUnavailablePlayerEntity::class, GroupLastTeamsEntity::class,
         MatchEntity::class, PlayerMatchStatsEntity::class, PlayerImpactEntity::class,
         InProgressMatchEntity::class,
         UserPreferencesEntity::class,
         PartnershipEntity::class, FallOfWicketEntity::class,
-        JoinedGroupEntity::class
+        JoinedGroupEntity::class,
+        SyncProgressEntity::class,
+        MatchCorrectionLogEntity::class,
+        TournamentEntity::class, TournamentTeamEntity::class,
+        TournamentSquadPlayerEntity::class, TournamentFixtureEntity::class
     ],
-    version = 18,
+    version = 27,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class StumpdDb : RoomDatabase() {
     abstract fun playerDao(): PlayerDao
-    abstract fun teamDao(): TeamDao
     abstract fun matchDao(): MatchDao
     abstract fun groupDao(): GroupDao
     abstract fun inProgressMatchDao(): InProgressMatchDao
     abstract fun userPreferencesDao(): UserPreferencesDao
     abstract fun partnershipDao(): PartnershipDao
     abstract fun fallOfWicketDao(): FallOfWicketDao
+    abstract fun syncProgressDao(): SyncProgressDao
+    abstract fun matchCorrectionLogDao(): MatchCorrectionLogDao
+    abstract fun tournamentDao(): TournamentDao
 
     companion object {
         @Volatile private var INSTANCE: StumpdDb? = null
@@ -476,7 +795,7 @@ abstract class StumpdDb : RoomDatabase() {
                     context.applicationContext,
                     StumpdDb::class.java,
                     "stumpd.db"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27)
                     .build().also { INSTANCE = it }
             }
     }

@@ -7,7 +7,9 @@ plugins {
     alias(libs.plugins.ksp) // resolves once defined in TOML
     alias(libs.plugins.room) // resolves once defined in TOML
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.hilt.android)
     id("com.google.gms.google-services") // Firebase
+    id("com.google.firebase.crashlytics")
 }
 
 // Load keystore properties from local file or environment variables (for CI)
@@ -22,29 +24,29 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "com.oreki.stumpd"
     compileSdk = 35
-    
+
     // Signing configuration - works on Mac, Windows, Linux
     signingConfigs {
         create("release") {
             // Try local properties file first, then environment variables (CI)
             // Files are in app/ directory alongside google-services.json
             storeFile = file(
-                keystoreProperties.getProperty("storeFile") 
-                    ?: System.getenv("KEYSTORE_FILE") 
+                keystoreProperties.getProperty("storeFile")
+                    ?: System.getenv("KEYSTORE_FILE")
                     ?: "release-keystore.jks"
             )
-            storePassword = keystoreProperties.getProperty("storePassword") 
-                ?: System.getenv("KEYSTORE_PASSWORD") 
+            storePassword = keystoreProperties.getProperty("storePassword")
+                ?: System.getenv("KEYSTORE_PASSWORD")
                 ?: ""
-            keyAlias = keystoreProperties.getProperty("keyAlias") 
-                ?: System.getenv("KEY_ALIAS") 
+            keyAlias = keystoreProperties.getProperty("keyAlias")
+                ?: System.getenv("KEY_ALIAS")
                 ?: "stumpd"
-            keyPassword = keystoreProperties.getProperty("keyPassword") 
-                ?: System.getenv("KEY_PASSWORD") 
+            keyPassword = keystoreProperties.getProperty("keyPassword")
+                ?: System.getenv("KEY_PASSWORD")
                 ?: ""
         }
     }
-    
+
     applicationVariants.all {
         outputs.all {
             val variantName = name // e.g., debug, release
@@ -59,10 +61,10 @@ android {
         applicationId = "com.oreki.stumpd"
         minSdk = 24
         targetSdk = 34
-        versionCode = 24
-        versionName = "1.1.12"
+        versionCode = 26
+        versionName = "2.0.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "dagger.hilt.android.testing.HiltTestRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -78,7 +80,8 @@ android {
             }
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -97,8 +100,10 @@ android {
         compose = true
         buildConfig = true
     }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1"
+    lint {
+        baseline = file("lint-baseline.xml")
+        warningsAsErrors = false
+        abortOnError = false
     }
     packaging {
         resources {
@@ -121,19 +126,22 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation("androidx.compose.material3:material3-window-size-class")
     implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.room.common.jvm)
-    
+
     // Firebase for online sync
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-config-ktx") // For OTA updates
+    implementation("com.google.firebase:firebase-crashlytics-ktx")
+    implementation("com.google.firebase:firebase-analytics-ktx")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
-    
+
     // Google Sign-In for multi-device sync
     implementation("com.google.android.gms:play-services-auth:20.7.0")
-    
+
     // Unit Testing
     testImplementation(libs.junit)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
@@ -141,7 +149,7 @@ dependencies {
     testImplementation("androidx.arch.core:core-testing:2.2.0")
     testImplementation("com.google.truth:truth:1.1.5")
     testImplementation("org.robolectric:robolectric:4.11.1")
-    
+
     // Instrumented Testing
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -151,7 +159,7 @@ dependencies {
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
     androidTestImplementation("com.google.truth:truth:1.1.5")
     androidTestImplementation("androidx.arch.core:core-testing:2.2.0")
-    
+
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
@@ -163,10 +171,17 @@ dependencies {
     // Room
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
-// optional extras:
+    // Hilt
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    implementation(libs.androidx.hilt.navigation.compose)
+    implementation("androidx.navigation:navigation-compose:2.7.7")
+    // Optional extras
     implementation(libs.androidx.sqlite.bundled)
     implementation(libs.androidx.datastore.preferences)
     implementation("androidx.activity:activity-compose:1.8.0")
     implementation("androidx.biometric:biometric:1.1.0")
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
 }

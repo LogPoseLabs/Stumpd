@@ -30,7 +30,7 @@ class FirestorePlayerDao(
             "name" to player.name,
             "isJoker" to player.isJoker,
             FirebaseConfig.FIELD_OWNER_ID to ownerId,
-            FirebaseConfig.FIELD_UPDATED_AT to System.currentTimeMillis()
+            FirebaseConfig.FIELD_UPDATED_AT to player.updatedAt
         )
         
         docRef.set(data, SetOptions.merge()).await()
@@ -41,25 +41,29 @@ class FirestorePlayerDao(
      * @param ownerId The user who created these players
      */
     suspend fun uploadPlayers(ownerId: String, players: List<PlayerEntity>) {
-        val batch = firestore.batch()
-        
-        players.forEach { player ->
-            val docRef = firestore
-                .collection(FirebaseConfig.COLLECTION_PLAYERS)
-                .document(player.id)
-            
-            val data = mapOf(
-                "id" to player.id,
-                "name" to player.name,
-                "isJoker" to player.isJoker,
-                FirebaseConfig.FIELD_OWNER_ID to ownerId,
-                FirebaseConfig.FIELD_UPDATED_AT to System.currentTimeMillis()
-            )
-            
-            batch.set(docRef, data, SetOptions.merge())
+        // Firestore rejects a batch with more than 500 operations, so a large roster has to be
+        // committed in chunks rather than one batch.
+        players.chunked(FirebaseConfig.MAX_BATCH_OPERATIONS).forEach { chunk ->
+            val batch = firestore.batch()
+
+            chunk.forEach { player ->
+                val docRef = firestore
+                    .collection(FirebaseConfig.COLLECTION_PLAYERS)
+                    .document(player.id)
+
+                val data = mapOf(
+                    "id" to player.id,
+                    "name" to player.name,
+                    "isJoker" to player.isJoker,
+                    FirebaseConfig.FIELD_OWNER_ID to ownerId,
+                    FirebaseConfig.FIELD_UPDATED_AT to player.updatedAt
+                )
+
+                batch.set(docRef, data, SetOptions.merge())
+            }
+
+            batch.commit().await()
         }
-        
-        batch.commit().await()
     }
     
     /**
@@ -109,7 +113,8 @@ class FirestorePlayerDao(
         return PlayerEntity(
             id = doc.getString("id") ?: doc.id,
             name = doc.getString("name") ?: "",
-            isJoker = doc.getBoolean("isJoker") ?: false
+            isJoker = doc.getBoolean("isJoker") ?: false,
+            updatedAt = doc.getLong(FirebaseConfig.FIELD_UPDATED_AT) ?: 0L
         )
     }
 }

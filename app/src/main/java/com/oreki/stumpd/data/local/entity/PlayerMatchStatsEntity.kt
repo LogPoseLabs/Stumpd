@@ -36,5 +36,14 @@ data class PlayerMatchStatsEntity(
     val bowlerName: String? = null,
     val fielderName: String? = null,
     val battingPosition: Int = 0,
-    val bowlingPosition: Int = 0
+    val bowlingPosition: Int = 0,
+    /**
+     * The player's side as a tournament team.
+     *
+     * Written when a match is played as a fixture; nothing reads it yet. It is the first step away
+     * from identifying a team by its name — which is part of this table's primary key, and so
+     * cannot be changed without orphaning the row — taken without backfilling every existing match
+     * or touching that key.
+     */
+    val teamId: String? = null
 )

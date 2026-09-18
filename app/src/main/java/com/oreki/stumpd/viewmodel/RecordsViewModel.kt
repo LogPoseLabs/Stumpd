@@ -10,22 +10,24 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.oreki.stumpd.*
 import com.oreki.stumpd.domain.model.*
-import com.oreki.stumpd.data.local.db.StumpdDb
 import com.oreki.stumpd.data.local.entity.GroupEntity
 import com.oreki.stumpd.data.repository.GroupRepository
 import com.oreki.stumpd.data.repository.MatchRepository
 import com.oreki.stumpd.ui.components.filterMatchesByDate
 import com.oreki.stumpd.ui.components.filterMatchesByGroup
 import com.oreki.stumpd.ui.components.filterMatchesByPitchType
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import javax.inject.Inject
 
 @RequiresApi(Build.VERSION_CODES.O)
-class RecordsViewModel(application: Application) : AndroidViewModel(application) {
-
-    private val db = StumpdDb.get(application)
-    private val matchRepo = MatchRepository(db, application)
-    private val groupRepo = GroupRepository(db)
+@HiltViewModel
+class RecordsViewModel @Inject constructor(
+    application: Application,
+    private val matchRepo: MatchRepository,
+    private val groupRepo: GroupRepository
+) : AndroidViewModel(application) {
 
     // ── State ────────────────────────────────────────────────────────
     var isLoading by mutableStateOf(true)
@@ -53,15 +55,22 @@ class RecordsViewModel(application: Application) : AndroidViewModel(application)
         loadData()
     }
 
-    private fun loadData() {
+    /**
+     * Re-reads every match. Public because a correction to a saved match changes these figures,
+     * and the screen is reachable straight back from the editor.
+     */
+    fun loadData() {
         viewModelScope.launch {
             isLoading = true
             allMatches = matchRepo.getAllMatchesWithStats()
             groups = groupRepo.listGroups()
             // Auto-select first group if none selected
             if (groups.isNotEmpty() && selectedGroupId == null) {
-                selectedGroupId = groups[0].id
-                selectedGroupName = groups[0].name
+                // The group the app is filtered to, falling back to the first one.
+                val stored = groupRepo.getDefaultGroupId()?.takeIf { id -> groups.any { it.id == id } }
+                val group = groups.firstOrNull { it.id == stored } ?: groups[0]
+                selectedGroupId = group.id
+                selectedGroupName = group.name
             }
             recalculateRecords()
             isLoading = false
@@ -82,6 +91,8 @@ class RecordsViewModel(application: Application) : AndroidViewModel(application)
     fun onGroupSelected(id: String?, name: String) {
         selectedGroupId = id
         selectedGroupName = name
+        // Remember it app-wide, so the choice holds when navigating elsewhere.
+        viewModelScope.launch { groupRepo.setSelectedGroupId(id) }
         recalculateRecords()
     }
 

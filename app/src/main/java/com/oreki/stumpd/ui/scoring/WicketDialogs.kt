@@ -42,7 +42,7 @@ fun WicketTypeDialog(
                 }
             Text(
                     text = "How was the batter out?",
-                fontSize = 18.sp,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
             }
@@ -71,7 +71,7 @@ fun WicketTypeDialog(
                                 text = wicketType.name.lowercase().replace("_", " ")
                                     .replaceFirstChar { it.uppercase() },
                                 fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp
+                                style = MaterialTheme.typography.bodyMedium
                             )
                             Icon(
                                 Icons.AutoMirrored.Filled.KeyboardArrowRight,

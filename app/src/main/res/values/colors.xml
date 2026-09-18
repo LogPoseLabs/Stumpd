@@ -10,6 +10,10 @@
     <color name="navy_blue">#0A2342</color>
     <color name="navy_light">#1F3A5F</color>
     
+    <!-- Launch window background. Matches the light surface of the default palette; the real
+         colour scheme repaints it as soon as StumpdTheme composes. -->
+    <color name="window_background">#FFF7F9F8</color>
+
     <!-- System Colors -->
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>

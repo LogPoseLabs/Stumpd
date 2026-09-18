@@ -6,6 +6,7 @@ import com.oreki.stumpd.domain.model.MatchHistory
 import com.oreki.stumpd.data.local.entity.InProgressMatchEntity
 import com.oreki.stumpd.data.sync.FirebaseConfig
 import com.oreki.stumpd.data.sync.firebase.FirestoreMatchDao
+import com.oreki.stumpd.data.sync.inProgressMatchEntityFromFirestoreData
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -64,52 +65,7 @@ class RealTimeMatchListener(
                         return@addSnapshotListener
                     }
                     
-                    val matchEntity = InProgressMatchEntity(
-                        matchId = data["matchId"] as? String ?: matchId,
-                        team1Name = data["team1Name"] as? String ?: "",
-                        team2Name = data["team2Name"] as? String ?: "",
-                        jokerName = data["jokerName"] as? String ?: "",
-                        groupId = data["groupId"] as? String?,
-                        groupName = data["groupName"] as? String?,
-                        tossWinner = data["tossWinner"] as? String?,
-                        tossChoice = data["tossChoice"] as? String?,
-                        matchSettingsJson = data["matchSettingsJson"] as? String ?: "{}",
-                        team1PlayerIds = data["team1PlayerIds"] as? String ?: "[]",
-                        team2PlayerIds = data["team2PlayerIds"] as? String ?: "[]",
-                        team1PlayerNames = data["team1PlayerNames"] as? String ?: "[]",
-                        team2PlayerNames = data["team2PlayerNames"] as? String ?: "[]",
-                        currentInnings = (data["currentInnings"] as? Long)?.toInt() ?: 1,
-                        currentOver = (data["currentOver"] as? Long)?.toInt() ?: 0,
-                        ballsInOver = (data["ballsInOver"] as? Long)?.toInt() ?: 0,
-                        totalWickets = (data["totalWickets"] as? Long)?.toInt() ?: 0,
-                        team1PlayersJson = data["team1PlayersJson"] as? String ?: "[]",
-                        team2PlayersJson = data["team2PlayersJson"] as? String ?: "[]",
-                        strikerIndex = (data["strikerIndex"] as? Long)?.toInt(),
-                        nonStrikerIndex = (data["nonStrikerIndex"] as? Long)?.toInt(),
-                        bowlerIndex = (data["bowlerIndex"] as? Long)?.toInt(),
-                        firstInningsRuns = (data["firstInningsRuns"] as? Long)?.toInt() ?: 0,
-                        firstInningsWickets = (data["firstInningsWickets"] as? Long)?.toInt() ?: 0,
-                        firstInningsOvers = (data["firstInningsOvers"] as? Long)?.toInt() ?: 0,
-                        firstInningsBalls = (data["firstInningsBalls"] as? Long)?.toInt() ?: 0,
-                        totalExtras = (data["totalExtras"] as? Long)?.toInt() ?: 0,
-                        calculatedTotalRuns = (data["calculatedTotalRuns"] as? Long)?.toInt() ?: 0,
-                        completedBattersInnings1Json = data["completedBattersInnings1Json"] as? String?,
-                        completedBattersInnings2Json = data["completedBattersInnings2Json"] as? String?,
-                        completedBowlersInnings1Json = data["completedBowlersInnings1Json"] as? String?,
-                        completedBowlersInnings2Json = data["completedBowlersInnings2Json"] as? String?,
-                        firstInningsBattingPlayersJson = data["firstInningsBattingPlayersJson"] as? String?,
-                        firstInningsBowlingPlayersJson = data["firstInningsBowlingPlayersJson"] as? String?,
-                        jokerOutInCurrentInnings = data["jokerOutInCurrentInnings"] as? Boolean ?: false,
-                        jokerBallsBowledInnings1 = (data["jokerBallsBowledInnings1"] as? Long)?.toInt() ?: 0,
-                        jokerBallsBowledInnings2 = (data["jokerBallsBowledInnings2"] as? Long)?.toInt() ?: 0,
-                        powerplayRunsInnings1 = (data["powerplayRunsInnings1"] as? Long)?.toInt() ?: 0,
-                        powerplayRunsInnings2 = (data["powerplayRunsInnings2"] as? Long)?.toInt() ?: 0,
-                        powerplayDoublingDoneInnings1 = data["powerplayDoublingDoneInnings1"] as? Boolean ?: false,
-                        powerplayDoublingDoneInnings2 = data["powerplayDoublingDoneInnings2"] as? Boolean ?: false,
-                        allDeliveriesJson = data["allDeliveriesJson"] as? String?,
-                        lastSavedAt = data["lastSavedAt"] as? Long ?: System.currentTimeMillis(),
-                        startedAt = data["startedAt"] as? Long ?: System.currentTimeMillis()
-                    )
+                    val matchEntity = inProgressMatchEntityFromFirestoreData(data, matchId)
                     
                     trySend(matchEntity)
                 } catch (e: Exception) {

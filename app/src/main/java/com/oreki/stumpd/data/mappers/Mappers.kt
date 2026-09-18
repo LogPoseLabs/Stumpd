@@ -43,7 +43,13 @@ fun MatchEntity.toDomain(): MatchHistory {
         playerOfTheMatchImpact = playerOfTheMatchImpact,
         playerOfTheMatchSummary = playerOfTheMatchSummary,
         playerImpacts = emptyList(),
-        allDeliveries = parseDeliveries(allDeliveriesJson)
+        allDeliveries = parseDeliveries(allDeliveriesJson),
+        superOverWinner = superOverWinner,
+        superOvers = parseSuperOvers(superOversJson),
+        tournamentId = tournamentId,
+        tournamentFixtureId = tournamentFixtureId,
+        team1Id = team1Id,
+        team2Id = team2Id
     )
 }
 
@@ -61,6 +67,23 @@ private fun parseMatchSettings(json: String?): MatchSettings? {
             null
         }
     }
+}
+
+/**
+ * Safely parses the super-over innings JSON.
+ *
+ * Empty rather than null on a parse failure, so a corrupt blob costs the super-over card and not
+ * the whole match — `superOverWinner`, which decides the result, is a column of its own.
+ */
+private fun parseSuperOvers(json: String?): List<SuperOverInnings> {
+    return json?.let {
+        try {
+            GsonProvider.get().fromJson(it, Array<SuperOverInnings>::class.java).toList()
+        } catch (e: Exception) {
+            Log.w("Mappers", "Failed to parse super over JSON", e)
+            emptyList()
+        }
+    } ?: emptyList()
 }
 
 /**

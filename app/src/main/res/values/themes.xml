@@ -1,4 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar"/>
+
+    <!--
+      The window theme only has to get the launch window right; everything inside is Compose,
+      themed by StumpdTheme. The background is stated explicitly so the frame shown before the
+      first composition matches the app's own surface instead of a platform default.
+
+      Dark mode is a user setting held in DataStore, not a system setting, so this theme is
+      deliberately mode-neutral: StumpdApplication tells the platform which night mode the app is
+      in (so the -night variant resolves to the user's choice, not the system's), and StumpdTheme
+      repaints the window background once the real colour scheme is known.
+    -->
+    <style name="Theme.Stumpd" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:windowAnimationStyle">@style/Animation.Stumpd.Activity</item>
+    </style>
+
+    <!--
+      One animation style for all 19 activities: they all inherit Theme.Stumpd from the
+      <application> tag, so this is the only place window transitions need stating. Task-level
+      entries are included too, otherwise launching the app from the launcher and returning to it
+      would keep the platform's default while everything in-app used ours.
+    -->
+    <style name="Animation.Stumpd.Activity" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/stumpd_activity_open_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/stumpd_activity_open_exit</item>
+        <item name="android:activityCloseEnterAnimation">@anim/stumpd_activity_close_enter</item>
+        <item name="android:activityCloseExitAnimation">@anim/stumpd_activity_close_exit</item>
+        <item name="android:taskOpenEnterAnimation">@anim/stumpd_activity_open_enter</item>
+        <item name="android:taskOpenExitAnimation">@anim/stumpd_activity_open_exit</item>
+        <item name="android:taskCloseEnterAnimation">@anim/stumpd_activity_close_enter</item>
+        <item name="android:taskCloseExitAnimation">@anim/stumpd_activity_close_exit</item>
+    </style>
 </resources>

@@ -7,5 +7,6 @@ import androidx.room.PrimaryKey
 data class PlayerEntity(
     @PrimaryKey val id: String, // PlayerId.value
     val name: String,
-    val isJoker: Boolean
+    val isJoker: Boolean,
+    val updatedAt: Long = System.currentTimeMillis()
 )

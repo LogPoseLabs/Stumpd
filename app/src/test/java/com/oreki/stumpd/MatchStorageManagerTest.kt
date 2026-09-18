@@ -2,6 +2,11 @@ package com.oreki.stumpd
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.oreki.stumpd.data.storage.MatchStorageManager
+import com.oreki.stumpd.domain.model.MatchHistory
+import com.oreki.stumpd.domain.model.MatchSettings
+import com.oreki.stumpd.domain.model.PlayerImpact
+import com.oreki.stumpd.domain.model.PlayerMatchStats
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test

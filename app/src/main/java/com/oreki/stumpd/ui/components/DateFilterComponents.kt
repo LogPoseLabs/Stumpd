@@ -299,3 +299,109 @@ fun filterMatchesByPitchType(
         matches.filter { it.shortPitch == pitchType }
     }
 }
+
+/**
+ * Date filter for the stats screens, which filter by the dates matches were actually played on
+ * rather than by rolling windows: "All Time", one of the last three match dates, or a custom
+ * range. The filter is carried as a string the view models parse — `Date:<iso>` or
+ * `CustomRange:<iso>|<iso>` — so [formatDateFilterLabel] turns it back into something readable.
+ *
+ * [DateFilterDialog] above is the rolling-window version used by History and Records; the two
+ * are not interchangeable, because their filter strings mean different things.
+ */
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+fun MatchDateFilterDialog(
+    currentFilter: String,
+    matchesInScope: List<MatchHistory>,
+    onFilterSelected: (String) -> Unit,
+    onCustomRangeRequested: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val lastThreeMatchDates = remember(matchesInScope) {
+        matchesInScope
+            .map { Instant.ofEpochMilli(it.matchDate).atZone(ZoneId.systemDefault()).toLocalDate() }
+            .distinct()
+            .sortedDescending()
+            .take(3)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Filter by Date") },
+        text = {
+            Column {
+                DateFilterChoice(
+                    label = "All Time",
+                    selected = currentFilter == "All Time",
+                    onSelect = { onFilterSelected("All Time") },
+                )
+                if (lastThreeMatchDates.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Last 3 Match Dates", style = MaterialTheme.typography.labelLarge)
+                    lastThreeMatchDates.forEach { date ->
+                        val filter = "Date:$date"
+                        DateFilterChoice(
+                            label = date.format(DateTimeFormatter.ofPattern("dd MMM yyyy")),
+                            selected = currentFilter == filter,
+                            onSelect = { onFilterSelected(filter) },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                DateFilterChoice(
+                    label = "Custom Date Range…",
+                    selected = currentFilter.startsWith("CustomRange"),
+                    onSelect = onCustomRangeRequested,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
+}
+
+@Composable
+private fun DateFilterChoice(label: String, selected: Boolean, onSelect: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onSelect)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected, onClick = onSelect)
+        Spacer(Modifier.width(8.dp))
+        Text(label)
+    }
+}
+
+/** The stored filter string as a chip label. */
+@RequiresApi(Build.VERSION_CODES.O)
+fun formatDateFilterLabel(filter: String): String = when {
+    filter == "All Time" -> "All Time"
+    filter.startsWith("Date:") -> runCatching {
+        LocalDate.parse(filter.removePrefix("Date:"))
+            .format(DateTimeFormatter.ofPattern("dd MMM yyyy"))
+    }.getOrDefault(filter)
+
+    filter.startsWith("CustomRange:") -> runCatching {
+        val (start, end) = filter.removePrefix("CustomRange:").split("|")
+            .let { LocalDate.parse(it[0]) to LocalDate.parse(it[1]) }
+        "${start.format(DateTimeFormatter.ofPattern("dd MMM"))} - " +
+            end.format(DateTimeFormatter.ofPattern("dd MMM yyyy"))
+    }.getOrDefault("Custom Range")
+
+    else -> filter
+}
+
+/**
+ * null means both pitch lengths. [abbreviated] is for the narrow filter buttons, which only have
+ * room for the pitch length itself.
+ */
+fun pitchTypeLabel(shortPitch: Boolean?, abbreviated: Boolean = false): String = when (shortPitch) {
+    true -> if (abbreviated) "Short" else "Short Pitch"
+    false -> if (abbreviated) "Long" else "Long Pitch"
+    null -> "All Pitches"
+}

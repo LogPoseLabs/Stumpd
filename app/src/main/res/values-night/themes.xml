@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Stumpd" parent="android:ThemeOverlay.Material.Dark.ActionBar"> </style>
-<!--    <style name="Theme.Stumpd.Splash" parent="Theme.SplashScreen">-->
-<!--        <item name="windowSplashScreenBackground">#121212</item>-->
-<!--        <item name="windowSplashScreenAnimatedIcon">@drawable/dark</item>-->
-<!--        <item name="windowSplashScreenIconBackgroundColor">@null</item>-->
-<!--        <item name="postSplashScreenTheme">@style/Theme.Stumpd</item>-->
-<!--    </style>-->
+    <!--
+      Counterpart of the day theme. This previously parented
+      android:ThemeOverlay.Material.Dark.ActionBar - a ThemeOverlay is a partial theme, so using
+      it as a parent left windowBackground and windowNoTitle at platform defaults, and it carried
+      an ActionBar while the day theme was NoActionBar.
+
+      Only the launch window differs between modes; the night background comes from
+      values-night/colors.xml.
+    -->
+    <style name="Theme.Stumpd" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:windowAnimationStyle">@style/Animation.Stumpd.Activity</item>
+    </style>
 </resources>

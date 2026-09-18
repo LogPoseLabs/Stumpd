@@ -95,6 +95,23 @@ interface GroupDao {
     
     @Query("SELECT playerId FROM group_unavailable_players WHERE groupId = :groupId")
     suspend fun getUnavailablePlayerIds(groupId: String): List<String>
+
+    @Query("""
+    SELECT u.playerId FROM group_unavailable_players u
+    INNER JOIN group_members m ON m.groupId = u.groupId AND m.playerId = u.playerId
+    WHERE u.groupId = :groupId
+    """)
+    suspend fun getUnavailableMemberIds(groupId: String): List<String>
+
+    @Query("DELETE FROM group_unavailable_players WHERE groupId = :groupId")
+    suspend fun clearUnavailablePlayers(groupId: String)
+
+    @Query("""
+    DELETE FROM group_unavailable_players
+    WHERE groupId = :groupId
+    AND playerId NOT IN (SELECT playerId FROM group_members WHERE groupId = :groupId)
+    """)
+    suspend fun pruneUnavailableNonMembers(groupId: String)
     
     @Query("SELECT * FROM group_unavailable_players")
     suspend fun getAllGroupUnavailablePlayers(): List<GroupUnavailablePlayerEntity>
@@ -104,8 +121,8 @@ interface GroupDao {
     
     // ========== Invite Code Methods ==========
     
-    @Query("UPDATE groups SET inviteCode = :inviteCode WHERE id = :groupId")
-    suspend fun updateInviteCode(groupId: String, inviteCode: String)
+    @Query("UPDATE groups SET inviteCode = :inviteCode, updatedAt = :updatedAt WHERE id = :groupId")
+    suspend fun updateInviteCode(groupId: String, inviteCode: String, updatedAt: Long)
     
     @Query("SELECT * FROM groups WHERE inviteCode = :inviteCode LIMIT 1")
     suspend fun getGroupByInviteCode(inviteCode: String): GroupEntity?

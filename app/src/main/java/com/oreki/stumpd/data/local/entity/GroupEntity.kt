@@ -9,5 +9,6 @@ data class GroupEntity(
     val name: String,
     val inviteCode: String? = null, // 6-character alphanumeric invite code (for joining)
     val claimCode: String? = null, // Secret recovery code (for ownership recovery)
-    val isOwner: Boolean = true // True if this device created the group
+    val isOwner: Boolean = true, // True if this device created the group
+    val updatedAt: Long = System.currentTimeMillis()
 )

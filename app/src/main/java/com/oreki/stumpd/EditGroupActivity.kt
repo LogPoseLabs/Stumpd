@@ -1,6 +1,7 @@
 package com.oreki.stumpd
 
 import com.oreki.stumpd.data.manager.*
+import com.oreki.stumpd.data.preferences.MatchSettingsManager
 import com.oreki.stumpd.domain.model.*
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -31,7 +32,9 @@ import com.oreki.stumpd.ui.history.rememberPlayerRepository
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import com.oreki.stumpd.ui.theme.StumpdTopBar
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class EditGroupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,6 +81,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
     var maxPerBowlerText by rememberSaveable { mutableStateOf(defaultMatchSettings.maxOversPerBowler.toString()) }
     var powerplayOversText by rememberSaveable { mutableStateOf(defaultMatchSettings.powerplayOvers.toString()) }
     var maxPlayersText by rememberSaveable { mutableStateOf(defaultMatchSettings.maxPlayersPerTeam.toString()) }
+    var battingMilestoneText by rememberSaveable { mutableStateOf(defaultMatchSettings.battingMilestone.toString()) }
     var jokerMaxOversText by rememberSaveable { mutableStateOf(defaultMatchSettings.jokerMaxOvers.toString()) }
     
     // Search for adding players
@@ -102,7 +106,9 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                 
                 name = group.name
                 ground = group.defaults.groundName
-                format = BallFormat.valueOf(group.defaults.format)
+                // Defensively: a format string this build doesn't know must not crash the editor.
+                format = runCatching { BallFormat.valueOf(group.defaults.format) }
+                    .getOrDefault(BallFormat.WHITE_BALL)
                 shortPitch = group.defaults.shortPitch
                 memberIds = group.playerIds.toSet()
                 unavailablePlayerIds = group.unavailablePlayerIds.toSet()
@@ -112,6 +118,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                 maxPerBowlerText = matchSettings.maxOversPerBowler.toString()
                 powerplayOversText = matchSettings.powerplayOvers.toString()
                 maxPlayersText = matchSettings.maxPlayersPerTeam.toString()
+                battingMilestoneText = matchSettings.battingMilestone.toString()
                 jokerMaxOversText = matchSettings.jokerMaxOvers.toString()
                 
                 // Load all players for group (members + potential members)
@@ -178,12 +185,18 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                     if (isNew) {
                                         val newGroupId = groupRepo.createGroup(name.trim(), settings)
                                         groupRepo.replaceMembers(newGroupId, memberIds.toList())
-                                        groupRepo.replaceUnavailablePlayers(newGroupId, unavailablePlayerIds.toList())
+                                        groupRepo.replaceUnavailablePlayers(
+                                            newGroupId,
+                                            unavailablePlayerIds.intersect(memberIds).toList()
+                                        )
                                     } else if (groupId != null) {
                                         groupRepo.renameGroup(groupId, name.trim())
                                         groupRepo.updateDefaults(groupId, settings.toEntityWithId(groupId))
                                         groupRepo.replaceMembers(groupId, memberIds.toList())
-                                        groupRepo.replaceUnavailablePlayers(groupId, unavailablePlayerIds.toList())
+                                        groupRepo.replaceUnavailablePlayers(
+                                            groupId,
+                                            unavailablePlayerIds.intersect(memberIds).toList()
+                                        )
                                     }
                                     
                                     (context as ComponentActivity).finish()
@@ -227,7 +240,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                 Spacer(Modifier.width(8.dp))
                                 Text(
                                     "Basic Information",
-                                    fontSize = 18.sp,
+                                    style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -254,7 +267,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                             
                             Spacer(Modifier.height(12.dp))
                             
-                            Text("Match Format", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text("Match Format", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                             Spacer(Modifier.height(8.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 FilterChip(
@@ -276,7 +289,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Short Pitch", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("Short Pitch", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                                 Switch(checked = shortPitch, onCheckedChange = { shortPitch = it })
                             }
                         }
@@ -297,7 +310,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                 Spacer(Modifier.width(8.dp))
                                 Text(
                                     "Match Settings",
-                                    fontSize = 18.sp,
+                                    style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -364,10 +377,10 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text("Double Runs in Powerplay", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                        Text("Double Runs in Powerplay", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                                         Text(
                                             "Runs scored during powerplay will be doubled",
-                                            fontSize = 12.sp,
+                                            style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
@@ -395,13 +408,32 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 modifier = Modifier.fillMaxWidth()
                             )
+
+                            Spacer(Modifier.height(12.dp))
+
+                            // Milestone score for this group's stats. Fifty means nothing in a
+                            // five-over game, so the stats count these instead.
+                            OutlinedTextField(
+                                value = battingMilestoneText,
+                                onValueChange = { v ->
+                                    battingMilestoneText = v
+                                    v.toIntOrNull()?.let { runs ->
+                                        if (runs in 1..200) {
+                                            matchSettings = matchSettings.copy(battingMilestone = runs)
+                                        }
+                                    }
+                                },
+                                label = { Text("Milestone score (stats show \"${battingMilestoneText}s\")") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
                             
                             Spacer(Modifier.height(16.dp))
                             HorizontalDivider()
                             Spacer(Modifier.height(16.dp))
                             
                             // Extras Settings
-                            Text("Extras Configuration", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Extras Configuration", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(8.dp))
                             
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -427,7 +459,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                             Spacer(Modifier.height(16.dp))
                             
                             // Batting Rules
-                            Text("Batting Rules", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Batting Rules", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(12.dp))
                             
                             Row(
@@ -436,10 +468,10 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("Single Side Batting", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("Single Side Batting", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                                     Text(
                                         "Allow single batsman to continue after all out",
-                                        fontSize = 12.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -454,7 +486,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                             Spacer(Modifier.height(16.dp))
                             
                             // Joker Rules
-                            Text("Joker Rules", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Joker Rules", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(12.dp))
                             
                             Row(
@@ -463,10 +495,10 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("Joker Can Bat & Bowl", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("Joker Can Bat & Bowl", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                                     Text(
                                         "Allow joker player to participate fully",
-                                        fontSize = 12.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -477,6 +509,27 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                             }
                             
                             if (matchSettings.jokerCanBatAndBowl) {
+                                Spacer(Modifier.height(12.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Joker Can Bowl", style = MaterialTheme.typography.bodyMedium)
+                                        Text(
+                                            "Joker always bats. Turn off if he should not bowl",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = matchSettings.jokerCanBowl,
+                                        onCheckedChange = { matchSettings = matchSettings.copy(jokerCanBowl = it) }
+                                    )
+                                }
+                            }
+
+                            if (matchSettings.jokerCanBatAndBowl && matchSettings.jokerCanBowl) {
                                 Spacer(Modifier.height(12.dp))
                                 OutlinedTextField(
                                     value = jokerMaxOversText,
@@ -499,12 +552,34 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                             Spacer(Modifier.height(16.dp))
                             
                             // Advanced Rules
-                            Text("Advanced Rules", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Advanced Rules", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(12.dp))
-                            
-                            
+
+                            // Super Over. The flag has existed since the app was written with no
+                            // way to turn it on; this is that way.
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Super Over", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "Break a tie with one over a side, two wickets",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = matchSettings.enableSuperOver,
+                                    onCheckedChange = { matchSettings = matchSettings.copy(enableSuperOver = it) }
+                                )
+                            }
+
+                            Spacer(Modifier.height(16.dp))
+
                             // Toss Choice
-                            Text("Default Toss Decision", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Default Toss Decision", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(8.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 FilterChip(
@@ -536,7 +611,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                 Spacer(Modifier.width(8.dp))
                                 Text(
                                     "Members & Availability (${selectedPlayers.size})",
-                                    fontSize = 18.sp,
+                                    style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -562,7 +637,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                         Column {
                                             Text(
                                                 "Understanding Availability",
-                                                fontSize = 13.sp,
+                                                style = MaterialTheme.typography.bodySmall,
                                                 fontWeight = FontWeight.Bold,
                                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                                             )
@@ -571,7 +646,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                                 "• Switch ON = Available for team selection\n" +
                                                 "• Switch OFF = Temporarily unavailable (still a member)\n" +
                                                 "• ❌ Button = Permanently remove from group",
-                                                fontSize = 12.sp,
+                                                style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                                                 lineHeight = 16.sp
                                             )
@@ -602,7 +677,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Column(modifier = Modifier.weight(1f)) {
-                                                Text(player.name, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                                Text(player.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Icon(
                                                         if (isAvailable) Icons.Default.CheckCircle else Icons.Default.Close,
@@ -616,7 +691,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                                     Spacer(Modifier.width(4.dp))
                                                     Text(
                                                         if (isAvailable) "Available for team selection" else "Temporarily unavailable",
-                                                        fontSize = 11.sp,
+                                                        style = MaterialTheme.typography.labelSmall,
                                                         color = if (isAvailable) 
                                                             MaterialTheme.colorScheme.primary 
                                                         else 
@@ -641,12 +716,15 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                                     )
                                                     Text(
                                                         "Available",
-                                                        fontSize = 10.sp,
+                                                        style = MaterialTheme.typography.labelSmall,
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
                                                 }
                                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                    IconButton(onClick = { memberIds = memberIds - player.id }) {
+                                                    IconButton(onClick = {
+                                                        memberIds = memberIds - player.id
+                                                        unavailablePlayerIds = unavailablePlayerIds - player.id
+                                                    }) {
                                                         Icon(
                                                             Icons.Default.Close,
                                                             contentDescription = "Remove from group permanently",
@@ -655,7 +733,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                                     }
                                                     Text(
                                                         "Remove",
-                                                        fontSize = 10.sp,
+                                                        style = MaterialTheme.typography.labelSmall,
                                                         color = MaterialTheme.colorScheme.error
                                                     )
                                                 }
@@ -666,7 +744,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                             } else {
                                 Text(
                                     "No members yet. Add players below.",
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(vertical = 8.dp)
                                 )
@@ -689,7 +767,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                 Spacer(Modifier.width(8.dp))
                                 Text(
                                     "Add Players to Group",
-                                    fontSize = 18.sp,
+                                    style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -697,7 +775,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                             
                             Text(
                                 "Add players as permanent members. New members are automatically available for selection.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
                             )
@@ -718,14 +796,14 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                             if (filteredAvailablePlayers.isEmpty()) {
                                 Text(
                                     "No available players to add. All players are already in this group.",
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(vertical = 8.dp)
                                 )
                             } else {
                                 Text(
                                     "Showing ${filteredAvailablePlayers.size} available ${if (filteredAvailablePlayers.size == 1) "player" else "players"}",
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(bottom = 8.dp)
                                 )
@@ -733,12 +811,15 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clickable { memberIds = memberIds + player.id }
+                                            .clickable {
+                                                memberIds = memberIds + player.id
+                                                unavailablePlayerIds = unavailablePlayerIds - player.id
+                                            }
                                             .padding(vertical = 8.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(player.name, fontSize = 14.sp)
+                                        Text(player.name, style = MaterialTheme.typography.bodyMedium)
                                         Icon(
                                             Icons.Default.Add,
                                             contentDescription = "Add",
@@ -750,7 +831,7 @@ fun EditGroupScreen(groupId: String?, isNew: Boolean) {
                                 if (false) { // Removed the "X more players" message
                                     Text(
                                         "+ ${filteredAvailablePlayers.size - 10} more...",
-                                        fontSize = 12.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(top = 8.dp)
                                     )
@@ -774,7 +855,7 @@ fun ExtrasChip(label: String, value: Int, onToggle: (Boolean) -> Unit) {
     FilterChip(
         selected = value > 0,
         onClick = { onToggle(value == 0) },
-        label = { Text(label, fontSize = 12.sp) }
+        label = { Text(label, style = MaterialTheme.typography.bodySmall) }
     )
 }
 

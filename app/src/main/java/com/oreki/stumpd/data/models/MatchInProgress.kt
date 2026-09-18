@@ -79,6 +79,15 @@ data class MatchInProgress(
     
     // Deliveries (ball-by-ball data, serialized as JSON)
     val allDeliveriesJson: String? = null,
+    val deliveryHistoryJson: String? = null,
+    val partnershipsStateJson: String? = null,
+    val superOverStateJson: String? = null,
+
+    // The tournament fixture being settled, when this is one
+    val tournamentId: String? = null,
+    val tournamentFixtureId: String? = null,
+    val team1Id: String? = null,
+    val team2Id: String? = null,
     
     // Timestamps
     val lastSavedAt: Long = System.currentTimeMillis(),

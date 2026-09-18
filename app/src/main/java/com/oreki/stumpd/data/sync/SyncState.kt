@@ -24,6 +24,13 @@ sealed class SyncResult {
     data class Success(val itemsSynced: Int) : SyncResult()
     data class PartialSuccess(val synced: Int, val failed: Int, val errors: List<String>) : SyncResult()
     data class Failure(val message: String, val error: Throwable? = null) : SyncResult()
+
+    /**
+     * Firestore's read/write quota ran out mid-run. Distinct from [Failure] because retrying
+     * soon cannot succeed - the quota only resets on Google's schedule - so callers should
+     * wait for the next scheduled sync rather than retry with the usual short backoff.
+     */
+    data class QuotaExceeded(val itemsSynced: Int, val message: String) : SyncResult()
     object NoDataToSync : SyncResult()
     object Offline : SyncResult()
 }

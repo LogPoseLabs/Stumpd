@@ -148,6 +148,13 @@ class InProgressMatchManager(context: Context) {
             powerplayDoublingDoneInnings1 = powerplayDoublingDoneInnings1,
             powerplayDoublingDoneInnings2 = powerplayDoublingDoneInnings2,
             allDeliveriesJson = allDeliveriesJson,
+            deliveryHistoryJson = deliveryHistoryJson,
+            partnershipsStateJson = partnershipsStateJson,
+            superOverStateJson = superOverStateJson,
+            tournamentId = tournamentId,
+            tournamentFixtureId = tournamentFixtureId,
+            team1Id = team1Id,
+            team2Id = team2Id,
             lastSavedAt = lastSavedAt,
             startedAt = startedAt
         )
@@ -197,6 +204,13 @@ class InProgressMatchManager(context: Context) {
             powerplayDoublingDoneInnings1 = powerplayDoublingDoneInnings1,
             powerplayDoublingDoneInnings2 = powerplayDoublingDoneInnings2,
             allDeliveriesJson = allDeliveriesJson,
+            deliveryHistoryJson = deliveryHistoryJson,
+            partnershipsStateJson = partnershipsStateJson,
+            superOverStateJson = superOverStateJson,
+            tournamentId = tournamentId,
+            tournamentFixtureId = tournamentFixtureId,
+            team1Id = team1Id,
+            team2Id = team2Id,
             lastSavedAt = lastSavedAt,
             startedAt = startedAt
         )

@@ -1,6 +1,8 @@
 package com.oreki.stumpd.data.repository
 
 import com.oreki.stumpd.data.manager.*
+import com.oreki.stumpd.domain.match.DeliveryOutcome
+import com.oreki.stumpd.domain.match.mainMatchDeliveries
 import com.oreki.stumpd.domain.model.*
 import android.util.Log
 import com.oreki.stumpd.data.local.db.StumpdDb
@@ -15,7 +17,10 @@ import java.util.UUID
  * Repository for managing player data and statistics
  * Handles all database operations related to players and their performance stats
  */
-class PlayerRepository(private val db: StumpdDb) {
+class PlayerRepository(
+    private val db: StumpdDb,
+    private val matchRepository: MatchRepository,
+) {
     
     private companion object {
         const val TAG = "PlayerRepository"
@@ -43,13 +48,17 @@ class PlayerRepository(private val db: StumpdDb) {
     suspend fun addOrUpdatePlayer(name: String, existingPlayerId: String? = null): PlayerEntity = withContext(Dispatchers.IO) {
         try {
             val id = existingPlayerId ?: UUID.randomUUID().toString()
-            val playerEntity = PlayerEntity(id = id, name = name.trim(), isJoker = false)
+            val playerEntity = PlayerEntity(id = id, name = name.trim(), isJoker = false, updatedAt = System.currentTimeMillis())
             db.playerDao().upsert(listOf(playerEntity))
-            
-            // If updating an existing player, sync the name across all historical match stats
+
             if (existingPlayerId != null) {
-                val updatedRows = db.matchDao().updatePlayerNameInStats(existingPlayerId, name.trim())
-                Log.d(TAG, "Updated player name in $updatedRows historical match stats")
+                // Every relationship inside a match is keyed on the name, so a rename has to go
+                // through the whole match graph — not just the one column that carries a
+                // playerId, which is all this used to do. Run unconditionally: it works out for
+                // itself which matches still disagree, so saving a player without renaming them
+                // costs a single query, and renaming again repairs anything left behind.
+                val changed = matchRepository.renamePlayerAcrossMatches(existingPlayerId, name.trim())
+                if (changed > 0) Log.d(TAG, "Carried the new name into $changed match(es)")
             }
             
             Log.d(TAG, "Added/updated player: $name (id: $id)")
@@ -129,8 +138,10 @@ class PlayerRepository(private val db: StumpdDb) {
         playerStatsMap: MutableMap<String, PlayerDetailedStats>
     ) {
         if (match.allDeliveries.isEmpty()) return
-        
-        match.allDeliveries.forEach { delivery ->
+
+        // Career figures cover the match, not the eliminator: a super over doesn't count towards
+        // anyone's average in the real game either.
+        match.allDeliveries.mainMatchDeliveries().forEach { delivery ->
             try {
                 // Safely handle blank bowler names
                 val bowlerName = delivery.bowlerName
@@ -138,9 +149,10 @@ class PlayerRepository(private val db: StumpdDb) {
                 
                 val playerKey = bowlerName.lowercase().trim()
                 playerStatsMap[playerKey]?.let { stats ->
-                    when {
-                        delivery.outcome.startsWith("Wd") -> stats.totalWides++
-                        delivery.outcome.startsWith("Nb") -> stats.totalNoBalls++
+                    when (DeliveryOutcome.kindOf(delivery.outcome)) {
+                        DeliveryOutcome.Kind.WIDE -> stats.totalWides++
+                        DeliveryOutcome.Kind.NO_BALL -> stats.totalNoBalls++
+                        else -> Unit
                     }
                 }
             } catch (e: Exception) {

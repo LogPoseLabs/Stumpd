@@ -36,6 +36,11 @@ fun EnhancedPlayerSelectionDialog(
     onDismiss: () -> Unit,
     matchSettings: MatchSettings,
     otherEndName: String? = null,
+    /**
+     * Returns why a player cannot be picked, or null when they can. Used to show the reason on
+     * the row and stop the tap, instead of accepting the tap and rejecting it with a toast.
+     */
+    ineligibleReason: ((Player) -> String?)? = null,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -57,7 +62,7 @@ fun EnhancedPlayerSelectionDialog(
                 }
             Text(
                 text = title,
-                fontSize = 18.sp,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
             }
@@ -93,14 +98,17 @@ fun EnhancedPlayerSelectionDialog(
 
 
                 items(availablePlayers) { player ->
+                    val blockedReason = ineligibleReason?.invoke(player)
                     OutlinedCard(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = { onPlayerSelected(player) },
+                        enabled = blockedReason == null,
                         colors = CardDefaults.outlinedCardColors(
                             containerColor = if (player.isJoker)
                                 MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
                             else
-                                MaterialTheme.colorScheme.surface
+                                MaterialTheme.colorScheme.surface,
+                            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant
                         ),
                     ) {
                         Row(
@@ -125,7 +133,7 @@ fun EnhancedPlayerSelectionDialog(
                                     Text(
                                         text = player.name,
                                         fontWeight = FontWeight.SemiBold,
-                                        fontSize = 14.sp,
+                                        style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     if (player.isJoker) {
@@ -136,7 +144,7 @@ fun EnhancedPlayerSelectionDialog(
                                         ) {
                                             Text(
                                                 "🃏",
-                                                fontSize = 12.sp,
+                                                style = MaterialTheme.typography.bodySmall,
                                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                                             )
                                         }
@@ -147,20 +155,20 @@ fun EnhancedPlayerSelectionDialog(
                                 if (player.ballsFaced > 0 || player.runs > 0) {
                                     Text(
                                             text = "${player.runs}${if (!player.isOut && player.ballsFaced > 0) "*" else ""} (${player.ballsFaced}) • SR: ${"%.1f".format(player.strikeRate)}",
-                                        fontSize = 12.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     if (player.fours > 0 || player.sixes > 0) {
                                         Text(
                                                 text = "4s: ${player.fours} • 6s: ${player.sixes}",
-                                                fontSize = 11.sp,
+                                                style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.primary
                                         )
                                     }
                                 } else {
                                     Text(
                                             text = if (player.isJoker) "Available for both teams" else "Yet to bat",
-                                        fontSize = 12.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontStyle = FontStyle.Italic,
                                     )
@@ -170,17 +178,25 @@ fun EnhancedPlayerSelectionDialog(
                                 if (player.ballsBowled > 0 || player.wickets > 0 || player.runsConceded > 0) {
                                     Text(
                                             text = "${player.wickets}/${player.runsConceded} (${"%.1f".format(player.oversBowled)} ov) • Eco: ${"%.1f".format(player.economy)}",
-                                        fontSize = 12.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 } else {
                                     Text(
                                             text = if (player.isJoker) "Available for both teams" else "Yet to bowl",
-                                        fontSize = 12.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontStyle = FontStyle.Italic,
                                     )
                                 }
+                            }
+                            if (blockedReason != null) {
+                                Text(
+                                    text = blockedReason,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
                             }
                             }
                             Icon(
@@ -203,10 +219,11 @@ fun EnhancedPlayerSelectionDialog(
                             !jokerInBatting && !jokerOutInCurrentInnings && wicketsFallen
                         }
                         title.contains("Bowler", ignoreCase = true) -> {
-                            // Joker can bowl only if he's not currently batting
+                            // Joker can bowl only if the match allows it, he's not currently
+                            // batting, and he's under his over cap.
                             val jokerCurrentlyBatting = battingTeamPlayers.any { it.isJoker && !it.isOut }
                             val withinCap = jokerOversThisInnings < matchSettings.jokerMaxOvers
-                            !jokerCurrentlyBatting && withinCap
+                            matchSettings.jokerCanBowl && !jokerCurrentlyBatting && withinCap
                         }
                         else -> false
                     }
@@ -238,7 +255,7 @@ fun EnhancedPlayerSelectionDialog(
                                         ) {
                                     Text(
                                                 "🃏",
-                                                fontSize = 18.sp,
+                                                style = MaterialTheme.typography.titleMedium,
                                                 modifier = Modifier.padding(6.dp)
                                             )
                                         }
@@ -247,7 +264,7 @@ fun EnhancedPlayerSelectionDialog(
                                             Text(
                                                 text = joker.name,
                                         fontWeight = FontWeight.Bold,
-                                                fontSize = 14.sp,
+                                                style = MaterialTheme.typography.bodyMedium,
                                                 color = MaterialTheme.colorScheme.onTertiaryContainer
                                     )
                                     Text(
@@ -255,7 +272,7 @@ fun EnhancedPlayerSelectionDialog(
                                                     "Available to bat"
                                         else
                                                     "Available to bowl",
-                                        fontSize = 12.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f),
                                                 fontStyle = FontStyle.Italic
                                             )

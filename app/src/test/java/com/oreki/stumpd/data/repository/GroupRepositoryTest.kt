@@ -2,6 +2,9 @@ package com.oreki.stumpd.data.repository
 
 import com.google.gson.Gson
 import com.oreki.stumpd.*
+import com.oreki.stumpd.domain.model.BallFormat
+import com.oreki.stumpd.domain.model.GroupDefaultSettings
+import com.oreki.stumpd.domain.model.MatchSettings
 import com.oreki.stumpd.data.local.dao.GroupDao
 import com.oreki.stumpd.data.local.db.StumpdDb
 import com.oreki.stumpd.data.local.entity.GroupDefaultEntity
@@ -131,13 +134,27 @@ class GroupRepositoryTest {
         // Given
         val groupId = "group1"
         val newName = "Updated Group Name"
+        val existing = GroupEntity(
+            id = groupId,
+            name = "Old Name",
+            inviteCode = "ABC123",
+            claimCode = "secret-claim",
+            isOwner = true,
+        )
+        coEvery { groupDao.getGroupById(groupId) } returns existing
 
         // When
         repository.renameGroup(groupId, newName)
 
-        // Then
+        // Then: renameGroup bumps updatedAt for sync, so compare the fields it must preserve.
         coVerify {
-            groupDao.upsertGroup(GroupEntity(id = groupId, name = newName))
+            groupDao.upsertGroup(withArg {
+                assertEquals(newName, it.name)
+                assertEquals(existing.id, it.id)
+                assertEquals(existing.inviteCode, it.inviteCode)
+                assertEquals(existing.claimCode, it.claimCode)
+                assertEquals(existing.isOwner, it.isOwner)
+            })
         }
     }
 
@@ -146,18 +163,31 @@ class GroupRepositoryTest {
         // Given
         val groupId = "group1"
         val newName = "  Updated Name  "
+        val existing = GroupEntity(
+            id = groupId,
+            name = "Old",
+            inviteCode = "XYZ",
+            claimCode = "c",
+            isOwner = false,
+        )
+        coEvery { groupDao.getGroupById(groupId) } returns existing
 
         // When
         repository.renameGroup(groupId, newName)
 
         // Then
         coVerify {
-            groupDao.upsertGroup(GroupEntity(id = groupId, name = "Updated Name"))
+            groupDao.upsertGroup(withArg {
+                assertEquals("Updated Name", it.name)
+                assertEquals(existing.inviteCode, it.inviteCode)
+                assertEquals(existing.claimCode, it.claimCode)
+                assertEquals(existing.isOwner, it.isOwner)
+            })
         }
     }
 
     @Test
-    fun `deleteGroup clears members`() = runTest {
+    fun `deleteGroup removes members, unavailable rows and the group itself`() = runTest {
         // Given
         val groupId = "group1"
 
@@ -166,6 +196,8 @@ class GroupRepositoryTest {
 
         // Then
         coVerify { groupDao.clearMembers(groupId) }
+        coVerify { groupDao.clearUnavailablePlayers(groupId) }
+        coVerify { groupDao.deleteGroup(groupId) }
     }
 
     @Test
@@ -188,6 +220,67 @@ class GroupRepositoryTest {
                 assertTrue(members.all { it.groupId == groupId })
             })
         }
+        coVerify { groupDao.pruneUnavailableNonMembers(groupId) }
+    }
+
+    @Test
+    fun `updatePlayerGroups never clears whole groups`() = runTest {
+        // Regression: the old implementation called clearMembers(groupId) and then re-read
+        // memberIds(groupId) to restore everyone else. The read happened after the delete so
+        // it always came back empty, wiping every group the player belonged to.
+        coEvery { groupDao.getGroupIdsForPlayer("p1") } returns listOf("group1", "group2")
+
+        repository.updatePlayerGroups("p1", listOf("group2"))
+
+        coVerify(exactly = 0) { groupDao.clearMembers(any()) }
+        coVerify { groupDao.removePlayerFromAllGroups("p1") }
+    }
+
+    @Test
+    fun `updatePlayerGroups writes only the edited player's memberships`() = runTest {
+        coEvery { groupDao.getGroupIdsForPlayer("p1") } returns listOf("group1")
+
+        repository.updatePlayerGroups("p1", listOf("group2", "group3", "group2"))
+
+        coVerify {
+            groupDao.upsertMembers(withArg { members ->
+                assertEquals(2, members.size) // duplicates collapsed
+                assertTrue(members.all { it.playerId == "p1" })
+                assertEquals(setOf("group2", "group3"), members.map { it.groupId }.toSet())
+            })
+        }
+    }
+
+    @Test
+    fun `updatePlayerGroups prunes unavailable rows for groups the player left`() = runTest {
+        coEvery { groupDao.getGroupIdsForPlayer("p1") } returns listOf("group1")
+
+        repository.updatePlayerGroups("p1", listOf("group2"))
+
+        // group1 is the one they left - a stale unavailable row there would make
+        // Available = members - unavailable go negative.
+        coVerify { groupDao.pruneUnavailableNonMembers("group1") }
+        coVerify { groupDao.pruneUnavailableNonMembers("group2") }
+    }
+
+    @Test
+    fun `updatePlayerGroups handles removal from every group`() = runTest {
+        coEvery { groupDao.getGroupIdsForPlayer("p1") } returns listOf("group1")
+
+        repository.updatePlayerGroups("p1", emptyList())
+
+        coVerify { groupDao.removePlayerFromAllGroups("p1") }
+        coVerify(exactly = 0) { groupDao.upsertMembers(any()) }
+        coVerify { groupDao.pruneUnavailableNonMembers("group1") }
+    }
+
+    @Test
+    fun `replaceMembers prunes stale unavailable records after updating members`() = runTest {
+        val groupId = "group1"
+
+        repository.replaceMembers(groupId, listOf("p1", "p2"))
+
+        coVerify { groupDao.pruneUnavailableNonMembers(groupId) }
     }
 
     @Test
@@ -220,6 +313,24 @@ class GroupRepositoryTest {
         // Then
         coVerify { groupDao.clearMembers(groupId) }
         coVerify(exactly = 0) { groupDao.upsertMembers(any()) }
+        coVerify { groupDao.pruneUnavailableNonMembers(groupId) }
+    }
+
+    @Test
+    fun `replaceUnavailablePlayers ignores ids that are not current members`() = runTest {
+        val groupId = "group1"
+        coEvery { groupDao.memberIds(groupId) } returns listOf("p1", "p2")
+
+        repository.replaceUnavailablePlayers(groupId, listOf("p1", "p3", "p4"))
+
+        coVerify { groupDao.clearUnavailablePlayers(groupId) }
+        coVerify {
+            groupDao.markPlayerUnavailable(withArg { entity ->
+                assertEquals(groupId, entity.groupId)
+                assertEquals("p1", entity.playerId)
+            })
+        }
+        coVerify(exactly = 1) { groupDao.markPlayerUnavailable(any()) }
     }
 
     @Test
@@ -448,6 +559,9 @@ class GroupRepositoryTest {
         assertEquals("Group 2", summary2.first.name)
         assertNull(summary2.second)
         assertEquals(5, summary2.third)
+
+        coVerify { groupDao.pruneUnavailableNonMembers("group1") }
+        coVerify { groupDao.pruneUnavailableNonMembers("group2") }
     }
 
     @Test
@@ -479,14 +593,16 @@ class GroupRepositoryTest {
         coEvery { groupDao.listGroups() } returns listOf(groupEntity)
         coEvery { groupDao.getDefaults(groupId) } returns defaults
         coEvery { groupDao.memberIds(groupId) } returns memberIds
+        coEvery { groupDao.getUnavailableMemberIds(groupId) } returns emptyList()
 
         // When
         val result = repository.getGroupForEdit(groupId)
 
         // Then
-        assertEquals(groupEntity, result.first)
-        assertEquals(defaults, result.second)
-        assertEquals(memberIds, result.third)
+        assertEquals(groupEntity, result.entity)
+        assertEquals(defaults, result.defaults)
+        assertEquals(memberIds, result.memberIds)
+        assertTrue(result.unavailablePlayerIds.isEmpty())
     }
 
     @Test
@@ -499,14 +615,16 @@ class GroupRepositoryTest {
         coEvery { groupDao.listGroups() } returns listOf(groupEntity)
         coEvery { groupDao.getDefaults(groupId) } returns null
         coEvery { groupDao.memberIds(groupId) } returns memberIds
+        coEvery { groupDao.getUnavailableMemberIds(groupId) } returns emptyList()
 
         // When
         val result = repository.getGroupForEdit(groupId)
 
         // Then
-        assertEquals(groupEntity, result.first)
-        assertNull(result.second)
-        assertEquals(memberIds, result.third)
+        assertEquals(groupEntity, result.entity)
+        assertNull(result.defaults)
+        assertEquals(memberIds, result.memberIds)
+        assertTrue(result.unavailablePlayerIds.isEmpty())
     }
 
     @Test

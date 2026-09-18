@@ -1,6 +1,7 @@
 package com.oreki.stumpd.data.manager
 
 import com.oreki.stumpd.domain.model.*
+import com.oreki.stumpd.data.mappers.oversToBalls
 import android.content.Context
 import android.util.Log
 import com.google.gson.reflect.TypeToken
@@ -71,6 +72,9 @@ data class PlayerDetailedStats(
     val oversBowled: Double
         get() = (totalBallsBowled / 6) + (totalBallsBowled % 6) * 0.1
     
+    /** Innings of [threshold] or more, the group's own idea of a milestone score. */
+    fun milestoneScores(threshold: Int): Int = matchPerformances.count { it.runs >= threshold }
+
     val fifties: Int
         get() = matchPerformances.count { it.runs >= 50 && it.runs < 100 }
     
@@ -89,7 +93,16 @@ data class PlayerDetailedStats(
     val ducks: Int
         get() = matchPerformances.count { it.runs == 0 && it.isOut }
     
+    /**
+     * Out for nought on the very first ball faced. Previously this checked `ballsFaced == 0`,
+     * which is a *diamond* duck - dismissed without facing a delivery at all, usually run out
+     * at the non-striker's end - so genuine golden ducks were never counted.
+     */
     val goldenDucks: Int
+        get() = matchPerformances.count { it.runs == 0 && it.ballsFaced == 1 && it.isOut }
+
+    /** Out without facing a ball, e.g. run out at the non-striker's end. */
+    val diamondDucks: Int
         get() = matchPerformances.count { it.runs == 0 && it.ballsFaced == 0 && it.isOut }
     
     // Duck Percentage: % of innings resulting in ducks
@@ -139,24 +152,6 @@ data class PlayerDetailedStats(
             consistency < 20 -> "Consistent"
             consistency < 30 -> "Moderate"
             else -> "Inconsistent"
-        }
-    
-    // Form Guide: Visual indicator of last 5 matches
-    val recentForm: String
-        get() {
-            val recent = matchPerformances
-                .sortedByDescending { it.matchDate }
-                .take(5)
-                .map { 
-                    when {
-                        it.runs >= 50 -> "🟢"
-                        it.runs >= 25 -> "🟡"
-                        it.runs >= 10 -> "🟠"
-                        else -> "🔴"
-                    }
-                }
-                .joinToString("")
-            return recent.ifEmpty { "N/A" }
         }
     
     // Scoring Breakdown: Percentage breakdown
@@ -461,7 +456,7 @@ class EnhancedPlayerStorageManager(
 
                 player.totalWickets += playerStat.wickets
                 player.totalRunsConceded += playerStat.runsConceded
-                player.totalBallsBowled += (playerStat.oversBowled * 6).toInt()
+                player.totalBallsBowled += playerStat.oversBowled.oversToBalls()
 
                 val existingPerf = player.matchPerformances.find { it.matchId == match.id }
                 if (existingPerf != null) {
@@ -470,7 +465,7 @@ class EnhancedPlayerStorageManager(
                         existingPerf.copy(
                             wickets = playerStat.wickets,
                             runsConceded = playerStat.runsConceded,
-                            ballsBowled = (playerStat.oversBowled * 6).toInt(),
+                            ballsBowled = playerStat.oversBowled.oversToBalls(),
                             maidenOvers = playerStat.maidenOvers,
                         )
                 } else {
@@ -483,7 +478,7 @@ class EnhancedPlayerStorageManager(
                             myTeam = match.team2Name,
                             wickets = playerStat.wickets,
                             runsConceded = playerStat.runsConceded,
-                            ballsBowled = (playerStat.oversBowled * 6).toInt(),
+                            ballsBowled = playerStat.oversBowled.oversToBalls(),
                             isWinner = match.winnerTeam == match.team2Name,
                             isJoker = playerStat.isJoker,
                             matchTotalOvers = match.matchSettings?.totalOvers ?: 5,
@@ -559,7 +554,7 @@ class EnhancedPlayerStorageManager(
 
                 player.totalWickets += playerStat.wickets
                 player.totalRunsConceded += playerStat.runsConceded
-                player.totalBallsBowled += (playerStat.oversBowled * 6).toInt()
+                player.totalBallsBowled += playerStat.oversBowled.oversToBalls()
 
                 val existingPerf = player.matchPerformances.find { it.matchId == match.id }
                 if (existingPerf != null) {
@@ -568,7 +563,7 @@ class EnhancedPlayerStorageManager(
                         existingPerf.copy(
                             wickets = existingPerf.wickets + playerStat.wickets,
                             runsConceded = existingPerf.runsConceded + playerStat.runsConceded,
-                            ballsBowled = existingPerf.ballsBowled + (playerStat.oversBowled * 6).toInt(),
+                            ballsBowled = existingPerf.ballsBowled + playerStat.oversBowled.oversToBalls(),
                             maidenOvers = existingPerf.maidenOvers + playerStat.maidenOvers,
                         )
                 } else {
@@ -581,7 +576,7 @@ class EnhancedPlayerStorageManager(
                             myTeam = match.team1Name,
                             wickets = playerStat.wickets,
                             runsConceded = playerStat.runsConceded,
-                            ballsBowled = (playerStat.oversBowled * 6).toInt(),
+                            ballsBowled = playerStat.oversBowled.oversToBalls(),
                             isWinner = match.winnerTeam == match.team1Name,
                             isJoker = playerStat.isJoker,
                             matchTotalOvers = match.matchSettings?.totalOvers ?: 5,
@@ -674,7 +669,7 @@ class EnhancedPlayerStorageManager(
                 }
                 player.totalWickets += p.wickets
                 player.totalRunsConceded += p.runsConceded
-                player.totalBallsBowled += (p.oversBowled * 6).toInt()
+                player.totalBallsBowled += p.oversBowled.oversToBalls()
                 upsertBowlPerf(player, match, p, myTeam = match.team2Name, opp = match.team1Name)
             }
 
@@ -723,7 +718,7 @@ class EnhancedPlayerStorageManager(
                 }
                 player.totalWickets += p.wickets
                 player.totalRunsConceded += p.runsConceded
-                player.totalBallsBowled += (p.oversBowled * 6).toInt()
+                player.totalBallsBowled += p.oversBowled.oversToBalls()
                 upsertBowlPerf(player, match, p, myTeam = match.team1Name, opp = match.team2Name)
             }
         }
@@ -772,7 +767,7 @@ class EnhancedPlayerStorageManager(
             player.matchPerformances[idx] = existing.copy(
                 wickets = existing.wickets + p.wickets,
                 runsConceded = existing.runsConceded + p.runsConceded,
-                ballsBowled = existing.ballsBowled + (p.oversBowled * 6).toInt(),
+                ballsBowled = existing.ballsBowled + p.oversBowled.oversToBalls(),
                 isWinner = match.winnerTeam == myTeam || existing.isWinner,
                 isJoker = existing.isJoker || p.isJoker,
                 maidenOvers = existing.maidenOvers + p.maidenOvers
@@ -787,7 +782,7 @@ class EnhancedPlayerStorageManager(
                     myTeam = myTeam,
                     wickets = p.wickets,
                     runsConceded = p.runsConceded,
-                    ballsBowled = (p.oversBowled * 6).toInt(),
+                    ballsBowled = p.oversBowled.oversToBalls(),
                     isWinner = match.winnerTeam == myTeam,
                     isJoker = p.isJoker,
                     matchTotalOvers = match.matchSettings?.totalOvers ?: 5,

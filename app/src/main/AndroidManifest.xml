@@ -16,9 +16,6 @@
     <!-- Permission for OTA updates (installing APKs) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
-    <!-- Foreground service for keeping sync alive when app is backgrounded -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
@@ -58,7 +55,7 @@
             android:exported="false" />
 
         <activity
-            android:name=".StatsActivity"
+            android:name=".ui.merge.MergeMatchesActivity"
             android:exported="false" />
 
         <activity
@@ -93,20 +90,16 @@
         <activity android:name=".AllPlayersStatsActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.correction.CorrectMatchActivity"
+            android:exported="false" />
+
         <activity android:name=".StatsHubActivity"
             android:exported="false" />
 
-        <activity android:name=".HeadToHeadActivity"
-            android:exported="false" />
-
-        <activity android:name=".CaptainStatsActivity"
-            android:exported="false" />
-
-        <activity android:name=".RecordsActivity"
-            android:exported="false" />
-
-        <activity android:name=".CloudSyncActivity"
-            android:exported="false" />
+        <activity android:name=".ui.tournament.TournamentActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Stumpd" />
 
         <activity android:name=".LiveMatchesActivity"
             android:exported="false"
@@ -119,15 +112,6 @@
         <activity android:name=".EnhancedCloudSyncActivity"
             android:exported="false"
             android:theme="@style/Theme.Stumpd" />
-
-        <activity android:name=".RankingsActivity"
-            android:exported="false" />
-
-        <!-- Foreground service for sync -->
-        <service
-            android:name=".data.sync.SyncForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
 
         <!-- FileProvider for APK installation (OTA updates) -->
         <provider

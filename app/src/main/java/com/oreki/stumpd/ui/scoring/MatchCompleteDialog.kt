@@ -1,6 +1,8 @@
 package com.oreki.stumpd.ui.scoring
 
 import com.oreki.stumpd.*
+import com.oreki.stumpd.domain.model.SuperOverInnings
+import com.oreki.stumpd.domain.match.assembleMatch
 import com.oreki.stumpd.domain.model.*
 
 import android.content.Intent
@@ -16,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.oreki.stumpd.ui.theme.stumpd
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -24,6 +27,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import com.oreki.stumpd.data.repository.MatchRepository
 import com.oreki.stumpd.data.manager.InProgressMatchManager
+import com.oreki.stumpd.ui.history.rememberTournamentRepository
 import com.oreki.stumpd.data.sync.sharing.MatchSharingManager
 
 @Composable
@@ -54,24 +58,44 @@ fun EnhancedMatchCompleteDialog(
     scope: CoroutineScope,
     repo : MatchRepository,
     inProgressManager: InProgressMatchManager,
-    allDeliveries: List<DeliveryUI> = emptyList()
+    allDeliveries: List<DeliveryUI> = emptyList(),
+    /**
+     * The eliminator's outcome, when there was one.
+     *
+     * This dialog writes the match as soon as it composes, so it is only ever shown once the
+     * result is settled — either the scores were not level, or a super over decided it, or the
+     * scorer chose to leave it a tie.
+     */
+    superOverWinner: String? = null,
+    superOvers: List<SuperOverInnings> = emptyList(),
+    /**
+     * The tournament fixture this match settles, when it is one.
+     *
+     * [team1Id] and [team2Id] follow [team1Name] and [team2Name] — that is, batted first and
+     * bowled first — because that is the order a saved match stores.
+     */
+    tournamentId: String? = null,
+    tournamentFixtureId: String? = null,
+    team1Id: String? = null,
+    team2Id: String? = null
 ) {
     val context = LocalContext.current
+    val tournamentRepo = rememberTournamentRepository()
 
-    // Result computation (tie-safe)
-    val isTie = secondInningsRuns == firstInningsRuns
-    val chasingWon = secondInningsRuns > firstInningsRuns
-    val winner: String? = when {
-        isTie -> null
-        chasingWon -> team2Name
-        else -> team1Name
-    }
-    val totalPlayersInChasingTeam = matchSettings.maxPlayersPerTeam
-    val margin: String? = when {
-        isTie -> null
-        chasingWon -> "${calculateWicketMargin(secondInningsWickets, totalPlayersInChasingTeam)} wickets"
-        else -> "${firstInningsRuns - secondInningsRuns} runs"
-    }
+    // Result computation (tie-safe), shared with the correction path so a changed score can be
+    // re-resolved rather than leaving a stale winner and margin behind.
+    val result = resolveMatchResult(
+        team1Name = team1Name,
+        team2Name = team2Name,
+        firstInningsRuns = firstInningsRuns,
+        secondInningsRuns = secondInningsRuns,
+        secondInningsWickets = secondInningsWickets,
+        chasingSquadSize = secondInningsBattingPlayers.size
+            .takeIf { it > 0 } ?: matchSettings.maxPlayersPerTeam,
+        allowSingleSideBatting = matchSettings.allowSingleSideBatting,
+        superOverWinner = superOverWinner,
+    )
+    val isTie = result.winnerTeam == "TIE"
 
     // Build stats for DB — no joker merging needed.
     // Role-based storage (BAT/BOWL) keeps batting and bowling as separate rows,
@@ -91,7 +115,7 @@ fun EnhancedMatchCompleteDialog(
 
     // Save history (tie-friendly placeholders)
     LaunchedEffect(Unit) {
-        val match = saveMatchToHistory(
+        val match = assembleMatch(
             team1Name = team1Name,
             team2Name = team2Name,
             jokerPlayerName = jokerPlayerName,
@@ -101,8 +125,8 @@ fun EnhancedMatchCompleteDialog(
             firstInningsWickets = firstInningsWickets,
             secondInningsRuns = secondInningsRuns,
             secondInningsWickets = secondInningsWickets,
-            winnerTeam = winner ?: "TIE",
-            winningMargin = margin ?: "Scores level",
+            winnerTeam = result.winnerTeam,
+            winningMargin = result.winningMargin,
             firstInningsBattingStats = firstInningsBattingStats,
             firstInningsBowlingStats = firstInningsBowlingStats,
             secondInningsBattingStats = secondInningsBattingStats,
@@ -111,15 +135,30 @@ fun EnhancedMatchCompleteDialog(
             secondInningsPartnerships = secondInningsPartnerships,
             firstInningsFallOfWickets = firstInningsFallOfWickets,
             secondInningsFallOfWickets = secondInningsFallOfWickets,
-            context = context,
             matchSettings = matchSettings,
             groupId = finalGroupId,
             groupName = finalGroupName,
-            allDeliveries = allDeliveries.toList()
+            allDeliveries = allDeliveries.toList(),
+            superOverWinner = superOverWinner,
+            superOvers = superOvers,
+            tournamentId = tournamentId,
+            tournamentFixtureId = tournamentFixtureId,
+            team1Id = team1Id,
+            team2Id = team2Id
         )
         scope.launch {
             repo.saveMatch(match)
             savedMatchId = match.id // Store the saved match ID for navigation
+
+            // Close out the fixture, if this was one. After the save and never in front of it:
+            // a tournament failure must not be able to lose a played match. The table and the
+            // bracket are derived on read, so this only has to record which match it was.
+            if (tournamentFixtureId != null) {
+                tournamentRepo.recordFixtureResult(tournamentFixtureId, match.id)
+                    .onFailure {
+                        android.util.Log.e("MatchComplete", "Fixture not closed out", it)
+                    }
+            }
             inProgressManager.clearMatch() // Clear saved match since it's now completed
             
             // Clean up shared match from live matches
@@ -164,27 +203,37 @@ fun EnhancedMatchCompleteDialog(
             LazyColumn {
                 // Result banner
                 item {
-                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E8))) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.stumpd.successContainer
+                        )
+                    ) {
                         Column(
                             modifier = Modifier.padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Text(
-                                text = if (isTie) "Match Tied" else "${winner} won by ${margin}",
-                                fontSize = 18.sp,
+                                // Phrased the way the rest of the app phrases it — "won by Super
+                                // Over" reads like a margin, which it isn't.
+                                text = when {
+                                    isTie && superOverWinner != null -> "Match Tied after the Super Over"
+                                    isTie -> "Match Tied"
+                                    result.winningMargin == "Super Over" ->
+                                        "${result.winnerTeam} won the Super Over"
+
+                                    else -> "${result.winnerTeam} won by ${result.winningMargin}"
+                                },
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isTie) Color(0xFF6A1B9A) else MaterialTheme.colorScheme.primary,
+                                color = if (isTie)
+                                    MaterialTheme.colorScheme.tertiary
+                                else
+                                    MaterialTheme.colorScheme.primary,
                             )
 
-                            if (isTie && matchSettings.enableSuperOver) {
-                                Spacer(Modifier.height(8.dp))
-                                Button(
-                                    onClick = { /* trigger super over flow */ },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0))
-                                ) {
-                                    Text("Start Super Over")
-                                }
-                            }
+                            // The super over is offered *before* the match is written — see
+                            // ScoringEngine.finishSecondInnings — so by the time this dialog is on
+                            // screen the result is settled and there is nothing to offer here.
                         }
                     }
                 }
@@ -193,14 +242,14 @@ fun EnhancedMatchCompleteDialog(
                 item {
                     Text(
                         text = "$team1Name - 1st Innings: $firstInningsRuns/$firstInningsWickets",
-                        fontSize = 16.sp,
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                     )
                 }
                 item {
                     Text(
                         text = "Batting",
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.tertiary,
                     )
@@ -212,9 +261,9 @@ fun EnhancedMatchCompleteDialog(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Bowling",
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFFFF5722),
+                        color = MaterialTheme.colorScheme.tertiary,
                     )
                 }
                 items(firstInningsBowlingPlayers.sortedByDescending { it.wickets }) { player ->
@@ -226,14 +275,14 @@ fun EnhancedMatchCompleteDialog(
                 item {
                     Text(
                         text = "$team2Name - 2nd Innings: $secondInningsRuns/$secondInningsWickets",
-                        fontSize = 16.sp,
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                     )
                 }
                 item {
                     Text(
                         text = "Batting",
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.tertiary,
                     )
@@ -245,9 +294,9 @@ fun EnhancedMatchCompleteDialog(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Bowling",
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFFFF5722),
+                        color = MaterialTheme.colorScheme.tertiary,
                     )
                 }
                 items(secondInningsBowlingPlayers.sortedByDescending { it.wickets }) { player ->
@@ -266,11 +315,15 @@ fun EnhancedMatchCompleteDialog(
                     ) {
                         item {
                             Spacer(modifier = Modifier.height(16.dp))
-                            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))) {
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.stumpd.warningContainer
+                                )
+                            ) {
                                 Column(modifier = Modifier.padding(12.dp)) {
                                     Text(
                                         text = "🃏 Joker Performance: $jokerName",
-                                        fontSize = 14.sp,
+                                        style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.secondary,
                                     )
@@ -278,7 +331,7 @@ fun EnhancedMatchCompleteDialog(
                                     val totalWickets = (jokerFirstInningsBowl?.wickets ?: 0) + (jokerSecondInningsBowl?.wickets ?: 0)
                                     Text(
                                         text = "Total: $totalRuns runs, $totalWickets wickets",
-                                        fontSize = 12.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.secondary,
                                     )
                                 }
@@ -292,7 +345,11 @@ fun EnhancedMatchCompleteDialog(
             Button(
                 onClick = onNewMatch,
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-            ) { Text("New Match") }
+            ) {
+                // The label matches what onNewMatch actually does: a fixture returns to the
+                // tournament it came from, not to a blank "start another match" screen.
+                Text(if (tournamentId != null) "Back to Tournament" else "New Match")
+            }
         },
         dismissButton = {
             Button(
@@ -347,7 +404,7 @@ fun PlayerStatCard(
     ) {
         Text(
             text = if (player.isJoker) "🃏 ${player.name}" else player.name,
-            fontSize = 12.sp,
+            style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.weight(1f),
         )
         when (type) {
@@ -355,14 +412,14 @@ fun PlayerStatCard(
                 val boundaryText = if (shortPitch) "4s:${player.fours}" else "4s:${player.fours} 6s:${player.sixes}"
                 Text(
                     text = "${player.runs}${if (!player.isOut && player.ballsFaced > 0) "*" else ""} (${player.ballsFaced}) - $boundaryText",
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             "bowling" -> {
                 Text(
                     text = "${player.wickets}/${player.runsConceded} (${"%.1f".format(player.oversBowled)} ov) Eco: ${"%.1f".format(player.economy)}",
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -370,7 +427,3 @@ fun PlayerStatCard(
     }
 }
 
-fun calculateWicketMargin(wicketsLost: Int, totalPlayers: Int = 11): Int {
-    // Max wickets possible is totalPlayers - 1 (last batter can't be out)
-    return (totalPlayers - 1) - wicketsLost
-}

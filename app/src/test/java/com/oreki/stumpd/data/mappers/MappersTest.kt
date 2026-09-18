@@ -1,8 +1,8 @@
 package com.oreki.stumpd.data.mappers
 
 import com.google.gson.Gson
-import com.oreki.stumpd.MatchSettings
-import com.oreki.stumpd.TossChoice
+import com.oreki.stumpd.domain.model.MatchSettings
+import com.oreki.stumpd.domain.model.TossChoice
 import com.oreki.stumpd.data.local.entity.MatchEntity
 import org.junit.Assert.*
 import org.junit.Test
@@ -22,6 +22,8 @@ class MappersTest {
             team1Name = "Team A",
             team2Name = "Team B",
             jokerPlayerName = "Joker",
+            team1CaptainName = null,
+            team2CaptainName = null,
             firstInningsRuns = 120,
             firstInningsWickets = 7,
             secondInningsRuns = 115,
@@ -37,7 +39,8 @@ class MappersTest {
             playerOfTheMatchTeam = "Team A",
             playerOfTheMatchImpact = 55.5,
             playerOfTheMatchSummary = "Great performance",
-            matchSettingsJson = null
+            matchSettingsJson = null,
+            allDeliveriesJson = null
         )
 
         // When
@@ -228,6 +231,8 @@ class MappersTest {
             team1Name = "",
             team2Name = "",
             jokerPlayerName = "",
+            team1CaptainName = null,
+            team2CaptainName = null,
             firstInningsRuns = 0,
             firstInningsWickets = 0,
             secondInningsRuns = 0,
@@ -243,7 +248,8 @@ class MappersTest {
             playerOfTheMatchTeam = "",
             playerOfTheMatchImpact = 0.0,
             playerOfTheMatchSummary = "",
-            matchSettingsJson = ""
+            matchSettingsJson = "",
+            allDeliveriesJson = null
         )
 
         // When
@@ -266,6 +272,8 @@ class MappersTest {
             team1Name = "Team A",
             team2Name = "Team B",
             jokerPlayerName = null,
+            team1CaptainName = null,
+            team2CaptainName = null,
             firstInningsRuns = 0,
             firstInningsWickets = 0,
             secondInningsRuns = 0,
@@ -281,7 +289,8 @@ class MappersTest {
             playerOfTheMatchTeam = null,
             playerOfTheMatchImpact = 0.0,
             playerOfTheMatchSummary = null,
-            matchSettingsJson = null
+            matchSettingsJson = null,
+            allDeliveriesJson = null
         )
 
         // When
@@ -368,6 +377,8 @@ class MappersTest {
         team1Name: String = "Team A",
         team2Name: String = "Team B",
         jokerPlayerName: String? = null,
+        team1CaptainName: String? = null,
+        team2CaptainName: String? = null,
         firstInningsRuns: Int = 100,
         firstInningsWickets: Int = 5,
         secondInningsRuns: Int = 95,
@@ -383,13 +394,16 @@ class MappersTest {
         playerOfTheMatchTeam: String? = null,
         playerOfTheMatchImpact: Double? = null,
         playerOfTheMatchSummary: String? = null,
-        matchSettingsJson: String? = null
+        matchSettingsJson: String? = null,
+        allDeliveriesJson: String? = null
     ): MatchEntity {
         return MatchEntity(
             id = id,
             team1Name = team1Name,
             team2Name = team2Name,
             jokerPlayerName = jokerPlayerName,
+            team1CaptainName = team1CaptainName,
+            team2CaptainName = team2CaptainName,
             firstInningsRuns = firstInningsRuns,
             firstInningsWickets = firstInningsWickets,
             secondInningsRuns = secondInningsRuns,
@@ -405,7 +419,8 @@ class MappersTest {
             playerOfTheMatchTeam = playerOfTheMatchTeam,
             playerOfTheMatchImpact = playerOfTheMatchImpact,
             playerOfTheMatchSummary = playerOfTheMatchSummary,
-            matchSettingsJson = matchSettingsJson
+            matchSettingsJson = matchSettingsJson,
+            allDeliveriesJson = allDeliveriesJson
         )
     }
 }

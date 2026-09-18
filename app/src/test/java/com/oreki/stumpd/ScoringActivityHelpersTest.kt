@@ -2,6 +2,11 @@ package com.oreki.stumpd
 
 import com.google.common.truth.Truth.assertThat
 import com.google.gson.Gson
+import com.oreki.stumpd.domain.model.Player
+import com.oreki.stumpd.domain.model.PlayerId
+import com.oreki.stumpd.ui.scoring.createMatchInProgress
+import com.oreki.stumpd.ui.scoring.toJsonString
+import com.oreki.stumpd.ui.scoring.toPlayerList
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -126,6 +131,7 @@ class ScoringActivityHelpersTest {
             jokerOutInCurrentInnings = false,
             jokerBallsBowledInnings1 = 0,
             jokerBallsBowledInnings2 = 0,
+            allDeliveries = emptyList(),
             gson = gson
         )
 
@@ -193,6 +199,7 @@ class ScoringActivityHelpersTest {
             jokerOutInCurrentInnings = false,
             jokerBallsBowledInnings1 = 0,
             jokerBallsBowledInnings2 = 0,
+            allDeliveries = emptyList(),
             gson = gson
         )
 
@@ -255,6 +262,7 @@ class ScoringActivityHelpersTest {
             jokerOutInCurrentInnings = false,
             jokerBallsBowledInnings1 = 0,
             jokerBallsBowledInnings2 = 0,
+            allDeliveries = emptyList(),
             gson = gson
         )
 
@@ -319,6 +327,7 @@ class ScoringActivityHelpersTest {
             jokerOutInCurrentInnings = false,
             jokerBallsBowledInnings1 = 0,
             jokerBallsBowledInnings2 = 0,
+            allDeliveries = emptyList(),
             gson = gson
         )
 
@@ -378,6 +387,7 @@ class ScoringActivityHelpersTest {
             jokerOutInCurrentInnings = true,
             jokerBallsBowledInnings1 = 6,
             jokerBallsBowledInnings2 = 12,
+            allDeliveries = emptyList(),
             gson = gson
         )
 

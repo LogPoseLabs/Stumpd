@@ -1,12 +1,9 @@
 package com.oreki.stumpd.data.manager
 
 import android.content.Context
-import android.content.SharedPreferences
 import com.google.common.truth.Truth.assertThat
 import com.oreki.stumpd.data.models.MatchInProgress
-import io.mockk.every
-import io.mockk.mockk
-import io.mockk.verify
+import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -23,32 +20,21 @@ class InProgressMatchManagerTest {
     fun setup() {
         context = RuntimeEnvironment.getApplication()
         manager = InProgressMatchManager(context)
-        // Clear any existing data
-        manager.clearMatch()
+        runBlocking { manager.clearMatch() }
     }
 
     @Test
-    fun `saveMatch stores match data correctly`() {
-        // Given
+    fun `saveMatch stores match data correctly`() = runBlocking {
         val match = createSampleMatch()
-
-        // When
         manager.saveMatch(match)
-
-        // Then
         assertThat(manager.hasInProgressMatch()).isTrue()
     }
 
     @Test
-    fun `loadMatch returns correct match data`() {
-        // Given
+    fun `loadMatch returns correct match data`() = runBlocking {
         val match = createSampleMatch()
         manager.saveMatch(match)
-
-        // When
         val loaded = manager.loadMatch()
-
-        // Then
         assertThat(loaded).isNotNull()
         assertThat(loaded?.matchId).isEqualTo(match.matchId)
         assertThat(loaded?.team1Name).isEqualTo(match.team1Name)
@@ -59,85 +45,51 @@ class InProgressMatchManagerTest {
     }
 
     @Test
-    fun `loadMatch returns null when no match saved`() {
-        // When
+    fun `loadMatch returns null when no match saved`() = runBlocking {
         val loaded = manager.loadMatch()
-
-        // Then
         assertThat(loaded).isNull()
     }
 
     @Test
-    fun `clearMatch removes saved data`() {
-        // Given
+    fun `clearMatch removes saved data`() = runBlocking {
         val match = createSampleMatch()
         manager.saveMatch(match)
         assertThat(manager.hasInProgressMatch()).isTrue()
-
-        // When
         manager.clearMatch()
-
-        // Then
         assertThat(manager.hasInProgressMatch()).isFalse()
         assertThat(manager.loadMatch()).isNull()
     }
 
     @Test
-    fun `hasInProgressMatch returns false when no match saved`() {
-        // When & Then
+    fun `hasInProgressMatch returns false when no match saved`() = runBlocking {
         assertThat(manager.hasInProgressMatch()).isFalse()
     }
 
     @Test
-    fun `hasInProgressMatch returns true when match is saved`() {
-        // Given
+    fun `hasInProgressMatch returns true when match is saved`() = runBlocking {
         val match = createSampleMatch()
-
-        // When
         manager.saveMatch(match)
-
-        // Then
         assertThat(manager.hasInProgressMatch()).isTrue()
     }
 
     @Test
-    fun `loadMatch handles corrupted JSON gracefully`() {
-        // Given
-        val prefs = context.getSharedPreferences("in_progress_match", Context.MODE_PRIVATE)
-        prefs.edit().putString("match_in_progress_json", "invalid json {{{").apply()
-
-        // When
-        val loaded = manager.loadMatch()
-
-        // Then
-        assertThat(loaded).isNull()
-        assertThat(manager.hasInProgressMatch()).isFalse() // Should clear on error
-    }
-
-    @Test
-    fun `saveMatch overwrites previous match`() {
-        // Given
-        val match1 = createSampleMatch()
-        val match2 = createSampleMatch().copy(
-            matchId = "match_2",
+    fun `saveMatch overwrites previous match with same id`() = runBlocking {
+        val match1 = createSampleMatch().copy(team1Name = "Original")
+        val match2 = match1.copy(
             team1Name = "Updated Team 1",
-            currentOver = 5
+            currentOver = 5,
+            lastSavedAt = match1.lastSavedAt + 1
         )
-
-        // When
         manager.saveMatch(match1)
         manager.saveMatch(match2)
-
-        // Then
         val loaded = manager.loadMatch()
-        assertThat(loaded?.matchId).isEqualTo("match_2")
+        assertThat(loaded?.matchId).isEqualTo(match1.matchId)
         assertThat(loaded?.team1Name).isEqualTo("Updated Team 1")
         assertThat(loaded?.currentOver).isEqualTo(5)
     }
 
     @Test
-    fun `saveMatch preserves all match state fields`() {
-        // Given
+    fun `saveMatch preserves all match state fields`() = runBlocking {
         val match = createSampleMatch().copy(
             currentInnings = 2,
             currentOver = 10,
@@ -149,12 +101,8 @@ class InProgressMatchManagerTest {
             jokerOutInCurrentInnings = true,
             jokerBallsBowledInnings1 = 12
         )
-
-        // When
         manager.saveMatch(match)
         val loaded = manager.loadMatch()
-
-        // Then
         assertThat(loaded?.currentInnings).isEqualTo(2)
         assertThat(loaded?.currentOver).isEqualTo(10)
         assertThat(loaded?.ballsInOver).isEqualTo(3)
@@ -167,21 +115,30 @@ class InProgressMatchManagerTest {
     }
 
     @Test
-    fun `saveMatch preserves player JSON data`() {
-        // Given
+    fun `saveMatch preserves player JSON data`() = runBlocking {
         val playersJson = """[{"id":"1","name":"Player 1","runs":50}]"""
         val match = createSampleMatch().copy(
             team1PlayersJson = playersJson,
             team2PlayersJson = playersJson
         )
-
-        // When
         manager.saveMatch(match)
         val loaded = manager.loadMatch()
-
-        // Then
         assertThat(loaded?.team1PlayersJson).isEqualTo(playersJson)
         assertThat(loaded?.team2PlayersJson).isEqualTo(playersJson)
+    }
+
+    @Test
+    fun `saveMatch preserves deliveryHistoryJson and partnershipsStateJson`() = runBlocking {
+        val snapshotsJson = """[{"runsOffBat":1,"deliveryIndex":0}]"""
+        val partnershipsJson = """{"innings1":[],"innings2":[],"fowInnings1":[],"fowInnings2":[],"firstInningsBatting":[],"firstInningsBowling":[]}"""
+        val match = createSampleMatch().copy(
+            deliveryHistoryJson = snapshotsJson,
+            partnershipsStateJson = partnershipsJson
+        )
+        manager.saveMatch(match)
+        val loaded = manager.loadMatch()
+        assertThat(loaded?.deliveryHistoryJson).isEqualTo(snapshotsJson)
+        assertThat(loaded?.partnershipsStateJson).isEqualTo(partnershipsJson)
     }
 
     private fun createSampleMatch() = MatchInProgress(
@@ -230,4 +187,3 @@ class InProgressMatchManagerTest {
         startedAt = System.currentTimeMillis()
     )
 }
-

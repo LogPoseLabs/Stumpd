@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The screen being left drifts slightly the same way and dims, so the pair reads as one movement
+  rather than two. It never fades to transparent: the window behind it is the launcher, and
+  showing through would flash.
+-->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/fast_out_linear_in"
+    android:shareInterpolator="true">
+    <translate
+        android:fromXDelta="0"
+        android:toXDelta="-3%p"
+        android:duration="260" />
+    <alpha
+        android:fromAlpha="1.0"
+        android:toAlpha="0.7"
+        android:duration="260" />
+</set>

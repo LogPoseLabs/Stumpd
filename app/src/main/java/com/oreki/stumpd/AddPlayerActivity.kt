@@ -1,14 +1,20 @@
 package com.oreki.stumpd
 
+import com.oreki.stumpd.data.preferences.PasscodeManager
 import com.oreki.stumpd.domain.model.*
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
 import com.oreki.stumpd.utils.FeatureFlags
 import androidx.compose.foundation.layout.*
+import com.oreki.stumpd.ui.components.PasscodePrompt
+import com.oreki.stumpd.ui.theme.EmptyState
+import com.oreki.stumpd.ui.theme.rememberMessenger
+import com.oreki.stumpd.ui.theme.MicroLabel
+import com.oreki.stumpd.ui.theme.hairline
+import com.oreki.stumpd.ui.theme.StatValue
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -41,7 +47,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import com.oreki.stumpd.ui.history.rememberPlayerRepository
 import com.oreki.stumpd.ui.history.rememberGroupRepository
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
+import com.oreki.stumpd.data.local.dao.PlayerCareerSummary
+import com.oreki.stumpd.data.local.db.StumpdDb
 
+@AndroidEntryPoint
 class AddPlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -83,13 +93,34 @@ fun AddPlayerScreen() {
     var allGroups by remember { mutableStateOf<List<com.oreki.stumpd.data.local.entity.GroupEntity>>(emptyList()) }
     var playerGroupIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     
-    // Password management
-    val prefs = remember { context.getSharedPreferences("stumpd_prefs", android.content.Context.MODE_PRIVATE) }
-    var hasPassword by remember { mutableStateOf(!prefs.getString("edit_password", "").isNullOrBlank()) }
-    // Note: Password is still in SharedPreferences for now - can be migrated to Room DB later if needed
+    // The app's single passcode (Settings → Security). This used to be its own password, kept in
+    // plain text in SharedPreferences, so the app had two to remember.
+    val passcodeManager = remember { PasscodeManager(context) }
+    var hasPasscode by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { hasPasscode = passcodeManager.isSet() }
+
+    /**
+     * Opens whichever player action was waiting on the gate. Called straight away when no
+     * passcode is set, or once the entered one checks out.
+     */
+    val openPendingPlayerAction: () -> Unit = {
+        scope.launch {
+            showPasswordDialog = false
+            if (passwordDialogMode == "edit" && playerToEdit != null) {
+                playerName = playerToEdit!!.name
+                val groups = groupRepo.getGroupsForPlayer(playerToEdit!!.id)
+                playerGroupIds = groups.map { group -> group.id }.toSet()
+                showAddDialog = true
+            } else if (passwordDialogMode == "delete" && playerToDelete != null) {
+                showDeleteDialog = true
+            }
+        }
+        Unit
+    }
     
     // Snackbar for success messages
     val snackbarHostState = remember { SnackbarHostState() }
+    val messenger = rememberMessenger(snackbarHostState)
     
     LaunchedEffect(successMessage) {
         if (successMessage.isNotEmpty()) {
@@ -105,6 +136,16 @@ fun AddPlayerScreen() {
     // null = All Players, "__ALL_GROUPS__" = players in any group, "__NONE__" = players not in any group
     var selectedFilterGroupId by remember { mutableStateOf<String?>(null) }
     var showGroupFilterPicker by remember { mutableStateOf(false) }
+
+    // Career totals keyed by player id, so each row can show something useful instead of
+    // 54 identical "Tap to view stats" lines. One aggregate query, not a per-player load.
+    var careerSummaries by remember { mutableStateOf<Map<String, PlayerCareerSummary>>(emptyMap()) }
+
+    LaunchedEffect(refreshTrigger) {
+        careerSummaries = runCatching {
+            StumpdDb.get(context).matchDao().playerCareerSummaries().associateBy { it.playerId }
+        }.getOrElse { emptyMap() }
+    }
 
     LaunchedEffect(refreshTrigger, selectedFilterGroupId) {
         // Load players based on group filter
@@ -272,151 +313,38 @@ fun AddPlayerScreen() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-            // Quick stats card
-        if (allPlayers.isNotEmpty()) {
-                Card(
-                modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
-                    ),
-                    elevation = CardDefaults.cardElevation(2.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = allPlayers.size.toString(),
-                                fontSize = 28.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                            Text(
-                                text = "Total Players",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
-                            )
-                        }
-                        
-                        VerticalDivider(
-                            modifier = Modifier.height(48.dp),
-                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.2f)
-                        )
-                        
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = filteredPlayers.size.toString(),
-                                fontSize = 28.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                            Text(
-                                text = if (searchQuery.isNotEmpty()) "Found" else "Showing",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
-                            )
-                        }
-                    }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-        }
 
         if (filteredPlayers.isEmpty()) {
+            // Both of these were hand-built cards with their own paddings, icon sizes and type;
+            // the shared primitive is what the stats screens already use.
             if (allPlayers.isEmpty()) {
-                    // Empty state - no players at all
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                        ),
-                        elevation = CardDefaults.cardElevation(2.dp)
-                ) {
-                    Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(48.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                            Icon(
-                                Icons.Default.Person,
-                                contentDescription = null,
-                                modifier = Modifier.size(72.dp),
-                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                                text = "No Players Yet",
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                                text = "Add your first player to start tracking cricket stats!",
-                            fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center,
-                                lineHeight = 20.sp
-                        )
-                            Spacer(modifier = Modifier.height(24.dp))
-                        Button(
-                                onClick = { showAddDialog = true }
-                        ) {
+                EmptyState(
+                    icon = Icons.Default.Person,
+                    title = "No Players Yet",
+                    description = "Add your first player to start tracking cricket stats!",
+                    actionButton = {
+                        Button(onClick = { showAddDialog = true }) {
                             Icon(Icons.Default.Add, contentDescription = "Add")
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Add First Player")
                         }
-                    }
-                }
+                    },
+                )
             } else {
-                    // Empty state - search has no results
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                        ),
-                        elevation = CardDefaults.cardElevation(2.dp)
-                ) {
-                    Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                            Icon(
-                                Icons.Default.Search,
-                                contentDescription = null,
-                                modifier = Modifier.size(56.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                                text = "No Players Found",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                                text = "Try a different search term or filter",
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center
-                            )
-                            if (searchQuery.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(16.dp))
-                                FilledTonalButton(onClick = { searchQuery = "" }) {
-                                    Icon(Icons.Default.Close, contentDescription = null)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Clear Search")
-                                }
+                EmptyState(
+                    icon = Icons.Default.Search,
+                    title = "No Players Found",
+                    description = "Try a different search term or filter",
+                    actionButton = if (searchQuery.isEmpty()) null else {
+                        {
+                            FilledTonalButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Clear Search")
                             }
-                    }
-                }
+                        }
+                    },
+                )
             }
         } else {
             Row(
@@ -433,10 +361,9 @@ fun AddPlayerScreen() {
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = if (searchQuery.isBlank()) "All Players" else "Search Results",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                    text = (if (searchQuery.isBlank()) "All Players" else "Search Results").uppercase(),
+                            style = MicroLabel,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                     }
 
@@ -446,8 +373,7 @@ fun AddPlayerScreen() {
                     ) {
                 Text(
                             text = "${filteredPlayers.size}",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
+                            style = StatValue,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                         )
@@ -459,24 +385,39 @@ fun AddPlayerScreen() {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(filteredPlayers) { player ->
+                // Grouped by initial so a 50+ player roster can be scanned rather than
+                // scrolled blindly. Only shown for the unsearched list, where it helps.
+                val grouped = if (searchQuery.isBlank()) {
+                    filteredPlayers.groupBy { it.name.trim().firstOrNull()?.uppercaseChar() ?: '#' }
+                } else {
+                    mapOf(' ' to filteredPlayers)
+                }
+
+                grouped.toSortedMap().forEach { (initial, playersInSection) ->
+                    if (initial != ' ') {
+                        item(key = "header-$initial") {
+                            Text(
+                                text = initial.toString(),
+                                style = MicroLabel,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 2.dp)
+                            )
+                        }
+                    }
+                    items(playersInSection, key = { it.id }) { player ->
                     PlayerManagementCard(
                         player = player,
+                        summary = careerSummaries[player.id],
                         onEdit = {
                             playerToEdit = player
                             passwordDialogMode = "edit"
-                            showPasswordDialog = true
+                            if (hasPasscode) showPasswordDialog = true else openPendingPlayerAction()
                         },
                         onDelete = {
                             playerToDelete = player
-                            // Check for password before showing delete dialog
-                            if (hasPassword) {
-                                passwordDialogMode = "delete"
-                                showPasswordDialog = true
-                            } else {
-                                // If no password is set, show delete dialog directly
-                                showDeleteDialog = true
-                            }
+                            passwordDialogMode = "delete"
+                            if (hasPasscode) showPasswordDialog = true else openPendingPlayerAction()
                         },
                         onViewDetails = {
                             val intent = Intent(context, PlayerDetailActivity::class.java)
@@ -484,48 +425,17 @@ fun AddPlayerScreen() {
                             context.startActivity(intent)
                         }
                     )
+                    }
                 }
                 }
             }
         }
     }
 
-    if (showPasswordDialog && (playerToEdit != null || playerToDelete != null)) {
-        PasswordDialog(
-            storedPassword = prefs.getString("edit_password", "") ?: "",
-            hasPassword = hasPassword,
-            onPasswordCorrect = {
-                scope.launch {
-                    showPasswordDialog = false
-                    if (passwordDialogMode == "edit" && playerToEdit != null) {
-                        playerName = playerToEdit!!.name
-                        // Load player's current groups
-                        val groups = groupRepo.getGroupsForPlayer(playerToEdit!!.id)
-                        playerGroupIds = groups.map { group -> group.id }.toSet()
-                        showAddDialog = true
-                    } else if (passwordDialogMode == "delete" && playerToDelete != null) {
-                        // Password correct, show delete confirmation dialog
-                        showDeleteDialog = true
-                    }
-                }
-            },
-            onPasswordSet = { newPassword ->
-                scope.launch {
-                    prefs.edit().putString("edit_password", newPassword).apply()
-                    hasPassword = true
-                    showPasswordDialog = false
-                    if (passwordDialogMode == "edit" && playerToEdit != null) {
-                        playerName = playerToEdit!!.name
-                        // Load player's current groups
-                        val groups = groupRepo.getGroupsForPlayer(playerToEdit!!.id)
-                        playerGroupIds = groups.map { group -> group.id }.toSet()
-                        showAddDialog = true
-                    } else if (passwordDialogMode == "delete" && playerToDelete != null) {
-                        // Password set, show delete confirmation dialog
-                        showDeleteDialog = true
-                    }
-                }
-            },
+    if (showPasswordDialog && hasPasscode && (playerToEdit != null || playerToDelete != null)) {
+        PasscodePrompt(
+            onVerify = { entered -> passcodeManager.verify(entered) },
+            onPasscodeCorrect = { openPendingPlayerAction() },
             onDismiss = {
                 playerToEdit = null
                 playerToDelete = null
@@ -590,7 +500,7 @@ fun AddPlayerScreen() {
                 showDeleteDialog = false
                     } catch (e: Exception) {
                         // Handle error
-                        Toast.makeText(context, "Failed to delete player: ${e.message}", Toast.LENGTH_SHORT).show()
+                        messenger.show("Failed to delete player: ${e.message}")
                         playerToDelete = null
                         showDeleteDialog = false
                     }
@@ -618,7 +528,7 @@ fun AddPlayerScreen() {
                         modifier = Modifier.size(24.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
-                    Text("Filter by Group", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    Text("Filter by Group", style = MaterialTheme.typography.titleLarge)
                 }
             },
             text = {
@@ -629,7 +539,7 @@ fun AddPlayerScreen() {
                     item {
                         Text(
                             "Show players from:",
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 8.dp)
@@ -640,7 +550,7 @@ fun AddPlayerScreen() {
                     item {
                         Text(
                             "COMMON FILTERS",
-                            fontSize = 11.sp,
+                            style = MicroLabel,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
@@ -657,7 +567,7 @@ fun AddPlayerScreen() {
                             },
                             colors = CardDefaults.outlinedCardColors(
                                 containerColor = if (selectedFilterGroupId == null)
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                                 else
                                     MaterialTheme.colorScheme.surface
                             ),
@@ -675,12 +585,12 @@ fun AddPlayerScreen() {
                                 Column {
                                     Text(
                                         "All Players",
-                                        fontSize = 14.sp,
+                                        style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.SemiBold
                                     )
                                     Text(
                                         "Everyone in the database",
-                                        fontSize = 11.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                                     )
@@ -707,7 +617,7 @@ fun AddPlayerScreen() {
                             },
                             colors = CardDefaults.outlinedCardColors(
                                 containerColor = if (selectedFilterGroupId == "__ALL_GROUPS__")
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                                 else
                                     MaterialTheme.colorScheme.surface
                             ),
@@ -725,12 +635,12 @@ fun AddPlayerScreen() {
                                 Column {
                                     Text(
                                         "All Groups",
-                                        fontSize = 14.sp,
+                                        style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.SemiBold
                                     )
                                     Text(
                                         "Players present in every group",
-                                        fontSize = 11.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                                     )
@@ -757,7 +667,7 @@ fun AddPlayerScreen() {
                             },
                             colors = CardDefaults.outlinedCardColors(
                                 containerColor = if (selectedFilterGroupId == "__NONE__")
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                                 else
                                     MaterialTheme.colorScheme.surface
                             ),
@@ -775,12 +685,12 @@ fun AddPlayerScreen() {
                                 Column {
                                     Text(
                                         "None",
-                                        fontSize = 14.sp,
+                                        style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.SemiBold
                                     )
                                     Text(
                                         "Players not in any group",
-                                        fontSize = 11.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                                     )
@@ -802,7 +712,7 @@ fun AddPlayerScreen() {
                         Spacer(Modifier.height(8.dp))
                         Text(
                             "SPECIFIC GROUPS",
-                            fontSize = 11.sp,
+                            style = MicroLabel,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.secondary,
                             modifier = Modifier.padding(vertical = 8.dp)
@@ -820,7 +730,7 @@ fun AddPlayerScreen() {
                             },
                             colors = CardDefaults.outlinedCardColors(
                                 containerColor = if (selectedFilterGroupId == group.id)
-                                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                                 else
                                     MaterialTheme.colorScheme.surface
                             ),
@@ -847,7 +757,7 @@ fun AddPlayerScreen() {
                                     )
                                     Text(
                                         group.name,
-                                        fontSize = 14.sp,
+                                        style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.Medium
                                     )
                                 }
@@ -878,7 +788,10 @@ fun StatCard(
 ) {
     Card(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        ),
+        border = hairline(),
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -895,15 +808,14 @@ fun StatCard(
 
             Text(
                 text = value,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                style = StatValue,
+                color = MaterialTheme.colorScheme.onSurface
             )
 
             Text(
-                text = title,
-                fontSize = 10.sp,
-                color = Color.Gray,
+                text = title.uppercase(),
+                style = MicroLabel,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
         }
@@ -913,6 +825,7 @@ fun StatCard(
 @Composable
 fun PlayerManagementCard(
     player: UiPlayer,
+    summary: PlayerCareerSummary? = null,
     onEdit: () -> Unit,
     onDelete: (() -> Unit)? = null,
     onViewDetails: () -> Unit
@@ -922,9 +835,10 @@ fun PlayerManagementCard(
             .fillMaxWidth()
             .clickable { onViewDetails() },
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        border = hairline(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier
@@ -935,15 +849,15 @@ fun PlayerManagementCard(
             // Player Avatar
             Surface(
                 shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.size(48.dp)
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                modifier = Modifier.size(44.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
             Icon(
                 Icons.Default.Person,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(28.dp)
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
@@ -954,13 +868,16 @@ fun PlayerManagementCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = player.name,
-                    fontSize = 16.sp,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Tap to view stats",
-                    fontSize = 12.sp,
+                    text = summary?.takeIf { it.matches > 0 }?.let {
+                        "${it.matches} ${if (it.matches == 1) "match" else "matches"} • " +
+                            "${it.runs} runs • ${it.wickets} wkts"
+                    } ?: "Yet to play a match",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -974,7 +891,7 @@ fun PlayerManagementCard(
                     Icon(
                         Icons.Default.Edit,
                         contentDescription = "Edit Player",
-                        tint = MaterialTheme.colorScheme.tertiary,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -1040,7 +957,7 @@ fun AddPlayerDialog(
                 }
             Text(
                 text = if (initialName.isBlank()) "Add New Player" else "Edit Player",
-                    fontSize = 20.sp,
+                    style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
             }
@@ -1068,7 +985,7 @@ fun AddPlayerDialog(
                 if (initialName.isNotBlank() && playerName != initialName) {
                     Text(
                         text = "Note: This will update the player's name in all records",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.secondary
                     )
                 }
@@ -1079,13 +996,13 @@ fun AddPlayerDialog(
                     
                     Text(
                         text = "Group Access",
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                     
                     Text(
                         text = "Empty = Can play in all groups\nSelected = Restricted to selected groups only",
-                        fontSize = 11.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontStyle = FontStyle.Italic
                     )
@@ -1109,7 +1026,7 @@ fun AddPlayerDialog(
                                 enabled = group.isOwner,
                                 label = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(group.name, fontSize = 13.sp)
+                                        Text(group.name, style = MaterialTheme.typography.bodySmall)
                                         if (!group.isOwner) {
                                             Spacer(Modifier.width(4.dp))
                                             Icon(
@@ -1179,8 +1096,7 @@ fun DeletePlayerDialog(
                 )
                 Text(
                     "Delete Player?",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp
+                    style = MaterialTheme.typography.titleLarge
                 )
             }
         },
@@ -1188,13 +1104,13 @@ fun DeletePlayerDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     "Are you sure you want to delete ${player.name}?",
-                    fontSize = 15.sp,
+                    style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     "This action cannot be undone. All match statistics for this player will be permanently removed.",
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 18.sp
                 )
@@ -1216,115 +1132,3 @@ fun DeletePlayerDialog(
     )
 }
 
-@Composable
-fun PasswordDialog(
-    storedPassword: String?,
-    hasPassword: Boolean,
-    onPasswordCorrect: () -> Unit,
-    onPasswordSet: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var enteredPassword by remember { mutableStateOf("") }
-    var showError by remember { mutableStateOf(false) }
-    var isSettingPassword by remember { mutableStateOf(!hasPassword) }
-    var confirmPassword by remember { mutableStateOf("") }
-    
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { 
-            Text(if (isSettingPassword) "Set Edit Password" else "Enter Password") 
-        },
-        text = {
-            Column {
-                if (isSettingPassword) {
-                    Text(
-                        "Set a password to protect player name edits",
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-                }
-                
-                OutlinedTextField(
-                    value = enteredPassword,
-                    onValueChange = { 
-                        enteredPassword = it
-                        showError = false
-                    },
-                    label = { Text(if (isSettingPassword) "New Password" else "Password") },
-                    leadingIcon = { Icon(Icons.Default.Lock, null) },
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    isError = showError
-                )
-                
-                if (isSettingPassword) {
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = confirmPassword,
-                        onValueChange = { 
-                            confirmPassword = it
-                            showError = false
-                        },
-                        label = { Text("Confirm Password") },
-                        leadingIcon = { Icon(Icons.Default.Lock, null) },
-                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        isError = showError
-                    )
-                }
-                
-                if (showError) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        if (isSettingPassword) "Passwords do not match" else "Incorrect password",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-                
-                if (!isSettingPassword && hasPassword) {
-                    Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = { 
-                        isSettingPassword = true
-                        enteredPassword = ""
-                        showError = false
-                    }) {
-                        Text("Forgot password? Reset it", fontSize = 12.sp)
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (isSettingPassword) {
-                        if (enteredPassword.isNotBlank() && enteredPassword == confirmPassword) {
-                            onPasswordSet(enteredPassword)
-                        } else {
-                            showError = true
-                        }
-                    } else {
-                        if (enteredPassword == storedPassword) {
-                            onPasswordCorrect()
-                        } else {
-                            showError = true
-                        }
-                    }
-                },
-                enabled = enteredPassword.isNotBlank() && (!isSettingPassword || confirmPassword.isNotBlank())
-            ) {
-                Text(if (isSettingPassword) "Set Password" else "Unlock")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}

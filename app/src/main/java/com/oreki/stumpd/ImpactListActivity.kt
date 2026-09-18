@@ -18,7 +18,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.theme.StumpdTheme
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class ImpactListActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,7 +59,7 @@ fun ImpactListScreen(matchId: String) {
     ) { padding ->
         if (matchData == null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                Text("Match not found", fontSize = 18.sp)
+                Text("Match not found", style = MaterialTheme.typography.titleMedium)
             }
             return@Scaffold
         }
@@ -65,7 +67,7 @@ fun ImpactListScreen(matchId: String) {
         val impacts = match.playerImpacts.sortedByDescending { it.impact }
         if (impacts.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                Text("No impact data available", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("No impact data available", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             return@Scaffold
         }
@@ -101,7 +103,7 @@ private fun ImpactRow(pi: PlayerImpact, highlight: Boolean) {
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = pi.summary,
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }

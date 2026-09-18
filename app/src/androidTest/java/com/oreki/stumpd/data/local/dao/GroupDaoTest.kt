@@ -9,6 +9,7 @@ import com.oreki.stumpd.data.local.entity.GroupDefaultEntity
 import com.oreki.stumpd.data.local.entity.GroupEntity
 import com.oreki.stumpd.data.local.entity.GroupLastTeamsEntity
 import com.oreki.stumpd.data.local.entity.GroupMemberEntity
+import com.oreki.stumpd.data.local.entity.GroupUnavailablePlayerEntity
 import com.oreki.stumpd.data.local.entity.PlayerEntity
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -464,6 +465,48 @@ class GroupDaoTest {
         
         assertTrue(group1Members.isEmpty())
         assertEquals(2, group2Members.size)
+    }
+
+    @Test
+    fun pruneUnavailableNonMembers_keepsUnavailableOnlyForCurrentMembers() = runTest {
+        groupDao.upsertMembers(listOf(
+            GroupMemberEntity("group1", "p1"),
+            GroupMemberEntity("group1", "p2")
+        ))
+        groupDao.markPlayerUnavailable(GroupUnavailablePlayerEntity("group1", "p1"))
+        groupDao.markPlayerUnavailable(GroupUnavailablePlayerEntity("group1", "p2"))
+        groupDao.markPlayerUnavailable(GroupUnavailablePlayerEntity("group1", "p3"))
+
+        groupDao.clearMembers("group1")
+        groupDao.upsertMembers(listOf(GroupMemberEntity("group1", "p1")))
+        groupDao.pruneUnavailableNonMembers("group1")
+
+        val remaining = groupDao.getUnavailablePlayerIds("group1")
+        val membersOnly = groupDao.getUnavailableMemberIds("group1")
+        assertEquals(listOf("p1"), remaining)
+        assertEquals(listOf("p1"), membersOnly)
+    }
+
+    @Test
+    fun pruneUnavailableNonMembers_clearsAllWhenGroupHasNoMembers() = runTest {
+        groupDao.markPlayerUnavailable(GroupUnavailablePlayerEntity("group1", "p1"))
+        groupDao.markPlayerUnavailable(GroupUnavailablePlayerEntity("group1", "p2"))
+
+        groupDao.clearMembers("group1")
+        groupDao.pruneUnavailableNonMembers("group1")
+
+        assertTrue(groupDao.getUnavailablePlayerIds("group1").isEmpty())
+        assertTrue(groupDao.getUnavailableMemberIds("group1").isEmpty())
+    }
+
+    @Test
+    fun getUnavailableMemberIds_excludesPlayersWhoWereRemovedFromGroup() = runTest {
+        groupDao.upsertMembers(listOf(GroupMemberEntity("group1", "p1")))
+        groupDao.markPlayerUnavailable(GroupUnavailablePlayerEntity("group1", "p1"))
+        groupDao.markPlayerUnavailable(GroupUnavailablePlayerEntity("group1", "removed"))
+
+        assertEquals(listOf("p1"), groupDao.getUnavailableMemberIds("group1"))
+        assertEquals(2, groupDao.getUnavailablePlayerIds("group1").size)
     }
 }
 

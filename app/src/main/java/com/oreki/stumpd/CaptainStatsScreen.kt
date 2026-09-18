@@ -19,6 +19,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.NavController
+import androidx.navigation.compose.rememberNavController
+import com.oreki.stumpd.ui.stats.popBackStackOrFinish
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -31,26 +35,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.theme.StumpdTheme
+import com.oreki.stumpd.ui.theme.hairline
 import kotlinx.coroutines.launch
 import java.time.LocalDate
-
-class CaptainStatsActivity : ComponentActivity() {
-    @RequiresApi(Build.VERSION_CODES.O)
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        actionBar?.hide()
-        setContent {
-            StumpdTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    CaptainStatsScreen(onBack = { finish() })
-                }
-            }
-        }
-    }
-}
+import dagger.hilt.android.AndroidEntryPoint
 
 data class CaptainStats(
     val captainName: String,
@@ -67,7 +55,8 @@ data class CaptainStats(
 @OptIn(ExperimentalMaterial3Api::class)
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
-fun CaptainStatsScreen(onBack: () -> Unit) {
+fun CaptainStatsScreen(navController: NavController) {
+    val context = LocalContext.current
     val matchRepo = rememberMatchRepository()
     val groupRepo = rememberGroupRepository()
     val scope = rememberCoroutineScope()
@@ -103,8 +92,11 @@ fun CaptainStatsScreen(onBack: () -> Unit) {
             groups = groupRepo.listGroups()
             // Auto-select first group if none selected
             if (groups.isNotEmpty() && selectedGroupId == null) {
-                selectedGroupId = groups[0].id
-                selectedGroupName = groups[0].name
+                // The group the app is filtered to, falling back to the first one.
+                val stored = groupRepo.getDefaultGroupId()?.takeIf { id -> groups.any { it.id == id } }
+                val group = groups.firstOrNull { it.id == stored } ?: groups[0]
+                selectedGroupId = group.id
+                selectedGroupName = group.name
             }
             isLoading = false
         }
@@ -136,7 +128,7 @@ fun CaptainStatsScreen(onBack: () -> Unit) {
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { navController.popBackStackOrFinish(context) }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -181,7 +173,8 @@ fun CaptainStatsScreen(onBack: () -> Unit) {
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -205,6 +198,7 @@ fun CaptainStatsScreen(onBack: () -> Unit) {
                     onGroupSelected = { id, name ->
                         selectedGroupId = id
                         selectedGroupName = name
+                        scope.launch { groupRepo.setSelectedGroupId(id) }
                     },
                     modifier = Modifier.weight(1f)
                 )
@@ -328,14 +322,14 @@ fun CaptainStatsCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
+        // Only the leader is tinted. Ranks two and three used to get the secondary and
+        // tertiary containers, which since they're different hues read as three unrelated
+        // categories rather than a podium — and the rank badge already says the position.
         colors = CardDefaults.cardColors(
-            containerColor = when (rank) {
-                1 -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
-                2 -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
-                3 -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
-                else -> MaterialTheme.colorScheme.surfaceVariant
-            }
-        )
+            containerColor = if (rank == 1) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            else MaterialTheme.colorScheme.surfaceContainer
+        ),
+        border = hairline()
     ) {
         Row(
             modifier = Modifier
@@ -351,9 +345,10 @@ fun CaptainStatsCard(
                     .clip(CircleShape)
                     .background(
                         when (rank) {
-                            1 -> MaterialTheme.colorScheme.primary
-                            2 -> MaterialTheme.colorScheme.secondary
-                            3 -> MaterialTheme.colorScheme.tertiary
+                            // Gold for first, because that's the one place in this app where
+                            // gold means something; the rest step down in neutrals.
+                            1 -> MaterialTheme.colorScheme.secondary
+                            2 -> MaterialTheme.colorScheme.onSurfaceVariant
                             else -> MaterialTheme.colorScheme.outline
                         }
                     ),

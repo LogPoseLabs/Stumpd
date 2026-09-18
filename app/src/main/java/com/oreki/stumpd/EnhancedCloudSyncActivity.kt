@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.oreki.stumpd.ui.theme.rememberMessenger
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.oreki.stumpd.data.sync.SyncState
 import com.oreki.stumpd.data.sync.firebase.EnhancedFirebaseAuthHelper
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
 
 /**
  * Enhanced Cloud Sync Activity
@@ -34,6 +36,7 @@ import kotlinx.coroutines.launch
  * - Real-time sync status
  * - Manual sync controls
  */
+@AndroidEntryPoint
 class EnhancedCloudSyncActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,6 +53,9 @@ class EnhancedCloudSyncActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EnhancedCloudSyncScreen() {
+    val snackbarHostState = remember { SnackbarHostState() }
+    val messenger = rememberMessenger(snackbarHostState)
+
     val context = LocalContext.current
     val app = context.applicationContext as StumpdApplication
     val syncManager = app.syncManager
@@ -72,15 +78,16 @@ fun EnhancedCloudSyncScreen() {
                 isGoogleLinked = true
                 userEmail = authHelper.getUserEmail()
                 userName = authHelper.getUserDisplayName()
-                Toast.makeText(context, "Signed in with Google", Toast.LENGTH_SHORT).show()
+                messenger.show("Signed in with Google")
             }.onFailure { e ->
                 Log.e("EnhancedCloudSync", "Google sign-in failed", e)
-                Toast.makeText(context, "Sign-in failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                messenger.show("Sign-in failed: ${e.message}")
             }
         }
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Cloud Sync") },
@@ -254,12 +261,19 @@ fun EnhancedCloudSyncScreen() {
                                 fontWeight = FontWeight.Bold
                             )
 
-                            // Show detailed message when syncing
+                            // Show detailed message when syncing or when error
                             if (state is SyncState.Syncing) {
                                 Text(
                                     text = state.message,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (state is SyncState.Error) {
+                                Text(
+                                    text = state.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
                                 )
                             }
                         }
@@ -350,8 +364,15 @@ fun EnhancedCloudSyncScreen() {
                 ) {
                     Icon(Icons.Default.CloudUpload, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Upload All to Cloud")
+                    Text("Sync Pending to Cloud")
                 }
+
+                Text(
+                    text = "Only uploads matches, players, and groups that changed since your last sync.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
 
                 OutlinedButton(
                     onClick = {

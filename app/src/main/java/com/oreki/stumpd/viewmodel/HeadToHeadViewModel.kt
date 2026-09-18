@@ -1,6 +1,7 @@
 package com.oreki.stumpd.viewmodel
 
 import android.app.Application
+import com.oreki.stumpd.domain.match.mainMatchDeliveries
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.getValue
@@ -10,22 +11,24 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.oreki.stumpd.*
 import com.oreki.stumpd.domain.model.*
-import com.oreki.stumpd.data.local.db.StumpdDb
 import com.oreki.stumpd.data.local.entity.GroupEntity
 import com.oreki.stumpd.data.repository.GroupRepository
 import com.oreki.stumpd.data.repository.MatchRepository
 import com.oreki.stumpd.ui.components.filterMatchesByGroup
 import com.oreki.stumpd.ui.components.filterMatchesByPitchType
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
+import javax.inject.Inject
 
 @RequiresApi(Build.VERSION_CODES.O)
-class HeadToHeadViewModel(application: Application) : AndroidViewModel(application) {
-
-    private val db = StumpdDb.get(application)
-    private val matchRepo = MatchRepository(db, application)
-    private val groupRepo = GroupRepository(db)
+@HiltViewModel
+class HeadToHeadViewModel @Inject constructor(
+    application: Application,
+    private val matchRepo: MatchRepository,
+    private val groupRepo: GroupRepository
+) : AndroidViewModel(application) {
 
     // ── State ────────────────────────────────────────────────────────
     var isLoading by mutableStateOf(true)
@@ -59,7 +62,11 @@ class HeadToHeadViewModel(application: Application) : AndroidViewModel(applicati
         loadData()
     }
 
-    private fun loadData() {
+    /**
+     * Re-reads every match. Public because a correction to a saved match changes these figures,
+     * and the screen is reachable straight back from the editor.
+     */
+    fun loadData() {
         viewModelScope.launch {
             isLoading = true
             allMatches = matchRepo.getAllMatches()
@@ -67,7 +74,7 @@ class HeadToHeadViewModel(application: Application) : AndroidViewModel(applicati
 
             val playerNames = mutableSetOf<String>()
             allMatches.forEach { match ->
-                match.allDeliveries.forEach { delivery ->
+                match.allDeliveries.mainMatchDeliveries().forEach { delivery ->
                     if (delivery.strikerName.isNotBlank()) playerNames.add(delivery.strikerName)
                     if (delivery.bowlerName.isNotBlank()) playerNames.add(delivery.bowlerName)
                 }
@@ -76,8 +83,11 @@ class HeadToHeadViewModel(application: Application) : AndroidViewModel(applicati
             filteredPlayers = allPlayers
             // Auto-select first group if none selected
             if (groups.isNotEmpty() && selectedGroupId == null) {
-                selectedGroupId = groups[0].id
-                selectedGroupName = groups[0].name
+                // The group the app is filtered to, falling back to the first one.
+                val stored = groupRepo.getDefaultGroupId()?.takeIf { id -> groups.any { it.id == id } }
+                val group = groups.firstOrNull { it.id == stored } ?: groups[0]
+                selectedGroupId = group.id
+                selectedGroupName = group.name
                 updateFilteredPlayers()
             }
             isLoading = false
@@ -88,6 +98,8 @@ class HeadToHeadViewModel(application: Application) : AndroidViewModel(applicati
     fun onGroupSelected(id: String?, name: String) {
         selectedGroupId = id
         selectedGroupName = name
+        // Remember it app-wide, so the choice holds when navigating elsewhere.
+        viewModelScope.launch { groupRepo.setSelectedGroupId(id) }
         updateFilteredPlayers()
         recalculateStats()
     }
@@ -130,7 +142,7 @@ class HeadToHeadViewModel(application: Application) : AndroidViewModel(applicati
         val matchesForGroup = filterMatchesByGroup(allMatches, selectedGroupId)
         val playerNames = mutableSetOf<String>()
         matchesForGroup.forEach { match ->
-            match.allDeliveries.forEach { delivery ->
+            match.allDeliveries.mainMatchDeliveries().forEach { delivery ->
                 if (delivery.strikerName.isNotBlank()) playerNames.add(delivery.strikerName)
                 if (delivery.bowlerName.isNotBlank()) playerNames.add(delivery.bowlerName)
             }

@@ -77,13 +77,13 @@ fun FielderSelectionDialog(
                             WicketType.RUN_OUT -> "Who ran them out?"
                         else -> "Select Fielder"
                     },
-                    fontSize = 18.sp,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
                 if (wicketType == WicketType.STUMPED) {
                     Text(
                             text = "Bowler cannot stump",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontStyle = FontStyle.Italic
                     )
@@ -127,7 +127,7 @@ fun FielderSelectionDialog(
                         Text(
                             text = "Skip (No fielder credit)",
                                 fontWeight = if (selectedFielder == null) FontWeight.SemiBold else FontWeight.Normal,
-                                fontSize = 14.sp
+                                style = MaterialTheme.typography.bodyMedium
                         )
                         }
                     }
@@ -172,7 +172,7 @@ fun FielderSelectionDialog(
                             Text(
                                 text = player.name,
                                     fontWeight = if (selectedFielder == player) FontWeight.SemiBold else FontWeight.Normal,
-                                    fontSize = 14.sp
+                                    style = MaterialTheme.typography.bodyMedium
                             )
                             }
                             if (player.isJoker) {
@@ -182,7 +182,7 @@ fun FielderSelectionDialog(
                                 ) {
                                     Text(
                                         "🃏",
-                                        fontSize = 14.sp,
+                                        style = MaterialTheme.typography.bodyMedium,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }

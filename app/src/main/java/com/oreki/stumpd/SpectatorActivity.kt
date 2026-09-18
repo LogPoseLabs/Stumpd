@@ -1,6 +1,7 @@
 package com.oreki.stumpd
 
 import com.oreki.stumpd.domain.model.*
+import com.oreki.stumpd.domain.match.battingSideIsFirstInningsSide
 import com.oreki.stumpd.ui.scoring.InningsScorecardCard
 import com.oreki.stumpd.ui.scoring.OversTab
 import com.oreki.stumpd.ui.scoring.deriveBattingOrder
@@ -12,6 +13,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import com.oreki.stumpd.ui.theme.MicroLabel
+import com.oreki.stumpd.ui.theme.ScoreMedium
+import com.oreki.stumpd.ui.theme.StatValue
+import com.oreki.stumpd.ui.theme.hairline
+import com.oreki.stumpd.ui.theme.stumpd
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -29,15 +35,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.oreki.stumpd.data.sync.realtime.RealTimeMatchListener
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import com.google.gson.Gson
+import com.oreki.stumpd.data.models.parsePartnershipsPersistenceState
+import com.oreki.stumpd.viewmodel.SpectatorViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
 
 /**
  * Spectator Activity - Read-only live view of a match
  * Updates in real-time as the match progresses
  */
+@AndroidEntryPoint
 class SpectatorActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,42 +83,12 @@ fun SpectatorScreen(
     shareCode: String,
     onBack: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    
-    var matchState by remember { mutableStateOf<com.oreki.stumpd.data.local.entity.InProgressMatchEntity?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var lastUpdated by remember { mutableStateOf<Long>(0L) }
-    
-    // Start real-time listener for in-progress match
-    LaunchedEffect(matchId) {
-        try {
-            val listener = RealTimeMatchListener()
-            
-            // Listen to IN-PROGRESS match
-            listener.listenToInProgressMatch(ownerId, matchId).collect { match ->
-                if (match != null) {
-                    val newTimestamp = System.currentTimeMillis()
-                    Log.d("SpectatorActivity", "=== Match update received ===")
-                    Log.d("SpectatorActivity", "Match ID: ${match.matchId}")
-                    Log.d("SpectatorActivity", "Innings: ${match.currentInnings}")
-                    Log.d("SpectatorActivity", "Over: ${match.currentOver}.${match.ballsInOver}")
-                    Log.d("SpectatorActivity", "Wickets: ${match.totalWickets}")
-                    Log.d("SpectatorActivity", "Last updated diff: ${newTimestamp - lastUpdated}ms")
-                    
-                    matchState = match
-                    lastUpdated = newTimestamp
-                    isLoading = false
-                } else {
-                    Log.w("SpectatorActivity", "Received null match update")
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("SpectatorActivity", "Failed to start listener", e)
-            errorMessage = "Failed to connect: ${e.message}"
-            isLoading = false
+    val viewModel: SpectatorViewModel = hiltViewModel(
+        creationCallback = { factory: SpectatorViewModel.Factory ->
+            factory.create(matchId, ownerId)
         }
-    }
+    )
+    val uiState = viewModel.uiState
 
     Scaffold(
         topBar = {
@@ -119,7 +99,7 @@ fun SpectatorScreen(
                         if (shareCode.isNotEmpty()) {
                             Text(
                                 "Code: $shareCode",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -131,8 +111,8 @@ fun SpectatorScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -142,8 +122,8 @@ fun SpectatorScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            when {
-                isLoading -> {
+            when (uiState) {
+                is SpectatorViewModel.UiState.Loading -> {
                     Column(
                         modifier = Modifier
                             .align(Alignment.Center)
@@ -155,7 +135,7 @@ fun SpectatorScreen(
                         Text("Connecting to live match...")
                     }
                 }
-                errorMessage != null -> {
+                is SpectatorViewModel.UiState.Error -> {
                     Column(
                         modifier = Modifier
                             .align(Alignment.Center)
@@ -169,22 +149,15 @@ fun SpectatorScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = errorMessage ?: "Unknown error",
+                            text = uiState.message,
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 }
-                matchState == null -> {
-                    Text(
-                        text = "Match not found or ended",
-                        modifier = Modifier.align(Alignment.Center),
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                }
-                else -> {
-                    // Show match data - use key to force recomposition on data changes
+                is SpectatorViewModel.UiState.Content -> {
+                    val lastUpdated = uiState.lastUpdatedMs
                     key(lastUpdated) {
-                        LiveInProgressMatchView(matchState!!, lastUpdated)
+                        LiveInProgressMatchView(uiState.match, lastUpdated)
                     }
                 }
             }
@@ -217,10 +190,14 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
         catch (e: Exception) { emptyList() }
     }
     
-    val currentBattingTeam = if (match.currentInnings == 1) team1Players else team2Players
-    val currentBowlingTeam = if (match.currentInnings == 1) team2Players else team1Players
-    val battingTeamName = if (match.currentInnings == 1) match.team1Name else match.team2Name
-    val bowlingTeamName = if (match.currentInnings == 1) match.team2Name else match.team1Name
+    // Which side is in follows the innings, not its parity: a super over has the second innings'
+    // side batting again. Shared with resume and auto-save so a spectator can't see a different
+    // answer from the scorer.
+    val firstInningsSideBatting = battingSideIsFirstInningsSide(match.currentInnings)
+    val currentBattingTeam = if (firstInningsSideBatting) team1Players else team2Players
+    val currentBowlingTeam = if (firstInningsSideBatting) team2Players else team1Players
+    val battingTeamName = if (firstInningsSideBatting) match.team1Name else match.team2Name
+    val bowlingTeamName = if (firstInningsSideBatting) match.team2Name else match.team1Name
     
     // Parse first innings players (for scorecard in 2nd innings)
     val firstInningsBattingPlayers = remember(lastUpdated) {
@@ -257,12 +234,38 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
     val totalOvers = matchSettings?.totalOvers ?: 10
     val shortPitch = matchSettings?.shortPitch ?: false
     
-    // Compute partnerships from deliveries
-    val currentInningsPartnerships = remember(lastUpdated) {
-        buildPartnershipsFromDeliveries(deliveries.filter { it.inning == match.currentInnings })
+    // Read the scorer's own partnership state rather than recomputing it from the delivery log.
+    // The old reconstruction counted wides and no-balls as balls faced, and keyed the batting
+    // pair off delivery.strikerName - which is written after the post-wicket replacement, so
+    // wicket balls carried the incoming batsman (or a blank name) and split stands spuriously.
+    val partnershipsState = remember(lastUpdated) {
+        match.partnershipsStateJson.parsePartnershipsPersistenceState(gson)
     }
-    val firstInningsPartnerships = remember(lastUpdated) {
-        if (match.currentInnings == 2) buildPartnershipsFromDeliveries(deliveries.filter { it.inning == 1 })
+    val currentInningsPartnerships = remember(partnershipsState) {
+        val state = partnershipsState ?: return@remember emptyList()
+        val liveStand = if (
+            state.currentPartnershipBatsman1Name != null &&
+            state.currentPartnershipBatsman2Name != null &&
+            (state.currentPartnershipRuns > 0 || state.currentPartnershipBalls > 0)
+        ) {
+            listOf(
+                Partnership(
+                    batsman1Name = state.currentPartnershipBatsman1Name,
+                    batsman2Name = state.currentPartnershipBatsman2Name,
+                    runs = state.currentPartnershipRuns,
+                    balls = state.currentPartnershipBalls,
+                    batsman1Runs = state.currentPartnershipBatsman1Runs,
+                    batsman2Runs = state.currentPartnershipBatsman2Runs,
+                    isActive = true,
+                )
+            )
+        } else {
+            emptyList()
+        }
+        state.partnerships + liveStand
+    }
+    val firstInningsPartnerships = remember(partnershipsState) {
+        if (match.currentInnings == 2) partnershipsState?.firstInningsPartnerships ?: emptyList()
         else emptyList()
     }
     
@@ -287,9 +290,9 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                         )
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("LIVE", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+                Text("LIVE", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 Spacer(modifier = Modifier.weight(1f))
-                Text("Updated ${getTimeAgo(lastUpdated)}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onErrorContainer)
+                Text("Updated ${getTimeAgo(lastUpdated)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onErrorContainer)
             }
         }
         
@@ -315,8 +318,7 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                     )
                     Text(
                         "$actualTotalRuns/${match.totalWickets}",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
+                        style = ScoreMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -333,7 +335,7 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         "Target: $target • Need $remaining from ${(totalOvers * 6) - (match.currentOver * 6 + match.ballsInOver)} balls",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                     )
                 }
@@ -342,7 +344,7 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                     val firstBattingTeam = match.team1Name
                     Text(
                         "$firstBattingTeam: ${match.firstInningsRuns}/${match.firstInningsWickets} (${match.firstInningsOvers}.${match.firstInningsBalls})",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
                     )
                 }
@@ -355,7 +357,7 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                 Tab(
                     selected = pagerState.currentPage == index,
                     onClick = { coroutineScope.launch { pagerState.animateScrollToPage(index) } },
-                    text = { Text(title, fontSize = 13.sp) }
+                    text = { Text(title, style = MaterialTheme.typography.bodySmall) }
                 )
             }
         }
@@ -378,23 +380,24 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                     // Current batsmen
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                            border = hairline(),
                         elevation = CardDefaults.cardElevation(2.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Batting", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                            Text("Batting", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.height(8.dp))
                             
                             // Header
                             Row(Modifier.fillMaxWidth()) {
-                                Text("Batter", modifier = Modifier.weight(2f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("R", modifier = Modifier.weight(0.6f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("B", modifier = Modifier.weight(0.6f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("4s", modifier = Modifier.weight(0.6f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Batter", modifier = Modifier.weight(2f), style = MicroLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("R", modifier = Modifier.weight(0.6f), style = MicroLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("B", modifier = Modifier.weight(0.6f), style = MicroLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("4s", modifier = Modifier.weight(0.6f), style = MicroLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (!shortPitch) {
-                                    Text("6s", modifier = Modifier.weight(0.6f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("6s", modifier = Modifier.weight(0.6f), style = MicroLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                Text("SR", modifier = Modifier.weight(0.8f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("SR", modifier = Modifier.weight(0.8f), style = MicroLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant)
                             
@@ -408,7 +411,7 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                             }
                             
                             if (striker == null && nonStriker == null) {
-                                Text("No batsmen at crease", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontStyle = FontStyle.Italic)
+                                Text("No batsmen at crease", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontStyle = FontStyle.Italic)
                             }
                         }
                     }
@@ -416,27 +419,28 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                     // Current bowler
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                            border = hairline(),
                         elevation = CardDefaults.cardElevation(2.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Bowling", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary)
+                            Text("Bowling", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary)
                             Spacer(Modifier.height(8.dp))
                             
                             Row(Modifier.fillMaxWidth()) {
-                                Text("Bowler", modifier = Modifier.weight(2f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("O", modifier = Modifier.weight(0.7f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("M", modifier = Modifier.weight(0.5f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("R", modifier = Modifier.weight(0.7f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("W", modifier = Modifier.weight(0.7f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("Econ", modifier = Modifier.weight(0.9f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Bowler", modifier = Modifier.weight(2f), style = MicroLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("O", modifier = Modifier.weight(0.7f), style = MicroLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("M", modifier = Modifier.weight(0.5f), style = MicroLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("R", modifier = Modifier.weight(0.7f), style = MicroLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("W", modifier = Modifier.weight(0.7f), style = MicroLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Econ", modifier = Modifier.weight(0.9f), style = MicroLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant)
                             
                             if (bowler != null) {
                                 SpectatorBowlerRow(bowler)
                             } else {
-                                Text("No bowler selected", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontStyle = FontStyle.Italic)
+                                Text("No bowler selected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontStyle = FontStyle.Italic)
                             }
                         }
                     }
@@ -446,7 +450,8 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                     if (activePartnership != null && activePartnership.balls > 0) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                            border = hairline(),
                             elevation = CardDefaults.cardElevation(2.dp)
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
@@ -455,10 +460,10 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Partnership", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                                    Text("Partnership", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                                     Text(
                                         "${activePartnership.runs} (${activePartnership.balls})",
-                                        fontSize = 16.sp,
+                                        style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary
                                     )
@@ -470,12 +475,12 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                                 ) {
                                     Text(
                                         "${activePartnership.batsman1Name}: ${activePartnership.batsman1Runs}",
-                                        fontSize = 13.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
                                         "${activePartnership.batsman2Name}: ${activePartnership.batsman2Runs}",
-                                        fontSize = 13.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
@@ -488,11 +493,12 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                     if (currentOverDeliveries.isNotEmpty() || deliveries.isNotEmpty()) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                            border = hairline(),
                             elevation = CardDefaults.cardElevation(2.dp)
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
-                                Text("This Over", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.secondary)
+                                Text("This Over", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.secondary)
                                 Spacer(Modifier.height(8.dp))
                                 
                                 if (currentOverDeliveries.isNotEmpty()) {
@@ -514,7 +520,7 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                                                 Text(
                                                     d.outcome,
                                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                                    fontSize = 13.sp,
+                                                    style = MaterialTheme.typography.bodySmall,
                                                     fontWeight = FontWeight.Medium,
                                                     textAlign = TextAlign.Center,
                                                     color = when {
@@ -526,7 +532,7 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                                         }
                                     }
                                 } else {
-                                    Text("New over starting...", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontStyle = FontStyle.Italic)
+                                    Text("New over starting...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontStyle = FontStyle.Italic)
                                 }
                             }
                         }
@@ -537,7 +543,8 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                     if (totalBalls > 0) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                            border = hairline(),
                             elevation = CardDefaults.cardElevation(1.dp)
                         ) {
                             Row(
@@ -546,8 +553,8 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                             ) {
                                 val crr = actualTotalRuns.toFloat() / (totalBalls / 6.0f)
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("CRR", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("%.2f".format(crr), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    Text("CRR".uppercase(), style = MicroLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("%.2f".format(crr), style = StatValue, color = MaterialTheme.colorScheme.onSurface)
                                 }
                                 if (match.currentInnings == 2) {
                                     val target = match.firstInningsRuns + 1
@@ -556,14 +563,14 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                                     if (ballsRemaining > 0) {
                                         val rrr = remaining.toFloat() / (ballsRemaining / 6.0f)
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("RRR", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            Text("%.2f".format(rrr), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if (rrr > crr) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary)
+                                            Text("RRR".uppercase(), style = MicroLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text("%.2f".format(rrr), style = StatValue, color = if (rrr > crr) MaterialTheme.colorScheme.error else MaterialTheme.stumpd.success)
                                         }
                                     }
                                 }
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("Extras", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("${match.totalExtras}", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                    Text("Extras".uppercase(), style = MicroLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("${match.totalExtras}", style = StatValue)
                                 }
                             }
                         }
@@ -636,7 +643,9 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
             2 -> {
                 OversTab(
                     modifier = Modifier.padding(16.dp),
-                    allDeliveries = deliveries
+                    allDeliveries = deliveries,
+                    firstInningsTeamName = match.team1Name,
+                    secondInningsTeamName = match.team2Name,
                 )
             }
             
@@ -653,7 +662,7 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                         Text(
                             "Innings ${match.currentInnings} • $battingTeamName",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
+                            style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -664,7 +673,7 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                                 Text(
                                     "No partnerships yet.",
                                     modifier = Modifier.padding(16.dp),
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontStyle = FontStyle.Italic
                                 )
                             }
@@ -688,7 +697,7 @@ fun LiveInProgressMatchView(match: com.oreki.stumpd.data.local.entity.InProgress
                             Text(
                                 "Innings 1 • ${match.team1Name}",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
+                                style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.secondary
                             )
                         }
@@ -719,16 +728,16 @@ private fun SpectatorBatterRow(player: Player, isStriker: Boolean, shortPitch: B
         Text(
             "${if (isStriker) "* " else ""}${player.name}",
             modifier = Modifier.weight(2f),
-            fontSize = 13.sp,
+            style = MaterialTheme.typography.bodySmall,
             fontWeight = if (isStriker) FontWeight.Bold else FontWeight.Normal
         )
-        Text(player.runs.toString(), modifier = Modifier.weight(0.6f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
-        Text(player.ballsFaced.toString(), modifier = Modifier.weight(0.6f), fontSize = 13.sp)
-        Text(player.fours.toString(), modifier = Modifier.weight(0.6f), fontSize = 13.sp)
+        Text(player.runs.toString(), modifier = Modifier.weight(0.6f), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+        Text(player.ballsFaced.toString(), modifier = Modifier.weight(0.6f), style = MaterialTheme.typography.bodySmall)
+        Text(player.fours.toString(), modifier = Modifier.weight(0.6f), style = MaterialTheme.typography.bodySmall)
         if (!shortPitch) {
-            Text(player.sixes.toString(), modifier = Modifier.weight(0.6f), fontSize = 13.sp)
+            Text(player.sixes.toString(), modifier = Modifier.weight(0.6f), style = MaterialTheme.typography.bodySmall)
         }
-        Text(sr, modifier = Modifier.weight(0.8f), fontSize = 13.sp)
+        Text(sr, modifier = Modifier.weight(0.8f), style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -746,80 +755,13 @@ private fun SpectatorBowlerRow(player: Player) {
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(player.name, modifier = Modifier.weight(2f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
-        Text(oversStr, modifier = Modifier.weight(0.7f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
-        Text(player.maidenOvers.toString(), modifier = Modifier.weight(0.5f), fontSize = 13.sp)
-        Text(player.runsConceded.toString(), modifier = Modifier.weight(0.7f), fontSize = 13.sp)
-        Text(player.wickets.toString(), modifier = Modifier.weight(0.7f), fontSize = 13.sp)
-        Text(econ, modifier = Modifier.weight(0.9f), fontSize = 13.sp)
+        Text(player.name, modifier = Modifier.weight(2f), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+        Text(oversStr, modifier = Modifier.weight(0.7f), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+        Text(player.maidenOvers.toString(), modifier = Modifier.weight(0.5f), style = MaterialTheme.typography.bodySmall)
+        Text(player.runsConceded.toString(), modifier = Modifier.weight(0.7f), style = MaterialTheme.typography.bodySmall)
+        Text(player.wickets.toString(), modifier = Modifier.weight(0.7f), style = MaterialTheme.typography.bodySmall)
+        Text(econ, modifier = Modifier.weight(0.9f), style = MaterialTheme.typography.bodySmall)
     }
-}
-
-/**
- * Compute partnerships from ball-by-ball deliveries for a single innings.
- * A new partnership starts whenever the pair of batsmen changes (wicket fell).
- */
-private fun buildPartnershipsFromDeliveries(inningsDeliveries: List<DeliveryUI>): List<Partnership> {
-    if (inningsDeliveries.isEmpty()) return emptyList()
-    
-    val partnerships = mutableListOf<Partnership>()
-    
-    var currentPair: Pair<String, String>? = null
-    var pRuns = 0
-    var pBalls = 0
-    var b1Runs = 0
-    var b2Runs = 0
-    
-    for (delivery in inningsDeliveries) {
-        val bat1 = minOf(delivery.strikerName, delivery.nonStrikerName)
-        val bat2 = maxOf(delivery.strikerName, delivery.nonStrikerName)
-        if (bat1.isBlank() && bat2.isBlank()) continue
-        
-        val pair = bat1 to bat2
-        
-        if (currentPair != null && pair != currentPair) {
-            // Partnership ended
-            partnerships.add(
-                Partnership(
-                    batsman1Name = currentPair.first,
-                    batsman2Name = currentPair.second,
-                    runs = pRuns,
-                    balls = pBalls,
-                    batsman1Runs = b1Runs,
-                    batsman2Runs = b2Runs,
-                    isActive = false
-                )
-            )
-            pRuns = 0; pBalls = 0; b1Runs = 0; b2Runs = 0
-        }
-        
-        currentPair = pair
-        pRuns += delivery.runs
-        pBalls++
-        // Attribute runs to the striker
-        if (delivery.strikerName == bat1) {
-            b1Runs += delivery.runs
-        } else {
-            b2Runs += delivery.runs
-        }
-    }
-    
-    // Add the final (possibly active) partnership
-    if (currentPair != null) {
-        partnerships.add(
-            Partnership(
-                batsman1Name = currentPair.first,
-                batsman2Name = currentPair.second,
-                runs = pRuns,
-                balls = pBalls,
-                batsman1Runs = b1Runs,
-                batsman2Runs = b2Runs,
-                isActive = true
-            )
-        )
-    }
-    
-    return partnerships
 }
 
 @Composable
@@ -829,8 +771,10 @@ private fun SpectatorPartnershipCard(
     isActive: Boolean,
     maxRuns: Int
 ) {
-    val containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-    else MaterialTheme.colorScheme.surfaceContainerHigh
+    // Active rows are tinted with the accent at low alpha rather than switching container
+    // role, so the difference survives palettes where the two roles nearly match.
+    val containerColor = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+    else MaterialTheme.colorScheme.surfaceContainer
     
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -852,26 +796,26 @@ private fun SpectatorPartnershipCard(
                         Text(
                             "#$partnershipNumber",
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = if (isActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     if (isActive) {
                         Spacer(Modifier.width(6.dp))
-                        Text("Active", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                        Text("Active", style = MicroLabel, color = MaterialTheme.colorScheme.primary)
                     }
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         "${partnership.runs} runs",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
+                        style = MaterialTheme.typography.titleSmall,
                         color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         "${partnership.balls} balls",
-                        fontSize = 11.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -910,13 +854,13 @@ private fun SpectatorPartnershipCard(
             ) {
                 Text(
                     "${partnership.batsman1Name}: ${partnership.batsman1Runs}",
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     "${partnership.batsman2Name}: ${partnership.batsman2Runs}",
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -965,7 +909,7 @@ fun LiveMatchView(match: MatchHistory, lastUpdated: Long) {
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
                     "Updated ${getTimeAgo(lastUpdated)}",
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer
                 )
             }
@@ -1055,7 +999,7 @@ fun LiveMatchView(match: MatchHistory, lastUpdated: Long) {
             ) {
                 Text(
                     "🔄 Auto-updating live",
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }

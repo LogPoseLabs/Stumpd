@@ -23,12 +23,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.NavController
+import androidx.navigation.compose.rememberNavController
+import com.oreki.stumpd.ui.stats.popBackStackOrFinish
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oreki.stumpd.data.mappers.toDomain
+import com.oreki.stumpd.ui.components.MatchDateFilterDialog
+import com.oreki.stumpd.ui.components.formatDateFilterLabel
+import com.oreki.stumpd.ui.components.pitchTypeLabel
+import com.oreki.stumpd.ui.theme.EmptyState
 import com.oreki.stumpd.ui.theme.StatsTopBar
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import com.oreki.stumpd.ui.history.rememberGroupRepository
@@ -40,25 +47,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-
-class RankingsActivity : ComponentActivity() {
-    @RequiresApi(Build.VERSION_CODES.O)
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        actionBar?.hide()
-
-        setContent {
-            StumpdTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    RankingsScreen()
-                }
-            }
-        }
-    }
-}
+import dagger.hilt.android.AndroidEntryPoint
 
 private data class RankingTab(
     val title: String,
@@ -75,7 +64,7 @@ private val tabs = listOf(
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun RankingsScreen() {
+fun RankingsScreen(navController: NavController) {
     val context = LocalContext.current
     val repo = rememberMatchRepository()
     val playerRepo = rememberPlayerRepository()
@@ -106,8 +95,11 @@ fun RankingsScreen() {
         val summaries = groupRepo.listGroupSummaries()
         groups = summaries.map { (g, d, _) -> g.toDomain(d, emptyList()) }
         if (groups.isNotEmpty() && selectedGroupId == null) {
-            selectedGroupId = groups[0].id
-            selectedGroupName = groups[0].name
+            // The group the app is filtered to, falling back to the first one.
+            val stored = groupRepo.getDefaultGroupId()?.takeIf { id -> groups.any { it.id == id } }
+            val group = groups.firstOrNull { it.id == stored } ?: groups[0]
+            selectedGroupId = group.id
+            selectedGroupName = group.name
         }
     }
 
@@ -154,32 +146,8 @@ fun RankingsScreen() {
         isLoading = false
     }
 
-    val pitchTypeLabel = when (selectedPitchType) {
-        true -> "Short Pitch"
-        false -> "Long Pitch"
-        null -> "All Pitches"
-    }
-
-    val formattedDateFilter = remember(selectedFilter) {
-        when {
-            selectedFilter == "All Time" -> "All Time"
-            selectedFilter.startsWith("Date:") -> {
-                try {
-                    val date = LocalDate.parse(selectedFilter.removePrefix("Date:"))
-                    date.format(DateTimeFormatter.ofPattern("dd MMM yyyy"))
-                } catch (_: Exception) { selectedFilter }
-            }
-            selectedFilter.startsWith("CustomRange:") -> {
-                try {
-                    val parts = selectedFilter.removePrefix("CustomRange:").split("|")
-                    val start = LocalDate.parse(parts[0])
-                    val end = LocalDate.parse(parts[1])
-                    "${start.format(DateTimeFormatter.ofPattern("dd MMM"))} - ${end.format(DateTimeFormatter.ofPattern("dd MMM yyyy"))}"
-                } catch (_: Exception) { "Custom Range" }
-            }
-            else -> selectedFilter
-        }
-    }
+    val pitchTypeLabel = pitchTypeLabel(selectedPitchType)
+    val formattedDateFilter = remember(selectedFilter) { formatDateFilterLabel(selectedFilter) }
 
     val dateRangePickerState = rememberDateRangePickerState()
 
@@ -189,7 +157,7 @@ fun RankingsScreen() {
                 StatsTopBar(
                     title = "Rankings",
                     subtitle = "ICC-inspired player ratings",
-                    onBack = { (context as ComponentActivity).finish() }
+                    onBack = { navController.popBackStackOrFinish(context) }
                 )
                 // Filter chips
                 Surface(
@@ -207,7 +175,7 @@ fun RankingsScreen() {
                         FilterChip(
                             selected = selectedGroupId != null,
                             onClick = { showGroupPicker = true },
-                            label = { Text(selectedGroupName, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            label = { Text(selectedGroupName, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             leadingIcon = { Icon(Icons.Default.Group, contentDescription = null, modifier = Modifier.size(18.dp)) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -217,7 +185,7 @@ fun RankingsScreen() {
                         FilterChip(
                             selected = selectedPitchType != null,
                             onClick = { showPitchPicker = true },
-                            label = { Text(pitchTypeLabel, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            label = { Text(pitchTypeLabel, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             leadingIcon = { Icon(Icons.Default.Terrain, contentDescription = null, modifier = Modifier.size(18.dp)) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -227,7 +195,7 @@ fun RankingsScreen() {
                         FilterChip(
                             selected = selectedFilter != "All Time",
                             onClick = { showFilterDialog = true },
-                            label = { Text(formattedDateFilter, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            label = { Text(formattedDateFilter, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(18.dp)) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
@@ -251,8 +219,8 @@ fun RankingsScreen() {
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Text(tab.icon, fontSize = 14.sp)
-                                    Text(tab.title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(tab.icon, style = MaterialTheme.typography.bodyMedium)
+                                    Text(tab.title, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         )
@@ -266,22 +234,12 @@ fun RankingsScreen() {
                 CircularProgressIndicator()
             }
         } else if (players.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(48.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(Icons.Default.EmojiEvents, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
-                        Spacer(Modifier.height(16.dp))
-                        Text("No Rankings Yet", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(8.dp))
-                        Text("Play some matches to see player rankings!", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                    }
-                }
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                EmptyState(
+                    icon = Icons.Default.EmojiEvents,
+                    title = "No rankings yet",
+                    description = "Play some matches to see player rankings.",
+                )
             }
         } else {
             HorizontalPager(
@@ -314,7 +272,7 @@ fun RankingsScreen() {
                     ) {
                         Text(
                             "Need 3+ qualifying innings",
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -398,6 +356,7 @@ fun RankingsScreen() {
                                 modifier = Modifier.fillMaxWidth().clickable {
                                     selectedGroupId = group.id
                                     selectedGroupName = group.name
+                                    coroutineScope.launch { groupRepo.setSelectedGroupId(group.id) }
                                     showGroupPicker = false
                                 }.padding(vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -405,6 +364,7 @@ fun RankingsScreen() {
                                 RadioButton(selected = selectedGroupId == group.id, onClick = {
                                     selectedGroupId = group.id
                                     selectedGroupName = group.name
+                                    coroutineScope.launch { groupRepo.setSelectedGroupId(group.id) }
                                     showGroupPicker = false
                                 })
                                 Spacer(Modifier.width(8.dp))
@@ -448,70 +408,18 @@ fun RankingsScreen() {
 
         // Date Filter Dialog
         if (showFilterDialog) {
-            val last3Dates = baseMatchesForFilter
-                .map { Instant.ofEpochMilli(it.matchDate).atZone(ZoneId.systemDefault()).toLocalDate() }
-                .distinct()
-                .sortedDescending()
-                .take(3)
-            AlertDialog(
-                onDismissRequest = { showFilterDialog = false },
-                title = { Text("Filter by Date") },
-                text = {
-                    Column {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedFilter = "All Time"; showFilterDialog = false }
-                                .padding(vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = selectedFilter == "All Time",
-                                onClick = { selectedFilter = "All Time"; showFilterDialog = false }
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text("All Time")
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text("Last 3 Match Dates", fontWeight = FontWeight.SemiBold)
-                        last3Dates.forEach { date ->
-                            val iso = date.toString()
-                            val label = date.format(DateTimeFormatter.ofPattern("dd MMM yyyy"))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { selectedFilter = "Date:$iso"; showFilterDialog = false }
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(
-                                    selected = selectedFilter == "Date:$iso",
-                                    onClick = { selectedFilter = "Date:$iso"; showFilterDialog = false }
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(label)
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showFilterDialog = false; showDateRangePicker = true }
-                                .padding(vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = selectedFilter.startsWith("CustomRange"),
-                                onClick = { showFilterDialog = false; showDateRangePicker = true }
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text("Custom Date Range…")
-                        }
-                    }
+            MatchDateFilterDialog(
+                currentFilter = selectedFilter,
+                matchesInScope = baseMatchesForFilter,
+                onFilterSelected = {
+                    selectedFilter = it
+                    showFilterDialog = false
                 },
-                confirmButton = {
-                    TextButton(onClick = { showFilterDialog = false }) { Text("Close") }
-                }
+                onCustomRangeRequested = {
+                    showFilterDialog = false
+                    showDateRangePicker = true
+                },
+                onDismiss = { showFilterDialog = false },
             )
         }
 
@@ -541,7 +449,7 @@ fun RankingsScreen() {
             ) {
                 DateRangePicker(
                     state = dateRangePickerState,
-                    title = { Text("Select Date Range", modifier = Modifier.padding(16.dp), fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+                    title = { Text("Select Date Range", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
                 )
             }
         }
@@ -566,12 +474,10 @@ private fun RankingRow(
         // Rank badge
         Surface(
             shape = MaterialTheme.shapes.small,
-            color = when (rank) {
-                1 -> MaterialTheme.colorScheme.primary
-                2 -> MaterialTheme.colorScheme.secondary
-                3 -> MaterialTheme.colorScheme.tertiary
-                else -> MaterialTheme.colorScheme.surfaceVariant
-            },
+            // 🥇🥈🥉 already carry the medal colours; the badge behind them is one neutral
+            // surface so the glyphs aren't sitting on three competing hues.
+            color = if (rank <= 3) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            else MaterialTheme.colorScheme.surfaceContainerHighest,
             modifier = Modifier.size(36.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -581,7 +487,12 @@ private fun RankingRow(
                     } else "#$rank",
                     fontSize = if (rank <= 3) 18.sp else 13.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (rank > 3) MaterialTheme.colorScheme.onSurfaceVariant else androidx.compose.ui.graphics.Color.Transparent
+                    // Unspecified for the medals: a colour is applied to the emoji too, and
+                    // Transparent left the top three badges blank.
+                    color = if (rank > 3)
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    else
+                        androidx.compose.ui.graphics.Color.Unspecified
                 )
             }
         }
@@ -591,13 +502,13 @@ private fun RankingRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = player.name,
-                fontSize = 15.sp,
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
                 text = statLine,
-                fontSize = 11.sp,
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -608,13 +519,13 @@ private fun RankingRow(
         Column(horizontalAlignment = Alignment.End) {
             Text(
                 text = "%.0f".format(rating),
-                fontSize = 20.sp,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
             Text(
                 text = "rating",
-                fontSize = 9.sp,
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }

@@ -76,6 +76,15 @@ fun createMatchInProgress(
     powerplayDoublingDoneInnings1: Boolean = false,
     powerplayDoublingDoneInnings2: Boolean = false,
     allDeliveries: List<DeliveryUI> = emptyList(),
+    totalWickets: Int = 0,
+    calculatedTotalRuns: Int = 0,
+    deliveryHistory: List<DeliverySnapshot> = emptyList(),
+    partnershipsState: PartnershipsPersistenceState = PartnershipsPersistenceState(),
+    superOverState: SuperOverPersistenceState = SuperOverPersistenceState(),
+    tournamentId: String? = null,
+    tournamentFixtureId: String? = null,
+    team1Id: String? = null,
+    team2Id: String? = null,
     gson: Gson
 ): MatchInProgress {
     return MatchInProgress(
@@ -95,6 +104,7 @@ fun createMatchInProgress(
         currentInnings = currentInnings,
         currentOver = currentOver,
         ballsInOver = ballsInOver,
+        totalWickets = totalWickets,
         team1PlayersJson = team1Players.toJson(gson),
         team2PlayersJson = team2Players.toJson(gson),
         strikerIndex = strikerIndex,
@@ -106,6 +116,7 @@ fun createMatchInProgress(
         firstInningsBalls = firstInningsBalls,
         bowlingTeamPlayersJson = bowlingTeamPlayers?.toJson(gson),
         totalExtras = totalExtras,
+        calculatedTotalRuns = calculatedTotalRuns,
         wides = wides,
         noBalls = noBalls,
         byes = byes,
@@ -124,8 +135,33 @@ fun createMatchInProgress(
         powerplayDoublingDoneInnings1 = powerplayDoublingDoneInnings1,
         powerplayDoublingDoneInnings2 = powerplayDoublingDoneInnings2,
         allDeliveriesJson = gson.toJson(allDeliveries),
+        deliveryHistoryJson = if (deliveryHistory.isEmpty()) null else gson.toJson(deliveryHistory),
+        partnershipsStateJson = gson.toJson(partnershipsState),
+        superOverStateJson = gson.toJson(superOverState),
+        tournamentId = tournamentId,
+        tournamentFixtureId = tournamentFixtureId,
+        team1Id = team1Id,
+        team2Id = team2Id,
         lastSavedAt = System.currentTimeMillis()
     )
 }
 
+fun String?.parseDeliverySnapshotList(gson: Gson): List<DeliverySnapshot> {
+    if (isNullOrBlank()) return emptyList()
+    return try {
+        val type = object : TypeToken<List<DeliverySnapshot>>() {}.type
+        gson.fromJson(this, type) ?: emptyList()
+    } catch (_: Exception) {
+        emptyList()
+    }
+}
+
+fun String?.parsePartnershipsPersistenceState(gson: Gson): PartnershipsPersistenceState? {
+    if (isNullOrBlank()) return null
+    return try {
+        gson.fromJson(this, PartnershipsPersistenceState::class.java)
+    } catch (_: Exception) {
+        null
+    }
+}
 

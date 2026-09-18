@@ -6,12 +6,15 @@ import com.oreki.stumpd.domain.model.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import com.oreki.stumpd.ui.theme.StatValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -24,41 +27,82 @@ fun ScoringButtons(
     matchSettings: MatchSettings,
     availableBatsmen: Int,
     calculatedTotalRuns: Int,
+    widthSizeClass: WindowWidthSizeClass = WindowWidthSizeClass.Compact,
     onScoreRuns: (Int) -> Unit,
     onShowExtras: () -> Unit,
     onShowWicket: () -> Unit,
     onUndo: () -> Unit,
     onWide: () -> Unit,
     onRetire: () -> Unit,
-    unlimitedUndoEnabled: Boolean,
-    onToggleUnlimitedUndo: (Boolean) -> Unit
+    /**
+     * Opens the "fix a mistake" menu. Sits next to Undo because that's where the eye already goes
+     * when something has gone wrong — and because the two are the same gesture at different
+     * depths: Undo takes the ball back, Fix changes what was recorded without losing it.
+     */
+    onFix: (() -> Unit)? = null,
 ) {
     val canStartScoring = striker != null && bowler != null &&
             (nonStriker != null || (matchSettings.allowSingleSideBatting && availableBatsmen == 1))
+
+    val useWideRunLayout = widthSizeClass != WindowWidthSizeClass.Compact
 
     Column(modifier = Modifier.fillMaxWidth()) {
     when {
         canStartScoring && !isInningsComplete -> {
                 Text(
                     text = "Runs",
-                    fontSize = 14.sp,
+                    style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                 )
                 Spacer(Modifier.height(4.dp))
 
                 if (matchSettings.shortPitch) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        (0..4).forEach { RunButton(it, onScoreRuns) }
+                    if (useWideRunLayout) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                (0..2).forEach { RunButton(it, onScoreRuns) }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                (3..4).forEach { RunButton(it, onScoreRuns) }
+                            }
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            (0..4).forEach { RunButton(it, onScoreRuns) }
+                        }
                     }
                 } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        (0..6).forEach { RunButton(it, onScoreRuns) }
+                    if (useWideRunLayout) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                (0..3).forEach { RunButton(it, onScoreRuns) }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                (4..6).forEach { RunButton(it, onScoreRuns) }
+                            }
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            (0..6).forEach { RunButton(it, onScoreRuns) }
+                        }
                     }
                 }
                 Spacer(Modifier.height(4.dp))
@@ -69,14 +113,17 @@ fun ScoringButtons(
                 ) {
                     FilledTonalButton(
                         onClick = onWide,
-                        modifier = Modifier.weight(1f).height(38.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .testTag("btn_wide"),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = MaterialTheme.colorScheme.onSurface
                         )
                     ) {
-                        Text("Wide", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Wide", style = MaterialTheme.typography.labelLarge)
                     }
                     
                     FilledTonalButton(
@@ -84,11 +131,11 @@ fun ScoringButtons(
                         modifier = Modifier.weight(1f).height(38.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     ) {
-                        Text("Retire", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Retire", style = MaterialTheme.typography.labelLarge)
                     }
                 }
 
@@ -100,21 +147,28 @@ fun ScoringButtons(
                 ) {
                     ActionTonalButton(
                         label = "More Extras",
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("btn_extras"),
                         onClick = onShowExtras
                     )
                     Button(
                         onClick = onShowWicket,
                         modifier = Modifier
                             .weight(1f)
-                            .height(38.dp),
+                            .height(38.dp)
+                            .testTag("btn_wicket"),
                         shape = RoundedCornerShape(12.dp),
+                        // errorContainer rather than error: this key is pressed ten-plus times
+                        // a match, and `error` in a dark scheme is a light salmon that shouted
+                        // louder than the score itself. The container pair keeps the meaning
+                        // (it's still the only red key) at a volume that suits a normal event.
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.errorContainer,
                             contentColor = MaterialTheme.colorScheme.onErrorContainer
                         )
                     ) {
-                        Text("Wicket", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Wicket", style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
@@ -128,7 +182,7 @@ fun ScoringButtons(
             ) {
                 Text(
                     text = "Innings Complete! Total: $calculatedTotalRuns runs",
-                    fontSize = 18.sp,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(16.dp),
@@ -150,14 +204,14 @@ fun ScoringButtons(
                 ) {
                     Text(
                         text = "⚠️ Please select players to start scoring",
-                        fontSize = 16.sp,
+                        style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.secondary,
                         textAlign = TextAlign.Center,
                     )
                     if (matchSettings.allowSingleSideBatting) {
                         Text(
                             text = "Single side batting enabled - only one batsman required",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontStyle = FontStyle.Italic,
                         )
@@ -168,17 +222,28 @@ fun ScoringButtons(
         }
         
         Spacer(Modifier.height(4.dp))
-        ActionTonalButton(
-            label = "Undo Last Delivery",
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            onClick = onUndo
-        )
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ActionTonalButton(
+                label = if (onFix != null) "Undo Last Ball" else "Undo Last Delivery",
+                modifier = Modifier
+                    .weight(if (onFix != null) 1.4f else 1f)
+                    .testTag("btn_undo"),
+                onClick = onUndo
+            )
+            if (onFix != null) {
+                ActionTonalButton(
+                    label = "Fix…",
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("btn_fix"),
+                    onClick = onFix
+                )
+            }
+        }
 
-        Spacer(Modifier.height(4.dp))
-        UnlimitedUndoToggle(
-            isEnabled = unlimitedUndoEnabled,
-            onToggle = onToggleUnlimitedUndo
-        )
     }
 }
 
@@ -192,27 +257,30 @@ internal fun RowScope.RunButton(
         onClick = { onClick(value) },
         modifier = Modifier
             .weight(1f)
-            .height(56.dp),
+            .height(56.dp)
+            .testTag("run_$value"),
         shape = RoundedCornerShape(12.dp),
         contentPadding = PaddingValues(0.dp),
         colors = ButtonDefaults.filledTonalButtonColors(
+            // A boundary is worth marking; 1, 2 and 3 are the ordinary case and stay neutral.
             containerColor = if (isSpecial)
-                MaterialTheme.colorScheme.secondaryContainer
+                MaterialTheme.colorScheme.primaryContainer
             else
-                MaterialTheme.colorScheme.surfaceVariant,
+                MaterialTheme.colorScheme.surfaceContainerHighest,
             contentColor = if (isSpecial)
-                MaterialTheme.colorScheme.onSecondaryContainer
+                MaterialTheme.colorScheme.onPrimaryContainer
             else
                 MaterialTheme.colorScheme.onSurface
         ),
         elevation = ButtonDefaults.buttonElevation(
-            defaultElevation = 2.dp,
+            defaultElevation = if (isSpecial) 2.dp else 0.dp,
             pressedElevation = 6.dp
         )
     ) {
         Text(
             text = value.toString(),
-            fontSize = 14.sp,
+            // Tabular so 0-6 sit on the same optical grid across the row.
+            style = StatValue,
             fontWeight = FontWeight.Bold
         )
     }
@@ -228,12 +296,14 @@ internal fun ActionTonalButton(
         onClick = onClick,
         modifier = modifier.height(38.dp),
         shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.filledTonalButtonColors()
+        colors = ButtonDefaults.filledTonalButtonColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     ) {
         Text(
             text = label,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium
+            style = MaterialTheme.typography.labelLarge
         )
     }
 }

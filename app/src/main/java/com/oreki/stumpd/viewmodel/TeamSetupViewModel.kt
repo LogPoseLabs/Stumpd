@@ -8,25 +8,42 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.oreki.stumpd.*
+import com.oreki.stumpd.data.preferences.MatchSettingsManager
 import com.oreki.stumpd.domain.model.*
 import com.oreki.stumpd.data.local.db.StumpdDb
 import com.oreki.stumpd.data.local.entity.GroupEntity
 import com.oreki.stumpd.data.repository.GroupRepository
 import com.oreki.stumpd.data.repository.MatchRepository
 import com.oreki.stumpd.data.repository.PlayerRepository
+import java.util.Calendar
+import java.util.TimeZone
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 
 class TeamSetupViewModel(
     application: Application,
-    private val defaultGroupId: String?
+    private val defaultGroupId: String?,
+    /**
+     * A tournament fixture to play, when the screen was opened from one.
+     *
+     * A usable preset changes this screen from "pick two teams" to "confirm the rules and toss":
+     * the group, the names, the squads and the captains are all decided already, and letting any
+     * of them be edited here would mean a match that didn't match its fixture.
+     */
+    presetOrNull: TeamSetupPreset? = null,
 ) : AndroidViewModel(application) {
+
+    /** Null unless a *complete* preset arrived — half of one is worse than none. */
+    val preset: TeamSetupPreset? = presetOrNull?.takeIf { it.isUsable }
+
+    /** True when the teams are the fixture's and may not be re-picked. */
+    val isFixture: Boolean get() = preset != null
 
     private val db = StumpdDb.get(application)
     private val groupRepo = GroupRepository(db)
-    private val playerRepo = PlayerRepository(db)
     val matchRepo = MatchRepository(db, application)
+    private val playerRepo = PlayerRepository(db, matchRepo)
     private val settingsManager = MatchSettingsManager(application)
     val gson = Gson()
 
@@ -75,13 +92,65 @@ class TeamSetupViewModel(
     private fun loadGroups() {
         viewModelScope.launch {
             groups = groupRepo.listGroups()
-            if (defaultGroupId != null && selectedGroup == null) {
+            val presetGroupId = preset?.groupId
+            if (presetGroupId != null) {
+                selectedGroup = groups.firstOrNull { it.id == presetGroupId }
+            } else if (defaultGroupId != null && selectedGroup == null) {
                 selectedGroup = groups.firstOrNull { it.id == defaultGroupId }
             }
             selectedGroup?.let { loadPlayersForGroup(it) }
             selectedGroup?.let { loadDefaultSettings(it) }
             updateAllowedIds()
+            applyPreset()
         }
+    }
+
+    /**
+     * Fills both sides from the fixture.
+     *
+     * Names come from the whole player table rather than from [allPlayers], because that map is
+     * built from the group's *available* players — and availability is a match-day flag, while a
+     * tournament squad was fixed when the tournament was planned. A squad member marked away for
+     * the day still has to appear in their team.
+     */
+    private suspend fun applyPreset() {
+        val fixture = preset ?: return
+        val names = playerRepo.getAllPlayers().associate { it.id to it.name }
+
+        fun squad(ids: List<String>): MutableList<Player> = ids.mapNotNull { id ->
+            names[id]?.let { Player(id = PlayerId(id), name = it) }
+        }.toMutableList()
+
+        team1 = Team(name = fixture.homeTeamName, players = squad(fixture.homeSquad))
+        team2 = Team(name = fixture.awayTeamName, players = squad(fixture.awaySquad))
+        // A tournament squad is fixed, so there is nobody spare to be the joker.
+        jokerPlayer = null
+
+        val missing = (fixture.homeSquad.size - team1.players.size) +
+            (fixture.awaySquad.size - team2.players.size)
+        if (missing > 0) {
+            _toastEvent.emit(
+                ToastEvent.Long("$missing player(s) in this fixture's squads no longer exist.")
+            )
+        }
+    }
+
+    /**
+     * The captain of a side, by the name it is playing under.
+     *
+     * A fixture's captain is an id chosen when the squad was picked, so it never goes through
+     * [extractCaptainFromTeamName] — which only works for the `"<name>'s Team"` convention and
+     * returns null for a real team name like "Warriors".
+     */
+    fun captainNameFor(teamName: String): String? {
+        val fixture = preset ?: return extractCaptainFromTeamName(teamName)
+        val captainId = when {
+            teamName.equals(fixture.homeTeamName, ignoreCase = true) -> fixture.homeCaptainPlayerId
+            teamName.equals(fixture.awayTeamName, ignoreCase = true) -> fixture.awayCaptainPlayerId
+            else -> null
+        } ?: return null
+        val side = if (teamName.equals(fixture.homeTeamName, true)) team1 else team2
+        return side.players.firstOrNull { it.id.value == captainId }?.name
     }
 
     private suspend fun loadPlayersForGroup(group: GroupEntity) {
@@ -274,6 +343,10 @@ class TeamSetupViewModel(
 
     fun saveLastTeams() {
         val group = selectedGroup ?: return
+        // A fixture's teams are not the group's quick-match teams, and caching them would make
+        // "load last teams" offer a tournament line-up for a casual game. Guarded here rather
+        // than at the call site so no future caller can forget.
+        if (isFixture) return
         viewModelScope.launch {
             groupRepo.saveLastTeams(
                 group.id,
@@ -303,6 +376,14 @@ class TeamSetupViewModel(
         if (team1Size != team2Size) {
             return "Both team needs to have same number of players"
         }
+        // Refuse settings the match cannot actually be bowled under, rather than letting the
+        // scorer discover at over 4 that nobody is left who can legally bowl.
+        matchSettings.bowlingCapacityProblem(
+            team1Name = team1.name,
+            team1Size = team1Size,
+            team2Name = team2.name,
+            team2Size = team2Size,
+        )?.let { return it }
         return null
     }
 
@@ -310,12 +391,11 @@ class TeamSetupViewModel(
      * Build the final match settings with calculated maxPlayersPerTeam.
      */
     fun buildFinalMatchSettings(): MatchSettings {
+        // The squad that actually turned out, not floored at eleven: this is what the wicket
+        // margin is measured against, and flooring it claimed more wickets than a side had
+        // batters ("won by 9 wickets" in an eight-a-side game).
         return matchSettings.copy(
-            maxPlayersPerTeam = maxOf(
-                team1.players.size,
-                team2.players.size,
-                11
-            )
+            maxPlayersPerTeam = maxOf(team1.players.size, team2.players.size)
         )
     }
 
@@ -337,8 +417,7 @@ class TeamSetupViewModel(
             return TeamGenerationResult.InsufficientPlayers
         }
 
-        val today = System.currentTimeMillis()
-        val startOfDay = today - (today % (24 * 60 * 60 * 1000))
+        val startOfDay = startOfLocalDayMillis(System.currentTimeMillis())
         val todaysMatches = try {
             matchRepo.getAllMatches(groupId, limit = 20)
                 .filter { it.matchDate >= startOfDay }
@@ -406,3 +485,23 @@ class TeamSetupViewModel(
         )
     }
 }
+
+/**
+ * Midnight of [nowMillis] in [zone].
+ *
+ * Joker and captain rotation only looks at matches played "today", so this boundary decides
+ * who is still eligible. It has to be the player's local midnight: the previous
+ * `now - (now % 86_400_000)` shortcut returned midnight *UTC*, which lands at 05:30 in IST
+ * (dropping early-morning matches) and on the previous afternoon in US timezones (counting
+ * yesterday's matches as today, exhausting the rotation pool early).
+ */
+internal fun startOfLocalDayMillis(
+    nowMillis: Long,
+    zone: TimeZone = TimeZone.getDefault(),
+): Long = Calendar.getInstance(zone).apply {
+    timeInMillis = nowMillis
+    set(Calendar.HOUR_OF_DAY, 0)
+    set(Calendar.MINUTE, 0)
+    set(Calendar.SECOND, 0)
+    set(Calendar.MILLISECOND, 0)
+}.timeInMillis

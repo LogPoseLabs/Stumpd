@@ -10,9 +10,18 @@ import com.oreki.stumpd.data.local.entity.MatchEntity
 import com.oreki.stumpd.data.local.entity.PartnershipEntity
 import com.oreki.stumpd.data.local.entity.PlayerImpactEntity
 import com.oreki.stumpd.data.local.entity.PlayerMatchStatsEntity
+import com.oreki.stumpd.data.local.entity.PlayerEntity
+import com.oreki.stumpd.data.local.entity.GroupMemberEntity
+import com.oreki.stumpd.data.sync.MatchAdoptionResult
+import com.oreki.stumpd.data.sync.MatchGroupAdoption
+import com.oreki.stumpd.domain.match.mainMatchDeliveries
+import com.oreki.stumpd.data.sync.MergeDestPlayer
+import com.oreki.stumpd.data.sync.PlayerMergeMapping
+import java.util.UUID
 import com.oreki.stumpd.data.mappers.toDomain
 import com.oreki.stumpd.data.util.Constants
 import com.oreki.stumpd.data.util.GsonProvider
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -22,7 +31,8 @@ import kotlinx.coroutines.withContext
  */
 class MatchRepository(
     private val db: StumpdDb,
-    private val context: Context
+    private val context: Context,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
     private val gson = GsonProvider.get()
     
@@ -34,9 +44,22 @@ class MatchRepository(
      * Saves a complete match with all related stats and impacts
      * @param match The match history to save
      */
-    suspend fun saveMatch(match: MatchHistory) = withContext(Dispatchers.IO) {
+    /**
+     * @param persistedUpdatedAt If non-null (e.g. from cloud download), stored on the row for sync/conflict resolution; otherwise [System.currentTimeMillis].
+     * @param replaceChildren Clear this match's existing stats, impacts, partnerships and
+     *   fall-of-wickets rows before inserting, so the saved graph is exactly what was passed.
+     *   Off by default: an insert-only save merges, which is what an import or a cloud download
+     *   wants (a download cut short by the sync quota must not delete local rows). Callers holding
+     *   the complete, authoritative graph — adopt, merge, corrections — pass true, otherwise a row
+     *   whose key moved is left behind and read back by [getMatchWithStats].
+     */
+    suspend fun saveMatch(
+        match: MatchHistory,
+        persistedUpdatedAt: Long? = null,
+        replaceChildren: Boolean = false,
+    ): Unit = withContext(ioDispatcher) {
         try {
-            val matchEntity = convertMatchToEntity(match)
+            val matchEntity = convertMatchToEntity(match, persistedUpdatedAt ?: System.currentTimeMillis())
             val statsEntities = convertStatsToEntities(match)
             val impactEntities = convertImpactsToEntities(match)
             val partnershipEntities = convertPartnershipsToEntities(match)
@@ -49,7 +72,13 @@ class MatchRepository(
                     "batting2: ${match.secondInningsBatting.size}, bowling2: ${match.secondInningsBowling.size}")
 
             db.withTransaction {
-                db.matchDao().insertFullMatch(matchEntity, statsEntities, impactEntities)
+                if (replaceChildren) {
+                    db.partnershipDao().deleteForMatch(match.id)
+                    db.fallOfWicketDao().deleteForMatch(match.id)
+                    db.matchDao().replaceFullMatch(matchEntity, statsEntities, impactEntities)
+                } else {
+                    db.matchDao().insertFullMatch(matchEntity, statsEntities, impactEntities)
+                }
                 if (partnershipEntities.isNotEmpty()) {
                     db.partnershipDao().insertPartnerships(partnershipEntities)
                 }
@@ -64,6 +93,66 @@ class MatchRepository(
             throw e
         }
     }
+
+    /**
+     * Saves a match as the complete truth for its id, stamping a fresh `updatedAt` so the change
+     * is picked up for upload. The entry point for anything that *changes* an existing match.
+     */
+    suspend fun replaceMatchGraph(match: MatchHistory) {
+        saveMatch(match, persistedUpdatedAt = null, replaceChildren = true)
+    }
+
+    /**
+     * Carries a renamed player through every match they played in.
+     *
+     * Renaming used to update `player_match_stats.name` and nothing else — which left the old
+     * name in the bowler and fielder columns, both partnership names, the fall-of-wickets rows,
+     * all three names on every delivery, the joker, both captains, the Player of the Match and
+     * the impact rows. The scorecard then showed a batter dismissed by a bowler who, by name, no
+     * longer existed, and head-to-head and partnership records silently split one player in two.
+     *
+     * The traversal is the same pure rewrite that adopting and merging a match already use, so
+     * there is one inventory of "everywhere a player appears" rather than two that drift. Each
+     * match is written back as a whole, which stamps `updatedAt` and so re-uploads it.
+     *
+     * Returns the number of matches changed.
+     */
+    suspend fun renamePlayerAcrossMatches(playerId: String, newName: String): Int =
+        withContext(ioDispatcher) {
+            if (newName.isBlank()) return@withContext 0
+            val matchIds = db.matchDao().matchIdsNaming(playerId, newName)
+            var changed = 0
+            matchIds.forEach { matchId ->
+                runCatching {
+                    val match = getMatchWithStats(matchId) ?: return@runCatching
+                    // The name to replace comes from the match, not from the players table: that
+                    // way a rename made while this match was in progress — or one that an older
+                    // version of the app half-applied — is still repaired by renaming again.
+                    val stale = (
+                        match.firstInningsBatting + match.firstInningsBowling +
+                            match.secondInningsBatting + match.secondInningsBowling +
+                            match.team1Players + match.team2Players
+                        )
+                        .filter { it.id == playerId }
+                        .map { it.name }
+                        .filter { it.isNotBlank() && !it.equals(newName, ignoreCase = true) }
+                        .distinct()
+                    if (stale.isEmpty()) return@runCatching
+                    val renamed = MatchGroupAdoption.remapNames(match) { name ->
+                        // Null means "leave this one alone" — every other player in the match.
+                        if (stale.any { it.equals(name, ignoreCase = true) })
+                            MergeDestPlayer(id = playerId, name = newName)
+                        else null
+                    }
+                    replaceMatchGraph(renamed)
+                    changed++
+                }.onFailure { Log.e(TAG, "Couldn't carry the rename into match $matchId", it) }
+            }
+            if (matchIds.isNotEmpty()) {
+                Log.d(TAG, "Renamed to $newName across $changed of ${matchIds.size} match(es)")
+            }
+            changed
+        }
 
     /**
      * Converts partnerships from MatchHistory to PartnershipEntity list
@@ -138,7 +227,7 @@ class MatchRepository(
     /**
      * Converts MatchHistory domain model to MatchEntity for database storage
      */
-    private fun convertMatchToEntity(match: MatchHistory): MatchEntity {
+    private fun convertMatchToEntity(match: MatchHistory, updatedAt: Long): MatchEntity {
         return MatchEntity(
             id = match.id,
             team1Name = match.team1Name,
@@ -162,7 +251,14 @@ class MatchRepository(
             playerOfTheMatchImpact = match.playerOfTheMatchImpact,
             playerOfTheMatchSummary = match.playerOfTheMatchSummary,
             matchSettingsJson = match.matchSettings?.let { gson.toJson(it) },
-            allDeliveriesJson = if (match.allDeliveries.isNotEmpty()) gson.toJson(match.allDeliveries) else null
+            allDeliveriesJson = if (match.allDeliveries.isNotEmpty()) gson.toJson(match.allDeliveries) else null,
+            superOverWinner = match.superOverWinner,
+            superOversJson = if (match.superOvers.isNotEmpty()) gson.toJson(match.superOvers) else null,
+            tournamentId = match.tournamentId,
+            tournamentFixtureId = match.tournamentFixtureId,
+            team1Id = match.team1Id,
+            team2Id = match.team2Id,
+            updatedAt = updatedAt
         )
     }
 
@@ -170,9 +266,18 @@ class MatchRepository(
      * Converts player match stats to entities for database storage.
      * Each list maps directly to role-based rows: batting lists → "BAT", bowling lists → "BOWL".
      *
-     * Legacy compat: if a batting entry also contains bowling stats (e.g., old merged joker data),
-     * and that player isn't already in a bowling list, an additional BOWL row is auto-created
-     * (and vice versa). This ensures old backup imports don't lose cross-role stats.
+     * Legacy compat: an old backup can arrive with the two roles merged into one list — a batting
+     * entry carrying bowling figures, or the reverse — and those figures would otherwise be lost.
+     * So for a match that has *no* list for the other role at all, the missing rows are
+     * synthesised from the ones present.
+     *
+     * That gate matters, and it used to be per player: "this player isn't in a bowling list, so
+     * rescue their bowling figures". Which is right for a legacy import and catastrophic for a
+     * correction — reassigning an over leaves the previous bowler out of the bowling list *on
+     * purpose*, and the per-player rescue read that as missing data and put the row back, with the
+     * pre-correction figures. The next correction then added to those, so a bowler who really sent
+     * down three balls ended up with nine. A match that has role-separated lists is telling us
+     * exactly who bowled; absence from them is a statement, not a gap.
      */
     private fun convertStatsToEntities(match: MatchHistory): List<PlayerMatchStatsEntity> {
         fun toEntity(stat: PlayerMatchStats, matchId: String, role: String, position: Int): PlayerMatchStatsEntity {
@@ -214,25 +319,25 @@ class MatchRepository(
         fun hasBattingActivity(stat: PlayerMatchStats): Boolean =
             stat.runs > 0 || stat.ballsFaced > 0 || stat.fours > 0 || stat.sixes > 0 || stat.isOut || stat.isRetired
 
-        // Build sets of player IDs in each role's lists for quick lookup
-        val inBowlingLists = (match.firstInningsBowling + match.secondInningsBowling)
-            .map { "${it.id}_${it.team}" }.toSet()
-        val inBattingLists = (match.firstInningsBatting + match.secondInningsBatting)
-            .map { "${it.id}_${it.team}" }.toSet()
+        // Whether this match keeps the two roles in separate lists at all. Only a match missing a
+        // whole side of that split is a legacy merge worth rescuing.
+        val hasBowlingLists =
+            match.firstInningsBowling.isNotEmpty() || match.secondInningsBowling.isNotEmpty()
+        val hasBattingLists =
+            match.firstInningsBatting.isNotEmpty() || match.secondInningsBatting.isNotEmpty()
 
         val entities = mutableListOf<PlayerMatchStatsEntity>()
 
         // Batting rows (1-indexed positions)
         match.firstInningsBatting.forEachIndexed { index, stat ->
             entities.add(toEntity(stat, match.id, "BAT", index + 1))
-            // Legacy compat: batting entry has bowling stats but player not in any bowling list
-            if (hasBowlingActivity(stat) && "${stat.id}_${stat.team}" !in inBowlingLists) {
+            if (!hasBowlingLists && hasBowlingActivity(stat)) {
                 entities.add(toEntity(stat, match.id, "BOWL", 0))
             }
         }
         match.secondInningsBatting.forEachIndexed { index, stat ->
             entities.add(toEntity(stat, match.id, "BAT", index + 1))
-            if (hasBowlingActivity(stat) && "${stat.id}_${stat.team}" !in inBowlingLists) {
+            if (!hasBowlingLists && hasBowlingActivity(stat)) {
                 entities.add(toEntity(stat, match.id, "BOWL", 0))
             }
         }
@@ -240,14 +345,13 @@ class MatchRepository(
         // Bowling rows (1-indexed positions)
         match.firstInningsBowling.forEachIndexed { index, stat ->
             entities.add(toEntity(stat, match.id, "BOWL", index + 1))
-            // Legacy compat: bowling entry has batting stats but player not in any batting list
-            if (hasBattingActivity(stat) && "${stat.id}_${stat.team}" !in inBattingLists) {
+            if (!hasBattingLists && hasBattingActivity(stat)) {
                 entities.add(toEntity(stat, match.id, "BAT", 0))
             }
         }
         match.secondInningsBowling.forEachIndexed { index, stat ->
             entities.add(toEntity(stat, match.id, "BOWL", index + 1))
-            if (hasBattingActivity(stat) && "${stat.id}_${stat.team}" !in inBattingLists) {
+            if (!hasBattingLists && hasBattingActivity(stat)) {
                 entities.add(toEntity(stat, match.id, "BAT", 0))
             }
         }
@@ -288,7 +392,7 @@ class MatchRepository(
     suspend fun getAllMatches(
         groupId: String? = null,
         limit: Int = Constants.MAX_MATCHES_STORED
-    ): List<MatchHistory> = withContext(Dispatchers.IO) {
+    ): List<MatchHistory> = withContext(ioDispatcher) {
         try {
             db.matchDao().list(groupId, limit).map { it.toDomain() }
         } catch (e: Exception) {
@@ -298,12 +402,37 @@ class MatchRepository(
     }
 
     /**
+     * Squad size per (matchId, team), for showing a wicket margin the chasing side could actually
+     * have lost. Cheap enough to load for a whole history screen.
+     */
+    suspend fun squadSizesByMatchAndTeam(): Map<Pair<String, String>, Int> =
+        withContext(ioDispatcher) {
+            try {
+                db.matchDao().squadSizes().associate { (it.matchId to it.team) to it.squadSize }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load squad sizes", e)
+                emptyMap()
+            }
+        }
+
+    /**
      * Deletes a match and its associated data
      * @param matchId The ID of the match to delete
      */
-    suspend fun deleteMatch(matchId: String) = withContext(Dispatchers.IO) {
+    suspend fun deleteMatch(matchId: String) = withContext(ioDispatcher) {
         try {
-            db.matchDao().deleteMatch(matchId)
+            // The four child tables have no foreign keys, so deleting the header alone left their
+            // rows behind — and `playerCareerSummaries()` / `squadSizes()` read
+            // `player_match_stats` without joining `matches`, so a deleted match went on counting
+            // toward career totals and wicket margins.
+            db.withTransaction {
+                db.matchDao().deleteStatsForMatch(matchId)
+                db.matchDao().deleteImpactsForMatch(matchId)
+                db.partnershipDao().deleteForMatch(matchId)
+                db.fallOfWicketDao().deleteForMatch(matchId)
+                db.matchCorrectionLogDao().deleteForMatch(matchId)
+                db.matchDao().deleteMatch(matchId)
+            }
             Log.d(TAG, "Deleted match: $matchId")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete match: $matchId", e)
@@ -335,7 +464,7 @@ class MatchRepository(
 
     suspend fun exportMatches(
         fileName: String? = null
-    ): String? = withContext(Dispatchers.IO) {
+    ): String? = withContext(ioDispatcher) {
         val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd_HHmm", java.util.Locale.getDefault())
         val timestamp = dateFormat.format(java.util.Date())
         val finalFileName = fileName ?: "stumpd_backup_all_$timestamp.json"
@@ -416,7 +545,7 @@ class MatchRepository(
         groupId: String,
         groupName: String? = null,
         fileName: String? = null
-    ): String? = withContext(Dispatchers.IO) {
+    ): String? = withContext(ioDispatcher) {
         val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd_HHmm", java.util.Locale.getDefault())
         val timestamp = dateFormat.format(java.util.Date())
         val sanitizedGroupName = groupName?.replace(Regex("[^a-zA-Z0-9_-]"), "_") ?: "group"
@@ -499,7 +628,7 @@ class MatchRepository(
      * @param filePath Path to the file to import from
      * @return true if import was successful, false otherwise
      */
-    suspend fun importMatches(filePath: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun importMatches(filePath: String): Boolean = withContext(ioDispatcher) {
         try {
             val file = java.io.File(filePath)
             if (!file.exists()) {
@@ -516,10 +645,16 @@ class MatchRepository(
                 db.withTransaction {
                     // Import all data
                     if (backup.players.isNotEmpty()) {
-                        db.playerDao().upsert(backup.players)
+                        val nowPlayers = System.currentTimeMillis()
+                        db.playerDao().upsert(backup.players.map { p ->
+                            if (p.updatedAt == 0L) p.copy(updatedAt = nowPlayers) else p
+                        })
                     }
                     if (backup.groups.isNotEmpty()) {
-                        db.groupDao().insertGroups(backup.groups)
+                        val nowGroups = System.currentTimeMillis()
+                        db.groupDao().insertGroups(backup.groups.map { g ->
+                            if (g.updatedAt == 0L) g.copy(updatedAt = nowGroups) else g
+                        })
                     }
                     if (backup.groupDefaults.isNotEmpty()) {
                         db.groupDao().insertGroupDefaults(backup.groupDefaults)
@@ -531,19 +666,32 @@ class MatchRepository(
                         db.groupDao().insertGroupLastTeams(backup.groupLastTeams)
                     }
                     if (backup.groupUnavailablePlayers.isNotEmpty()) {
-                        db.groupDao().insertGroupUnavailablePlayers(backup.groupUnavailablePlayers)
+                        // Only keep rows for players who are actually members, otherwise
+                        // Available = members - unavailable goes negative on the Groups screen.
+                        val memberKeys = db.groupDao().getAllGroupMembers()
+                            .map { it.groupId to it.playerId }
+                            .toSet()
+                        db.groupDao().insertGroupUnavailablePlayers(
+                            backup.groupUnavailablePlayers.filter {
+                                (it.groupId to it.playerId) in memberKeys
+                            }
+                        )
                     }
                     if (backup.userPreferences.isNotEmpty()) {
                         db.userPreferencesDao().upsertAll(backup.userPreferences)
                     }
                     if (backup.matches.isNotEmpty()) {
-                        backup.matches.forEach { db.matchDao().insertMatch(it) }
+                        val now = System.currentTimeMillis()
+                        backup.matches.forEach { m ->
+                            val entity = if (m.updatedAt == 0L) m.copy(updatedAt = now) else m
+                            db.matchDao().insertMatch(entity)
+                        }
                     }
                     if (backup.matchStats.isNotEmpty()) {
-                        db.matchDao().insertMatchStats(backup.matchStats)
+                        db.matchDao().insertStats(backup.matchStats)
                     }
                     if (backup.playerImpacts.isNotEmpty()) {
-                        db.matchDao().insertPlayerImpacts(backup.playerImpacts)
+                        db.matchDao().insertImpacts(backup.playerImpacts)
                     }
                     if (backup.partnerships.isNotEmpty()) {
                         db.partnershipDao().insertPartnerships(backup.partnerships)
@@ -578,7 +726,7 @@ class MatchRepository(
      * @param id The match ID
      * @return MatchHistory or null if not found
      */
-    suspend fun getMatchById(id: String): MatchHistory? = withContext(Dispatchers.IO) {
+    suspend fun getMatchById(id: String): MatchHistory? = withContext(ioDispatcher) {
         try {
             db.matchDao().getById(id)?.toDomain()
         } catch (e: Exception) {
@@ -592,7 +740,7 @@ class MatchRepository(
      * @param id The match ID
      * @return Complete MatchHistory with all details, or null if not found
      */
-    suspend fun getMatchWithStats(id: String): MatchHistory? = withContext(Dispatchers.IO) {
+    suspend fun getMatchWithStats(id: String): MatchHistory? = withContext(ioDispatcher) {
         try {
             val matchEntity = db.matchDao().getById(id) ?: return@withContext null
             val stats = db.matchDao().statsForMatch(id)
@@ -734,7 +882,7 @@ class MatchRepository(
     suspend fun getAllMatchesWithStats(
         groupId: String? = null,
         limit: Int = Constants.MAX_MATCHES_STORED
-    ): List<MatchHistory> = withContext(Dispatchers.IO) {
+    ): List<MatchHistory> = withContext(ioDispatcher) {
         try {
             val matches = db.matchDao().list(groupId, limit)
 
@@ -794,7 +942,7 @@ class MatchRepository(
      * @param filePath Path to the legacy backup file
      * @return true if import was successful, false otherwise
      */
-    suspend fun importLegacyMatches(filePath: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun importLegacyMatches(filePath: String): Boolean = withContext(ioDispatcher) {
         try {
             val file = java.io.File(filePath)
             if (!file.exists()) {
@@ -881,7 +1029,8 @@ class MatchRepository(
                 val (groupName, groupDefaults) = groupData
                 val groupEntity = com.oreki.stumpd.data.local.entity.GroupEntity(
                     id = groupId,
-                    name = groupName
+                    name = groupName,
+                    updatedAt = System.currentTimeMillis()
                 )
                 db.groupDao().upsertGroup(groupEntity)
                 groupDefaults?.let { db.groupDao().upsertDefaults(it) }
@@ -907,7 +1056,8 @@ class MatchRepository(
                     val playerEntity = com.oreki.stumpd.data.local.entity.PlayerEntity(
                         id = java.util.UUID.randomUUID().toString(),
                         name = playerName,
-                        isJoker = false
+                        isJoker = false,
+                        updatedAt = System.currentTimeMillis()
                     )
                     db.playerDao().upsert(listOf(playerEntity))
                     Log.d(Constants.LOG_TAG_IMPORT, "Created player: $playerName")
@@ -942,13 +1092,15 @@ class MatchRepository(
      *   2. Wickets on the 6th ball of an over may have been missed in the innings count
      * Updates the local Room DB; the next sync will push corrected data to Firestore.
      */
-    suspend fun recalculateDerivedStats(): Int = withContext(Dispatchers.IO) {
+    suspend fun recalculateDerivedStats(): Int = withContext(ioDispatcher) {
         var fixedCount = 0
         try {
             val allMatches = db.matchDao().list(null, 9999)
             
             for (matchEntity in allMatches) {
-                val deliveries = matchEntity.toDomain().allDeliveries
+                // The match proper only: a scoreless super over would otherwise be counted as a
+                // maiden here and written back, across every match on the phone.
+                val deliveries = matchEntity.toDomain().allDeliveries.mainMatchDeliveries()
                 if (deliveries.isEmpty()) continue
                 
                 val stats = db.matchDao().statsForMatch(matchEntity.id).toMutableList()
@@ -1003,7 +1155,8 @@ class MatchRepository(
                     secondInningsWickets != matchEntity.secondInningsWickets) {
                     val updatedMatch = matchEntity.copy(
                         firstInningsWickets = firstInningsWickets,
-                        secondInningsWickets = secondInningsWickets
+                        secondInningsWickets = secondInningsWickets,
+                        updatedAt = System.currentTimeMillis()
                     )
                     db.matchDao().update(updatedMatch)
                     matchChanged = true
@@ -1014,6 +1167,13 @@ class MatchRepository(
                     db.withTransaction {
                         stats.forEach { stat ->
                             db.matchDao().updateStat(stat)
+                        }
+                        // Sync pending-ness is keyed on the *match* row's updatedAt, so a repair
+                        // that only rewrites stat rows would never reach the cloud without this.
+                        if (!matchChanged) {
+                            db.matchDao().update(
+                                matchEntity.copy(updatedAt = System.currentTimeMillis())
+                            )
                         }
                     }
                 }
@@ -1031,6 +1191,205 @@ class MatchRepository(
             Log.e(TAG, "Failed to recalculate derived stats", e)
         }
         fixedCount
+    }
+
+    /**
+     * Reassigns matches (e.g. scored on another phone / wrong group) into [destinationGroupId].
+     * Only the local group owner should call this. Player ids are remapped to the destination
+     * group's roster by player name; missing names are added to the group automatically.
+     *
+     * @param matchIds null = all matches whose groupId is not already [destinationGroupId]
+     */
+    suspend fun adoptMatchesIntoOwnedGroup(
+        destinationGroupId: String,
+        matchIds: List<String>? = null,
+    ): MatchAdoptionResult = withContext(ioDispatcher) {
+        val group = db.groupDao().getGroupById(destinationGroupId)
+            ?: return@withContext MatchAdoptionResult(0, 0, 0, listOf("Group not found"))
+        if (!group.isOwner) {
+            return@withContext MatchAdoptionResult(
+                0,
+                0,
+                0,
+                listOf("Only the destination group owner can adopt matches"),
+            )
+        }
+
+        val targets = if (matchIds != null) {
+            matchIds.mapNotNull { db.matchDao().getById(it)?.id }
+        } else {
+            db.matchDao().list(null, Constants.MAX_MATCHES_STORED)
+                .filter { it.groupId != destinationGroupId }
+                .map { it.id }
+        }
+
+        if (targets.isEmpty()) {
+            return@withContext MatchAdoptionResult(0, 0, 0, emptyList())
+        }
+
+        var adopted = 0
+        var skipped = 0
+        var playersAdded = 0
+        val errors = mutableListOf<String>()
+        val now = System.currentTimeMillis()
+
+        for (matchId in targets) {
+            try {
+                val match = getMatchWithStats(matchId)
+                if (match == null) {
+                    skipped++
+                } else {
+                    val (idMap, added) = ensureGroupPlayerIdsForMatch(destinationGroupId, match)
+                    playersAdded += added
+                    val remapped = MatchGroupAdoption.remapMatchIntoGroup(
+                        match = match,
+                        destinationGroupId = destinationGroupId,
+                        destinationGroupName = group.name,
+                        playerIdByNormalizedName = idMap,
+                    )
+                    saveMatch(remapped, persistedUpdatedAt = now, replaceChildren = true)
+                    adopted++
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to adopt match $matchId into $destinationGroupId", e)
+                errors.add("$matchId: ${e.message ?: e.javaClass.simpleName}")
+            }
+        }
+
+        MatchAdoptionResult(adopted, skipped, playersAdded, errors)
+    }
+
+    /**
+     * Writes selected foreign matches into an owned group using an explicit player map.
+     * New match ids are generated so the friend's cloud document is not overwritten.
+     */
+    suspend fun mergeMatchesIntoOwnedGroup(
+        destinationGroupId: String,
+        matches: List<MatchHistory>,
+        mappings: List<PlayerMergeMapping>,
+    ): MatchAdoptionResult = withContext(ioDispatcher) {
+        val group = db.groupDao().getGroupById(destinationGroupId)
+            ?: return@withContext MatchAdoptionResult(0, 0, 0, listOf("Group not found"))
+        if (!group.isOwner) {
+            return@withContext MatchAdoptionResult(
+                0,
+                0,
+                0,
+                listOf("Only the destination group owner can merge matches"),
+            )
+        }
+        if (matches.isEmpty()) {
+            return@withContext MatchAdoptionResult(0, 0, 0, emptyList())
+        }
+
+        val roster = db.groupDao().members(destinationGroupId)
+        val rosterById = roster.associateBy { it.id }
+        val destByNormalized = mutableMapOf<String, MergeDestPlayer>()
+        var playersAdded = 0
+        val now = System.currentTimeMillis()
+
+        for (mapping in mappings) {
+            val key = MatchGroupAdoption.normalizePlayerName(mapping.sourceNormalizedName)
+            if (key.isEmpty()) continue
+            if (mapping.createNew) {
+                val sourceName = mapping.sourceNormalizedName
+                val displayName = matches
+                    .flatMap { MatchGroupAdoption.collectPlayerNames(it) }
+                    .firstOrNull { MatchGroupAdoption.normalizePlayerName(it) == key }
+                    ?.trim()
+                    ?: sourceName
+                val newId = UUID.randomUUID().toString()
+                db.playerDao().upsert(
+                    listOf(
+                        PlayerEntity(
+                            id = newId,
+                            name = displayName,
+                            isJoker = false,
+                            updatedAt = now,
+                        ),
+                    ),
+                )
+                db.groupDao().upsertMembers(listOf(GroupMemberEntity(destinationGroupId, newId)))
+                destByNormalized[key] = MergeDestPlayer(newId, displayName)
+                playersAdded++
+            } else {
+                val destId = mapping.destinationPlayerId
+                    ?: return@withContext MatchAdoptionResult(
+                        0,
+                        0,
+                        0,
+                        listOf("Missing destination player for $key"),
+                    )
+                val destPlayer = rosterById[destId]
+                    ?: db.playerDao().list().firstOrNull { it.id == destId }
+                    ?: return@withContext MatchAdoptionResult(
+                        0,
+                        0,
+                        0,
+                        listOf("Destination player not found: $destId"),
+                    )
+                if (rosterById[destId] == null) {
+                    db.groupDao().upsertMembers(listOf(GroupMemberEntity(destinationGroupId, destId)))
+                }
+                destByNormalized[key] = MergeDestPlayer(destPlayer.id, destPlayer.name)
+            }
+        }
+
+        db.groupDao().upsertGroup(group.copy(updatedAt = now))
+
+        var adopted = 0
+        var skipped = 0
+        val errors = mutableListOf<String>()
+        for (match in matches) {
+            try {
+                val remapped = MatchGroupAdoption.remapMatchForMerge(
+                    match = match,
+                    destinationGroupId = destinationGroupId,
+                    destinationGroupName = group.name,
+                    newMatchId = UUID.randomUUID().toString(),
+                    destByNormalizedSourceName = destByNormalized,
+                )
+                saveMatch(remapped, persistedUpdatedAt = now, replaceChildren = true)
+                adopted++
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to merge match ${match.id}", e)
+                errors.add("${match.team1Name} vs ${match.team2Name}: ${e.message ?: e.javaClass.simpleName}")
+                skipped++
+            }
+        }
+        MatchAdoptionResult(adopted, skipped, playersAdded, errors)
+    }
+
+    private suspend fun ensureGroupPlayerIdsForMatch(
+        groupId: String,
+        match: MatchHistory,
+    ): Pair<Map<String, String>, Int> {
+        val roster = db.groupDao().members(groupId)
+        val idByName = MatchGroupAdoption.buildPlayerIdByNormalizedName(
+            roster.map { it.id to it.name },
+        ).toMutableMap()
+        var added = 0
+        val neededNames = MatchGroupAdoption.collectPlayerNames(match)
+        for (name in neededNames) {
+            val key = MatchGroupAdoption.normalizePlayerName(name)
+            if (key.isEmpty() || key in idByName) continue
+            val newId = java.util.UUID.randomUUID().toString()
+            val isJoker = match.jokerPlayerName?.equals(name, ignoreCase = true) == true
+            db.playerDao().upsert(
+                listOf(
+                    PlayerEntity(
+                        id = newId,
+                        name = name.trim(),
+                        isJoker = isJoker,
+                        updatedAt = System.currentTimeMillis(),
+                    ),
+                ),
+            )
+            db.groupDao().upsertMembers(listOf(GroupMemberEntity(groupId = groupId, playerId = newId)))
+            idByName[key] = newId
+            added++
+        }
+        return idByName to added
     }
 }
 

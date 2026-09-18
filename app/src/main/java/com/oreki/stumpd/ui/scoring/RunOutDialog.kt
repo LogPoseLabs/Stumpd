@@ -48,7 +48,7 @@ fun RunOutDialog(
                 }
                 Text(
                     "Run Out",
-                    fontSize = 18.sp,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -63,7 +63,7 @@ fun RunOutDialog(
                     Text(
                         "Runs completed before wicket:",
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Row(
@@ -91,7 +91,7 @@ fun RunOutDialog(
                                         .fillMaxWidth(),
                                     textAlign = TextAlign.Center,
                                     fontWeight = if (runsCompleted == run) FontWeight.Bold else FontWeight.Normal,
-                                    fontSize = 16.sp
+                                    style = MaterialTheme.typography.titleSmall
                                 )
                             }
                         }
@@ -105,7 +105,7 @@ fun RunOutDialog(
                     Text(
                         "Who got out?",
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -213,7 +213,7 @@ fun RunOutDialog(
                     Text(
                         "At which end?",
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Row(
@@ -242,13 +242,13 @@ fun RunOutDialog(
                                 Text(
                                     text = "Striker's",
                                     fontWeight = if (selectedEnd == RunOutEnd.STRIKER_END) FontWeight.Bold else FontWeight.Normal,
-                                    fontSize = 13.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     textAlign = TextAlign.Center
                                 )
                                 Text(
                                     text = "End",
                                     fontWeight = if (selectedEnd == RunOutEnd.STRIKER_END) FontWeight.Bold else FontWeight.Normal,
-                                    fontSize = 13.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     textAlign = TextAlign.Center
                                 )
                             }
@@ -275,13 +275,13 @@ fun RunOutDialog(
                                 Text(
                                     text = "Non-Striker's",
                                     fontWeight = if (selectedEnd == RunOutEnd.NON_STRIKER_END) FontWeight.Bold else FontWeight.Normal,
-                                    fontSize = 13.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     textAlign = TextAlign.Center
                                 )
                                 Text(
                                     text = "End",
                                     fontWeight = if (selectedEnd == RunOutEnd.NON_STRIKER_END) FontWeight.Bold else FontWeight.Normal,
-                                    fontSize = 13.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     textAlign = TextAlign.Center
                                 )
                             }

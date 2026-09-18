@@ -1,6 +1,8 @@
 package com.oreki.stumpd.data.repository
 
 import com.oreki.stumpd.*
+import com.oreki.stumpd.domain.model.MatchHistory
+import com.oreki.stumpd.domain.model.PlayerMatchStats
 import com.oreki.stumpd.data.local.dao.MatchDao
 import com.oreki.stumpd.data.local.dao.PlayerDao
 import com.oreki.stumpd.data.local.db.StumpdDb
@@ -24,6 +26,7 @@ class PlayerRepositoryTest {
     private lateinit var db: StumpdDb
     private lateinit var playerDao: PlayerDao
     private lateinit var matchDao: MatchDao
+    private lateinit var matchRepository: MatchRepository
     private lateinit var repository: PlayerRepository
 
     @Before
@@ -31,11 +34,12 @@ class PlayerRepositoryTest {
         db = mockk(relaxed = true)
         playerDao = mockk(relaxed = true)
         matchDao = mockk(relaxed = true)
+        matchRepository = mockk(relaxed = true)
 
         every { db.playerDao() } returns playerDao
         every { db.matchDao() } returns matchDao
 
-        repository = PlayerRepository(db)
+        repository = PlayerRepository(db, matchRepository)
     }
 
     @Test
@@ -95,6 +99,23 @@ class PlayerRepositoryTest {
     }
 
     @Test
+    fun `renaming a player carries the new name into their matches`() = runTest {
+        // The bug this covers: the rename used to touch one column, leaving the old name on the
+        // bowler who dismissed them, in the partnerships, and on every delivery they faced.
+        repository.addOrUpdatePlayer("Kushal Kumar", existingPlayerId = "p1")
+
+        coVerify { matchRepository.renamePlayerAcrossMatches("p1", "Kushal Kumar") }
+        coVerify(exactly = 0) { matchDao.updatePlayerNameInStats(any(), any()) }
+    }
+
+    @Test
+    fun `adding a new player touches no matches`() = runTest {
+        repository.addOrUpdatePlayer("Kushal")
+
+        coVerify(exactly = 0) { matchRepository.renamePlayerAcrossMatches(any(), any()) }
+    }
+
+    @Test
     fun `getPlayerDetailedStats returns empty list when no matches provided`() = runTest {
         // When
         val result = repository.getPlayerDetailedStats(emptyList())
@@ -110,19 +131,36 @@ class PlayerRepositoryTest {
         val matchId = "match1"
         val matchDate = System.currentTimeMillis()
 
-        val statsEntity = PlayerMatchStatsEntity(
+        val batEntity = PlayerMatchStatsEntity(
             matchId = matchId,
             playerId = playerId,
             name = "John Doe",
             team = "Team A",
+            role = "BAT",
             runs = 50,
             ballsFaced = 30,
             fours = 4,
             sixes = 2,
+            wickets = 0,
+            runsConceded = 0,
+            oversBowled = 0.0,
+            isOut = true,
+            isJoker = false
+        )
+        val bowlEntity = PlayerMatchStatsEntity(
+            matchId = matchId,
+            playerId = playerId,
+            name = "John Doe",
+            team = "Team B",
+            role = "BOWL",
+            runs = 0,
+            ballsFaced = 0,
+            fours = 0,
+            sixes = 0,
             wickets = 2,
             runsConceded = 25,
             oversBowled = 2.0,
-            isOut = true,
+            isOut = false,
             isJoker = false
         )
 
@@ -137,10 +175,11 @@ class PlayerRepositoryTest {
             winnerTeam = "Team A",
             winningMargin = "5 runs",
             matchDate = matchDate,
-            firstInningsBatting = listOf(statsEntity.toPlayerMatchStats())
+            firstInningsBatting = listOf(batEntity.toPlayerMatchStats()),
+            firstInningsBowling = listOf(bowlEntity.toPlayerMatchStats())
         )
 
-        coEvery { matchDao.statsForMatch(matchId) } returns listOf(statsEntity)
+        coEvery { matchDao.statsForMatch(matchId) } returns listOf(batEntity, bowlEntity)
 
         // When
         val result = repository.getPlayerDetailedStats(listOf(match))
@@ -249,35 +288,48 @@ class PlayerRepositoryTest {
         val playerId = "joker1"
         val matchId = "match1"
 
-        val statsEntity1 = PlayerMatchStatsEntity(
-            matchId = matchId,
-            playerId = playerId,
+        val jokerInnings1Bat = PlayerMatchStats(
+            id = playerId,
             name = "Joker",
             team = "Team A",
+            role = "BAT",
             runs = 30,
             ballsFaced = 20,
             fours = 2,
             sixes = 1,
-            wickets = 1,
-            runsConceded = 15,
-            oversBowled = 1.0,
             isOut = false,
             isJoker = true
         )
-
-        val statsEntity2 = PlayerMatchStatsEntity(
-            matchId = matchId,
-            playerId = playerId,
+        val jokerInnings1Bowl = PlayerMatchStats(
+            id = playerId,
             name = "Joker",
             team = "Team B",
+            role = "BOWL",
+            wickets = 1,
+            runsConceded = 15,
+            oversBowled = 1.0,
+            isJoker = true
+        )
+        val jokerInnings2Bat = PlayerMatchStats(
+            id = playerId,
+            name = "Joker",
+            team = "Team B",
+            role = "BAT",
             runs = 25,
             ballsFaced = 15,
             fours = 1,
             sixes = 2,
+            isOut = true,
+            isJoker = true
+        )
+        val jokerInnings2Bowl = PlayerMatchStats(
+            id = playerId,
+            name = "Joker",
+            team = "Team A",
+            role = "BOWL",
             wickets = 2,
             runsConceded = 20,
             oversBowled = 1.0,
-            isOut = true,
             isJoker = true
         )
 
@@ -292,10 +344,13 @@ class PlayerRepositoryTest {
             winnerTeam = "Team A",
             winningMargin = "5 runs",
             matchDate = System.currentTimeMillis(),
-            firstInningsBatting = listOf(statsEntity1.toPlayerMatchStats(), statsEntity2.toPlayerMatchStats())
+            firstInningsBatting = listOf(jokerInnings1Bat),
+            firstInningsBowling = listOf(jokerInnings1Bowl),
+            secondInningsBatting = listOf(jokerInnings2Bat),
+            secondInningsBowling = listOf(jokerInnings2Bowl)
         )
 
-        coEvery { matchDao.statsForMatch(matchId) } returns listOf(statsEntity1, statsEntity2)
+        coEvery { matchDao.statsForMatch(matchId) } returns emptyList()
 
         // When
         val result = repository.getPlayerDetailedStats(listOf(match))
@@ -368,6 +423,7 @@ class PlayerRepositoryTest {
             playerId = playerId,
             name = "Bowler",
             team = "Team A",
+            role = "BOWL",
             runs = 0,
             ballsFaced = 0,
             fours = 0,
@@ -390,7 +446,8 @@ class PlayerRepositoryTest {
             winnerTeam = "Team A",
             winningMargin = "5 runs",
             matchDate = System.currentTimeMillis(),
-            firstInningsBatting = listOf(statsEntity.toPlayerMatchStats())
+            firstInningsBatting = emptyList(),
+            firstInningsBowling = listOf(statsEntity.toPlayerMatchStats())
         )
 
         coEvery { matchDao.statsForMatch(matchId) } returns listOf(statsEntity)
@@ -403,10 +460,13 @@ class PlayerRepositoryTest {
         val bowlerStats = result[0]
         assertEquals(3, bowlerStats.totalWickets)
         assertEquals(30, bowlerStats.totalRunsConceded)
-        // Note: Implementation multiplies oversBowled by 6: 3.2 * 6 = 19.2, toInt() = 19
-        assertEquals(19, bowlerStats.totalBallsBowled)
+        // 3.2 overs is cricket notation for three overs and two balls, so twenty. This used to
+        // assert 19, which was the bug written down: the implementation did `overs * 6`, giving
+        // 19.2, and truncated it — losing a ball from the career figures of anyone who bowled a
+        // part-over.
+        assertEquals(20, bowlerStats.totalBallsBowled)
         assertEquals(0, bowlerStats.timesOut)
-        assertEquals(1, bowlerStats.notOuts)
+        assertEquals(0, bowlerStats.notOuts)
     }
 
     @Test
@@ -418,6 +478,7 @@ class PlayerRepositoryTest {
             playerId = "player1",
             name = "Player 1",
             team = "Team A",
+            role = "BAT",
             runs = 50,
             ballsFaced = 30,
             fours = 4,
@@ -459,6 +520,7 @@ class PlayerRepositoryTest {
             id = this.playerId,
             name = this.name,
             team = this.team,
+            role = this.role,
             runs = this.runs,
             ballsFaced = this.ballsFaced,
             fours = this.fours,

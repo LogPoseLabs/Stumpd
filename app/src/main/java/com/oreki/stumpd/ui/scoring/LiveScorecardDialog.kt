@@ -64,20 +64,20 @@ fun LiveScorecardDialog(
                 ) {
             Text(
                         "🏏",
-                        fontSize = 18.sp,
+                        style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(8.dp)
                     )
                 }
                 Column {
                     Text(
                         text = "Live Scorecard",
-                fontSize = 20.sp,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = titleColor
             )
                     Text(
                         text = "Innings $currentInnings",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -97,13 +97,13 @@ fun LiveScorecardDialog(
                         ) {
                             Text(
                                 text = "$battingTeamName - Innings $currentInnings",
-                                fontSize = 16.sp,
+                                style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = headerOn
                             )
                             Text(
                                 text = "$currentRuns/$currentWickets ($currentOvers.$currentBalls/$totalOvers overs)",
-                                fontSize = 18.sp,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = headerOn
                             )
@@ -114,7 +114,7 @@ fun LiveScorecardDialog(
                                 val reqColor = if (required > 0) warnColor else successColor
                                 Text(
                                     text = reqText,
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = reqColor
                                 )
                             }
@@ -127,7 +127,7 @@ fun LiveScorecardDialog(
                     item {
                         Text(
                             text = "First Innings Summary",
-                            fontSize = 16.sp,
+                            style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = sectionTitleColor
                         )
@@ -137,14 +137,14 @@ fun LiveScorecardDialog(
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Text(
                                     text = "${if (battingTeamName == "Team A") "Team B" else "Team A"}: $firstInningsRuns/$firstInningsWickets",
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
 
                                 if (firstInningsBattingPlayers.isNotEmpty()) {
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    Text("Top Performers:", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = infoOn)
+                                    Text("Top Performers:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, color = infoOn)
 
                                     val topBat = firstInningsBattingPlayers.maxByOrNull { it.runs }
                                     val topBowl = firstInningsBowlingPlayers
@@ -158,7 +158,7 @@ fun LiveScorecardDialog(
                                     topBat?.let {
                                         Text(
                                             "🏏 ${it.name}: ${it.runs} runs",
-                                            fontSize = 11.sp,
+                                            style = MaterialTheme.typography.labelSmall,
                                             color = infoOn
                                         )
                                     }
@@ -166,14 +166,14 @@ fun LiveScorecardDialog(
                                         if (it.wickets > 0) {
                                             Text(
                                                 "⚾ ${it.name}: ${it.wickets} wickets",
-                                                fontSize = 11.sp,
+                                                style = MaterialTheme.typography.labelSmall,
                                                 color = infoOn
                                             )
                                         } else {
                                             val economy = if (it.ballsBowled > 0) (it.runsConceded.toDouble() * 6.0) / it.ballsBowled else 0.0
                                             Text(
                                                 "⚾ ${it.name}: Best economy ${"%.1f".format(economy)}",
-                                                fontSize = 11.sp,
+                                                style = MaterialTheme.typography.labelSmall,
                                                 color = infoOn
                                             )
                                         }
@@ -188,7 +188,7 @@ fun LiveScorecardDialog(
                 item {
                     Text(
                         text = "Current Innings - Batting",
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = battingSectionColor
                     )
@@ -217,7 +217,7 @@ fun LiveScorecardDialog(
                     item {
                         Text(
                             text = "No batting data yet",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = infoOn,
                             fontStyle = FontStyle.Italic,
                         )
@@ -233,7 +233,7 @@ fun LiveScorecardDialog(
                     item {
                         Text(
                             text = "Yet to bat: ${yetToBat.joinToString(", ") { it.name }}",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = infoOn,
                             fontStyle = FontStyle.Italic,
                             modifier = Modifier.padding(start = 8.dp),
@@ -246,7 +246,7 @@ fun LiveScorecardDialog(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Current Innings - Bowling",
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = bowlingSectionColor
                     )
@@ -269,7 +269,7 @@ fun LiveScorecardDialog(
                     item {
                         Text(
                             text = "No bowling data yet",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = infoOn,
                             fontStyle = FontStyle.Italic,
                         )
@@ -286,7 +286,7 @@ fun LiveScorecardDialog(
                     item {
                         Text(
                             text = "Yet to bowl: ${didNotBowl.joinToString(", ") { it.name }}",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = infoOn,
                             fontStyle = FontStyle.Italic,
                             modifier = Modifier.padding(start = 8.dp),
@@ -304,7 +304,7 @@ fun LiveScorecardDialog(
                             Column(modifier = Modifier.padding(8.dp)) {
                                 Text(
                                     text = "🃏 Joker: $jokerPlayerName",
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.Bold,
                                     color = accentOn
                                 )
@@ -312,21 +312,21 @@ fun LiveScorecardDialog(
                                     jokerInBatting != null -> {
                                         Text(
                                             text = "Currently batting: ${jokerInBatting.runs} runs (${jokerInBatting.ballsFaced} balls)",
-                                            fontSize = 10.sp,
+                                            style = MaterialTheme.typography.labelSmall,
                                             color = accentOn
                                         )
                                     }
                                     jokerInBowling != null -> {
                                         Text(
                                             text = "Currently bowling: ${jokerInBowling.wickets}/${jokerInBowling.runsConceded} (${"%.1f".format(jokerInBowling.oversBowled)} overs)",
-                                            fontSize = 10.sp,
+                                            style = MaterialTheme.typography.labelSmall,
                                             color = accentOn
                                         )
                                     }
                                     else -> {
                                         Text(
                                             text = "Available for both teams",
-                                            fontSize = 10.sp,
+                                            style = MaterialTheme.typography.labelSmall,
                                             color = accentOn
                                         )
                                     }
@@ -365,7 +365,7 @@ fun LivePlayerStatCard(
     ) {
         Text(
             text = if (player.isJoker) "🃏 ${player.name}" else player.name,
-            fontSize = 12.sp,
+            style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.weight(1f),
             color = if (player.isJoker) jokerColor else primaryTextColor,
@@ -375,7 +375,7 @@ fun LivePlayerStatCard(
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = "${player.runs}${if (!player.isOut && player.ballsFaced > 0) "*" else ""} (${player.ballsFaced})",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Medium,
                         color = primaryTextColor,
                     )
@@ -383,7 +383,7 @@ fun LivePlayerStatCard(
                         val boundaryText = if (shortPitch) "4s:${player.fours}" else "4s:${player.fours} 6s:${player.sixes}"
                         Text(
                             text = boundaryText,
-                            fontSize = 10.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = secondaryTextColor,
                         )
                     }
@@ -393,13 +393,13 @@ fun LivePlayerStatCard(
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = "${player.wickets}/${player.runsConceded}",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Medium,
                         color = bowlingStatsColor,
                     )
                     Text(
                         text = "${"%.1f".format(player.oversBowled)} ov, Eco: ${"%.1f".format(player.economy)}",
-                        fontSize = 10.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         color = secondaryTextColor,
                     )
                 }

@@ -20,6 +20,9 @@ package com.oreki.stumpd.data.sync
  * - All match/player/group data is GLOBALLY visible to all app users
  */
 object FirebaseConfig {
+    /** Firestore rejects a WriteBatch containing more operations than this. */
+    const val MAX_BATCH_OPERATIONS = 500
+
     // Collection names (GLOBAL - shared with all users)
     const val COLLECTION_MATCHES = "matches"
     const val COLLECTION_PLAYERS = "players"

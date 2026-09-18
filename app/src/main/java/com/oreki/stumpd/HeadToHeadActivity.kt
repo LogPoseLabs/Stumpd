@@ -1,6 +1,7 @@
 package com.oreki.stumpd
 
 import com.oreki.stumpd.domain.model.*
+import com.oreki.stumpd.domain.match.mainMatchDeliveries
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -17,6 +18,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.NavController
+import androidx.navigation.compose.rememberNavController
+import com.oreki.stumpd.ui.stats.popBackStackOrFinish
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -24,36 +29,24 @@ import androidx.compose.ui.unit.dp
 import com.oreki.stumpd.data.local.entity.GroupEntity
 import com.oreki.stumpd.ui.components.DateFilterDialog
 import com.oreki.stumpd.ui.components.GroupFilterDropdown
+import com.oreki.stumpd.ui.components.pitchTypeLabel
 import com.oreki.stumpd.ui.components.filterMatchesByGroup
 import com.oreki.stumpd.ui.components.filterMatchesByPitchType
 import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberMatchRepository
 import com.oreki.stumpd.ui.history.rememberPlayerRepository
 import com.oreki.stumpd.ui.theme.StumpdTheme
+import com.oreki.stumpd.ui.theme.EmptyState
+import com.oreki.stumpd.ui.theme.hairline
 import com.oreki.stumpd.viewmodel.HeadToHeadViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-
-class HeadToHeadActivity : ComponentActivity() {
-    @RequiresApi(Build.VERSION_CODES.O)
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        actionBar?.hide()
-        setContent {
-            StumpdTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    HeadToHeadScreen(onBack = { finish() })
-                }
-            }
-        }
-    }
-}
+import dagger.hilt.android.AndroidEntryPoint
 
 data class HeadToHeadStats(
     val batsmanName: String,
@@ -78,7 +71,15 @@ data class HeadToHeadStats(
 @OptIn(ExperimentalMaterial3Api::class)
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
-fun HeadToHeadScreen(onBack: () -> Unit, vm: HeadToHeadViewModel = viewModel()) {
+fun HeadToHeadScreen(navController: NavController, vm: HeadToHeadViewModel = hiltViewModel()) {
+    // A correction to a saved match changes these standings, and this screen is one back-press
+    // away from the editor, so it re-reads on resume rather than once per process.
+    LifecycleResumeEffect(Unit) {
+        vm.loadData()
+        onPauseOrDispose { }
+    }
+
+    val context = LocalContext.current
     val isLoading = vm.isLoading
     val groups = vm.groups
     val selectedGroupId = vm.selectedGroupId
@@ -104,7 +105,7 @@ fun HeadToHeadScreen(onBack: () -> Unit, vm: HeadToHeadViewModel = viewModel()) 
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { navController.popBackStackOrFinish(context) }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -116,7 +117,8 @@ fun HeadToHeadScreen(onBack: () -> Unit, vm: HeadToHeadViewModel = viewModel()) 
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -141,11 +143,7 @@ fun HeadToHeadScreen(onBack: () -> Unit, vm: HeadToHeadViewModel = viewModel()) 
                     modifier = Modifier.weight(1f)
                 )
 
-                val pitchLabel = when (selectedPitchType) {
-                    true -> "Short"
-                    false -> "Long"
-                    null -> "All Pitches"
-                }
+                val pitchLabel = pitchTypeLabel(selectedPitchType, abbreviated = true)
                 FilledTonalButton(
                     onClick = { vm.showPitchPicker = true },
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
@@ -179,8 +177,9 @@ fun HeadToHeadScreen(onBack: () -> Unit, vm: HeadToHeadViewModel = viewModel()) 
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
+                                containerColor = MaterialTheme.colorScheme.surfaceContainer
+                            ),
+                            border = hairline()
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
@@ -306,19 +305,28 @@ fun HeadToHeadScreen(onBack: () -> Unit, vm: HeadToHeadViewModel = viewModel()) 
                         }
                     } else if (selectedBatsman != null && selectedBowler != null) {
                         item {
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer
-                                )
-                            ) {
-                                Text(
-                                    "No head-to-head data found between these players",
-                                    modifier = Modifier.padding(16.dp),
-                                    textAlign = TextAlign.Center,
-                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            }
+                            // Not an error: these two simply haven't faced each other in the
+                            // matches on file. It used to be rendered in errorContainer, which
+                            // made a normal answer look like something had gone wrong.
+                            EmptyState(
+                                icon = Icons.Default.SportsCricket,
+                                title = "No deliveries between these two",
+                                description = "They haven't faced each other in the matches " +
+                                    "this filter covers. Try All Time, or another pairing.",
+                            )
+                        }
+                    } else {
+                        item {
+                            // Before a pair is chosen this screen was simply blank below the
+                            // two dropdowns, which reads as "nothing here" rather than "your
+                            // turn".
+                            EmptyState(
+                                icon = Icons.Default.SportsCricket,
+                                title = "Pick a batsman and a bowler",
+                                description = "Choose two players above to see how they've " +
+                                    "matched up: runs, balls, dismissals and every delivery " +
+                                    "between them.",
+                            )
                         }
                     }
                 }
@@ -492,6 +500,9 @@ data class MatchHeadToHeadDetail(
 
 @Composable
 fun MatchHeadToHeadCard(detail: MatchHeadToHeadDetail) {
+    val h2hDateFormat = remember {
+        java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault())
+    }
     Card(
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -509,8 +520,7 @@ fun MatchHeadToHeadCard(detail: MatchHeadToHeadDetail) {
                     fontWeight = FontWeight.Medium
                 )
                 Text(
-                    java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault())
-                        .format(java.util.Date(detail.matchDate)),
+                    h2hDateFormat.format(java.util.Date(detail.matchDate)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -616,7 +626,8 @@ fun calculateHeadToHead(
         var wasOutInMatch = false
         var hasDataInMatch = false
 
-        match.allDeliveries.forEach { delivery ->
+        // A batsman-versus-bowler record is a record of the match, not of an eliminator.
+        match.allDeliveries.mainMatchDeliveries().forEach { delivery ->
             if (delivery.strikerName.equals(batsmanName, ignoreCase = true) &&
                 delivery.bowlerName.equals(bowlerName, ignoreCase = true)) {
 

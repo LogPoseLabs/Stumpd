@@ -54,13 +54,15 @@ class GroupRepository(private val db: StumpdDb) {
                 // Generate both invite code and claim code for new groups
                 val inviteCode = InviteCodeManager.generateCode()
                 val claimCode = InviteCodeManager.generateClaimCode()
+                val now = System.currentTimeMillis()
                 db.groupDao().upsertGroup(
                     GroupEntity(
                         id = id, 
                         name = name.trim(),
                         inviteCode = inviteCode,
                         claimCode = claimCode,
-                        isOwner = true
+                        isOwner = true,
+                        updatedAt = now
                     )
                 )
                 db.groupDao().upsertDefaults(defaultEntity)
@@ -79,7 +81,10 @@ class GroupRepository(private val db: StumpdDb) {
      */
     suspend fun renameGroup(id: String, newName: String) = withContext(Dispatchers.IO) {
         try {
-            db.groupDao().upsertGroup(GroupEntity(id = id, name = newName.trim()))
+            val existing = db.groupDao().getGroupById(id)
+                ?: throw IllegalStateException("Group not found: $id")
+            // Must preserve inviteCode / claimCode / isOwner — REPLACE upsert wipes omitted columns.
+            db.groupDao().upsertGroup(existing.copy(name = newName.trim(), updatedAt = System.currentTimeMillis()))
             Log.d(TAG, "Renamed group: $id to $newName")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to rename group: $id", e)
@@ -94,6 +99,8 @@ class GroupRepository(private val db: StumpdDb) {
     suspend fun deleteGroup(id: String) = withContext(Dispatchers.IO) {
         try {
             db.groupDao().clearMembers(id)
+            db.groupDao().clearUnavailablePlayers(id)
+            db.groupDao().deleteGroup(id)
             Log.d(TAG, "Deleted group: $id")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete group: $id", e)
@@ -113,6 +120,9 @@ class GroupRepository(private val db: StumpdDb) {
             if (rows.isNotEmpty()) {
                 db.groupDao().upsertMembers(rows)
             }
+            // Removing a member used to leave them in group_unavailable_players,
+            // which made Available = members - unavailable go negative.
+            db.groupDao().pruneUnavailableNonMembers(groupId)
             Log.d(TAG, "Replaced members for group: $groupId, count: ${rows.size}")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to replace members for group: $groupId", e)
@@ -128,6 +138,12 @@ class GroupRepository(private val db: StumpdDb) {
     suspend fun updateDefaults(groupId: String, defaults: GroupDefaultEntity) = withContext(Dispatchers.IO) {
         try {
             db.groupDao().upsertDefaults(defaults.copy(groupId = groupId))
+            // Touch the group too. Sync picks up groups by `updatedAt > lastGroupSync`, so a
+            // settings-only edit used to stay on this device — it worked at all only because the
+            // editor always calls renameGroup first, which happens to bump it.
+            db.groupDao().getGroupById(groupId)?.let { group ->
+                db.groupDao().upsertGroup(group.copy(updatedAt = System.currentTimeMillis()))
+            }
             Log.d(TAG, "Updated defaults for group: $groupId")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to update defaults for group: $groupId", e)
@@ -221,6 +237,9 @@ class GroupRepository(private val db: StumpdDb) {
             try {
                 val entities = db.groupDao().listGroups()
                 entities.map { group ->
+                    // Remove is membership, not unavailability. Drop leftover
+                    // unavailable rows for people who are no longer in the group.
+                    db.groupDao().pruneUnavailableNonMembers(group.id)
                     val defaults = db.groupDao().getDefaults(group.id)
                     val memberCount = db.groupDao().memberCount(group.id)
                     Triple(group, defaults, memberCount)
@@ -243,7 +262,7 @@ class GroupRepository(private val db: StumpdDb) {
                     entity = db.groupDao().listGroups().first { it.id == groupId },
                     defaults = db.groupDao().getDefaults(groupId),
                     memberIds = db.groupDao().memberIds(groupId),
-                    unavailablePlayerIds = db.groupDao().getUnavailablePlayerIds(groupId)
+                    unavailablePlayerIds = db.groupDao().getUnavailableMemberIds(groupId)
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to get group for edit: $groupId", e)
@@ -272,23 +291,23 @@ class GroupRepository(private val db: StumpdDb) {
      */
     suspend fun updatePlayerGroups(playerId: String, groupIds: List<String>) = withContext(Dispatchers.IO) {
         try {
-            // Remove all existing memberships for this player
-            val existingGroupIds = db.groupDao().getGroupIdsForPlayer(playerId)
-            existingGroupIds.forEach { groupId ->
-                db.groupDao().clearMembers(groupId)
-                // Re-add members except this player
-                val remainingMembers = db.groupDao().memberIds(groupId)
-                    .filter { it != playerId }
-                    .map { GroupMemberEntity(groupId, it) }
-                if (remainingMembers.isNotEmpty()) {
-                    db.groupDao().upsertMembers(remainingMembers)
-                }
-            }
-            
-            // Add new memberships
-            val newMemberships = groupIds.map { GroupMemberEntity(it, playerId) }
+            val previousGroupIds = db.groupDao().getGroupIdsForPlayer(playerId)
+
+            // Delete only this player's rows. The previous implementation called
+            // clearMembers(groupId) and then re-read memberIds(groupId) to restore the
+            // others, but that read happened after the delete and so always came back
+            // empty - every group this player belonged to lost all of its members.
+            db.groupDao().removePlayerFromAllGroups(playerId)
+
+            val newMemberships = groupIds.distinct().map { GroupMemberEntity(it, playerId) }
             if (newMemberships.isNotEmpty()) {
                 db.groupDao().upsertMembers(newMemberships)
+            }
+
+            // A player dropped from a group must not stay in its unavailable list,
+            // or Available = members - unavailable goes negative.
+            (previousGroupIds + groupIds).distinct().forEach { groupId ->
+                db.groupDao().pruneUnavailableNonMembers(groupId)
             }
             Log.d(TAG, "Updated groups for player: $playerId, count: ${groupIds.size}")
         } catch (e: Exception) {
@@ -309,7 +328,7 @@ class GroupRepository(private val db: StumpdDb) {
         withContext(Dispatchers.IO) {
             try {
                 val allPlayers = db.playerDao().list()
-                val unavailableIds = db.groupDao().getUnavailablePlayerIds(groupId)
+                val unavailableIds = db.groupDao().getUnavailableMemberIds(groupId)
                 val memberIds = db.groupDao().memberIds(groupId).toSet()
                 allPlayers.filter { player ->
                     // Only show players who are explicit members of this group
@@ -356,7 +375,7 @@ class GroupRepository(private val db: StumpdDb) {
     suspend fun getUnavailablePlayerIds(groupId: String): List<String> = 
         withContext(Dispatchers.IO) {
             try {
-                db.groupDao().getUnavailablePlayerIds(groupId)
+                db.groupDao().getUnavailableMemberIds(groupId)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to get unavailable players for group: $groupId", e)
                 emptyList()
@@ -371,16 +390,11 @@ class GroupRepository(private val db: StumpdDb) {
     suspend fun replaceUnavailablePlayers(groupId: String, unavailablePlayerIds: List<String>) = 
         withContext(Dispatchers.IO) {
             try {
-                // Clear existing unavailable players
-                val currentUnavailable = db.groupDao().getUnavailablePlayerIds(groupId)
-                currentUnavailable.forEach { playerId ->
-                    db.groupDao().markPlayerAvailable(groupId, playerId)
-                }
-                
-                // Add new unavailable players
-                val entities = unavailablePlayerIds.distinct().map { 
-                    GroupUnavailablePlayerEntity(groupId, it) 
-                }
+                db.groupDao().clearUnavailablePlayers(groupId)
+                val memberIds = db.groupDao().memberIds(groupId).toSet()
+                val entities = unavailablePlayerIds.distinct()
+                    .filter { it in memberIds }
+                    .map { GroupUnavailablePlayerEntity(groupId, it) }
                 if (entities.isNotEmpty()) {
                     entities.forEach { entity ->
                         db.groupDao().markPlayerUnavailable(entity)
@@ -413,6 +427,18 @@ class GroupRepository(private val db: StumpdDb) {
     suspend fun clearDefaultGroupId() = withContext(Dispatchers.IO) {
         db.userPreferencesDao().delete("default_group_id")
     }
+
+    /**
+     * Records the group the app is filtered to, so the choice follows the user between screens.
+     * null means all groups.
+     *
+     * Every screen with a group filter writes here when the filter changes and reads
+     * [getDefaultGroupId] when it opens; before this, only the home screen wrote, so picking a
+     * group anywhere else was forgotten as soon as you left.
+     */
+    suspend fun setSelectedGroupId(groupId: String?) {
+        if (groupId == null) clearDefaultGroupId() else setDefaultGroupId(groupId)
+    }
     
     // ========== Invite Code Methods ==========
     
@@ -424,7 +450,7 @@ class GroupRepository(private val db: StumpdDb) {
     suspend fun generateInviteCode(groupId: String): String = withContext(Dispatchers.IO) {
         try {
             val code = com.oreki.stumpd.data.util.InviteCodeManager.generateCode()
-            db.groupDao().updateInviteCode(groupId, code)
+            db.groupDao().updateInviteCode(groupId, code, System.currentTimeMillis())
             Log.d(TAG, "Generated invite code for group $groupId: $code")
             code
         } catch (e: Exception) {
@@ -474,7 +500,7 @@ class GroupRepository(private val db: StumpdDb) {
     suspend fun regenerateInviteCode(groupId: String): String = withContext(Dispatchers.IO) {
         try {
             val newCode = com.oreki.stumpd.data.util.InviteCodeManager.generateCode()
-            db.groupDao().updateInviteCode(groupId, newCode)
+            db.groupDao().updateInviteCode(groupId, newCode, System.currentTimeMillis())
             Log.d(TAG, "Regenerated invite code for group $groupId: $newCode")
             newCode
         } catch (e: Exception) {
@@ -611,7 +637,7 @@ class GroupRepository(private val db: StumpdDb) {
         } else {
             // Generate new claim code
             val newCode = InviteCodeManager.generateClaimCode()
-            db.groupDao().upsertGroup(group.copy(claimCode = newCode))
+            db.groupDao().upsertGroup(group.copy(claimCode = newCode, updatedAt = System.currentTimeMillis()))
             Log.d(TAG, "Generated claim code for group $groupId")
             newCode
         }
@@ -629,7 +655,7 @@ class GroupRepository(private val db: StumpdDb) {
         if (!group.isOwner) return@withContext null
         
         val newCode = InviteCodeManager.generateClaimCode()
-        db.groupDao().upsertGroup(group.copy(claimCode = newCode))
+        db.groupDao().upsertGroup(group.copy(claimCode = newCode, updatedAt = System.currentTimeMillis()))
         Log.d(TAG, "Regenerated claim code for group $groupId")
         newCode
     }
@@ -642,7 +668,7 @@ class GroupRepository(private val db: StumpdDb) {
     suspend fun claimLocalOwnership(groupId: String, claimCode: String) = withContext(Dispatchers.IO) {
         val group = db.groupDao().getGroupById(groupId)
         if (group != null) {
-            db.groupDao().upsertGroup(group.copy(isOwner = true, claimCode = claimCode))
+            db.groupDao().upsertGroup(group.copy(isOwner = true, claimCode = claimCode, updatedAt = System.currentTimeMillis()))
             Log.d(TAG, "Claimed local ownership for group $groupId")
         }
     }

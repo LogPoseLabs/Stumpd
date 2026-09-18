@@ -7,6 +7,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import com.oreki.stumpd.ui.theme.EmptyState
+import com.oreki.stumpd.ui.theme.hairline
+import com.oreki.stumpd.ui.theme.StumpdMotion
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,23 +23,24 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.oreki.stumpd.ui.theme.rememberMessenger
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.oreki.stumpd.data.sync.sharing.MatchSharingManager
-import com.oreki.stumpd.data.sync.firebase.EnhancedFirebaseAuthHelper
-import com.oreki.stumpd.data.sync.realtime.RealTimeMatchListener
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import com.oreki.stumpd.ui.theme.StumpdTopBar
-import kotlinx.coroutines.launch
+import com.oreki.stumpd.viewmodel.LiveMatchesViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import dagger.hilt.android.AndroidEntryPoint
 
 /**
  * Live Matches Screen
  * Shows all currently shared/active matches that spectators can join
  */
+@AndroidEntryPoint
 class LiveMatchesActivity : ComponentActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -53,57 +62,18 @@ class LiveMatchesActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LiveMatchesScreen() {
+    val snackbarHostState = remember { SnackbarHostState() }
+    val messenger = rememberMessenger(snackbarHostState)
+
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    
-    var liveMatches by remember { mutableStateOf<List<SharedMatchInfo>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var currentUserId by remember { mutableStateOf<String?>(null) }
+    val viewModel: LiveMatchesViewModel = hiltViewModel()
+    val uiState = viewModel.uiState
     var showDeleteDialog by remember { mutableStateOf<SharedMatchInfo?>(null) }
-    var isDeleting by remember { mutableStateOf(false) }
-    
-    // Load live matches on start
-    LaunchedEffect(Unit) {
-        scope.launch {
-            try {
-                val authHelper = EnhancedFirebaseAuthHelper(context)
-                var userId = authHelper.currentUserId
-                
-                if (userId == null) {
-                    // Sign in anonymously if needed
-                    val user = authHelper.signInAnonymously()
-                    userId = user?.uid
-                    
-                    if (userId == null) {
-                        errorMessage = "Authentication failed. Please check your internet connection."
-                        isLoading = false
-                        return@launch
-                    }
-                    
-                    // Give Firebase a moment to propagate auth state
-                    kotlinx.coroutines.delay(500)
-                }
-                
-                currentUserId = userId
-                
-                val sharingManager = MatchSharingManager()
-                val matches = sharingManager.listActiveSharedMatches()
-                
-                liveMatches = matches
-                isLoading = false
-            } catch (e: Exception) {
-                errorMessage = e.message
-                isLoading = false
-                android.util.Log.e("LiveMatchesActivity", "Error loading matches", e)
-            }
-        }
-    }
     
     // Delete confirmation dialog
     showDeleteDialog?.let { matchToDelete ->
         AlertDialog(
-            onDismissRequest = { if (!isDeleting) showDeleteDialog = null },
+            onDismissRequest = { if (!viewModel.isDeleting) showDeleteDialog = null },
             icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
             title = { Text("Delete Live Match?") },
             text = { 
@@ -112,28 +82,19 @@ fun LiveMatchesScreen() {
             confirmButton = {
                 Button(
                     onClick = {
-                        isDeleting = true
-                        scope.launch {
-                            try {
-                                val sharingManager = MatchSharingManager()
-                                sharingManager.deleteInProgressMatch(matchToDelete.matchId)
-                                
-                                // Remove from list
-                                liveMatches = liveMatches.filter { it.matchId != matchToDelete.matchId }
-                                
-                                Toast.makeText(context, "Match deleted successfully", Toast.LENGTH_SHORT).show()
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "Failed to delete: ${e.message}", Toast.LENGTH_SHORT).show()
-                            } finally {
-                                isDeleting = false
+                        viewModel.deleteMatch(matchToDelete) { ok, err ->
+                            if (ok) {
+                                messenger.show("Match deleted successfully")
                                 showDeleteDialog = null
+                            } else {
+                                messenger.show("Failed to delete: $err")
                             }
                         }
                     },
-                    enabled = !isDeleting,
+                    enabled = !viewModel.isDeleting,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
-                    if (isDeleting) {
+                    if (viewModel.isDeleting) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(16.dp),
                             color = MaterialTheme.colorScheme.onError,
@@ -147,7 +108,7 @@ fun LiveMatchesScreen() {
             dismissButton = {
                 TextButton(
                     onClick = { showDeleteDialog = null },
-                    enabled = !isDeleting
+                    enabled = !viewModel.isDeleting
                 ) {
                     Text("Cancel")
                 }
@@ -156,6 +117,7 @@ fun LiveMatchesScreen() {
     }
     
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             StumpdTopBar(
                 title = "Live Matches",
@@ -169,8 +131,8 @@ fun LiveMatchesScreen() {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            when {
-                isLoading -> {
+            when (uiState) {
+                is LiveMatchesViewModel.UiState.Loading -> {
                     // Loading state
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -189,7 +151,8 @@ fun LiveMatchesScreen() {
                         }
                     }
                 }
-                errorMessage != null -> {
+                is LiveMatchesViewModel.UiState.Error -> {
+                    val errorMessage = uiState.message
                     // Error state
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -212,26 +175,12 @@ fun LiveMatchesScreen() {
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                errorMessage ?: "Unknown error",
+                                errorMessage,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Button(
-                                onClick = {
-                                    isLoading = true
-                                    errorMessage = null
-                                    scope.launch {
-                                        try {
-                                            val sharingManager = MatchSharingManager()
-                                            val matches = sharingManager.listActiveSharedMatches()
-                                            liveMatches = matches
-                                            isLoading = false
-                                        } catch (e: Exception) {
-                                            errorMessage = e.message
-                                            isLoading = false
-                                        }
-                                    }
-                                }
+                                onClick = { viewModel.loadMatches() }
                             ) {
                                 Icon(Icons.Default.Refresh, contentDescription = null)
                                 Spacer(Modifier.width(8.dp))
@@ -240,59 +189,41 @@ fun LiveMatchesScreen() {
                         }
                     }
                 }
-                liveMatches.isEmpty() -> {
-                    // Empty state
+                is LiveMatchesViewModel.UiState.Content -> {
+                    val liveMatches = uiState.liveMatches
+                    val currentUserId = uiState.currentUserId
+                    if (liveMatches.isEmpty()) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
-                            modifier = Modifier.padding(32.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.SportsBaseball,
-                                contentDescription = null,
-                                modifier = Modifier.size(80.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
-                            Text(
-                                "No Live Matches",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                "There are no active matches being shared right now.\nCheck back later or ask someone to share their match!",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(Modifier.height(16.dp))
-                            OutlinedButton(
-                                onClick = {
-                                    isLoading = true
-                                    scope.launch {
-                                        try {
-                                            val sharingManager = MatchSharingManager()
-                                            val matches = sharingManager.listActiveSharedMatches()
-                                            liveMatches = matches
-                                            isLoading = false
-                                        } catch (e: Exception) {
-                                            errorMessage = e.message
-                                            isLoading = false
-                                        }
-                                    }
+                        EmptyState(
+                            icon = Icons.Default.SportsBaseball,
+                            title = "No Live Matches",
+                            description = "There are no active matches being shared right now. " +
+                                "Check back later or ask someone to share their match.",
+                            actionButton = {
+                                OutlinedButton(onClick = { viewModel.loadMatches() }) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Refresh")
                                 }
-                            ) {
-                                Icon(Icons.Default.Refresh, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Refresh")
-                            }
-                        }
+                            },
+                        )
                     }
-                }
-                else -> {
-                    // List of matches
+                    } else {
+                    // One infinite transition for the whole screen, per the motion rules —
+                    // never one per row.
+                    val pulse = rememberInfiniteTransition(label = "live-pulse")
+                    val livePulse by pulse.animateFloat(
+                        initialValue = 0.35f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(900, easing = StumpdMotion.standard),
+                            repeatMode = RepeatMode.Reverse,
+                        ),
+                        label = "live-dot",
+                    )
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(16.dp),
@@ -302,8 +233,9 @@ fun LiveMatchesScreen() {
                         item {
                             Card(
                                 colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                                )
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                                ),
+                                border = hairline(),
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -315,19 +247,19 @@ fun LiveMatchesScreen() {
                                     Icon(
                                         Icons.Default.LiveTv,
                                         contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                        tint = MaterialTheme.colorScheme.primary
                                     )
                                     Column {
                                         Text(
                                             "${liveMatches.size} Live ${if (liveMatches.size == 1) "Match" else "Matches"}",
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            color = MaterialTheme.colorScheme.onSurface
                                         )
                                         Text(
                                             "Tap any match to watch live",
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
@@ -339,6 +271,7 @@ fun LiveMatchesScreen() {
                             LiveMatchCard(
                                 match = match,
                                 isOwner = currentUserId == match.ownerId,
+                                livePulse = livePulse,
                                 onClick = {
                                     // Open spectator view
                                     val intent = Intent(context, SpectatorActivity::class.java).apply {
@@ -354,6 +287,7 @@ fun LiveMatchesScreen() {
                             )
                         }
                     }
+                    }
                 }
             }
         }
@@ -364,6 +298,8 @@ fun LiveMatchesScreen() {
 fun LiveMatchCard(
     match: SharedMatchInfo,
     isOwner: Boolean = false,
+    /** Breathing alpha for the LIVE dot, hoisted so the list shares one animation. */
+    livePulse: Float = 1f,
     onClick: () -> Unit,
     onDelete: () -> Unit = {}
 ) {
@@ -373,9 +309,10 @@ fun LiveMatchCard(
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        border = hairline(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
@@ -478,7 +415,7 @@ fun LiveMatchCard(
                             ) {
                                 Surface(
                                     shape = RoundedCornerShape(3.dp),
-                                    color = MaterialTheme.colorScheme.onError
+                                    color = MaterialTheme.colorScheme.onError.copy(alpha = livePulse)
                                 ) {
                                     Box(Modifier.fillMaxSize())
                                 }

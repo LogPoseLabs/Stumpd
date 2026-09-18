@@ -1,5 +1,6 @@
 package com.oreki.stumpd
 
+import com.oreki.stumpd.data.preferences.MatchSettingsManager
 import com.oreki.stumpd.domain.model.*
 import android.os.Bundle
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -7,6 +8,12 @@ import androidx.compose.material3.*
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
+import com.oreki.stumpd.ui.theme.MicroLabel
+import com.oreki.stumpd.ui.theme.hairline
+import com.oreki.stumpd.ui.theme.hairline
+import com.oreki.stumpd.ui.theme.ScoreMedium
+import com.oreki.stumpd.ui.theme.StatValue
+import com.oreki.stumpd.ui.theme.animatedInt
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -42,6 +49,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.LocalTextStyle
+import com.oreki.stumpd.data.local.db.StumpdDb
 import com.oreki.stumpd.data.manager.ScoringAccessManager
 import com.oreki.stumpd.data.mappers.toDomain
 import com.oreki.stumpd.data.mappers.toEntityWithId
@@ -50,6 +58,7 @@ import com.oreki.stumpd.data.util.ClaimCodeUtils
 import com.oreki.stumpd.ui.history.rememberGroupRepository
 import com.oreki.stumpd.ui.history.rememberPlayerRepository
 import com.oreki.stumpd.ui.theme.StumpdTheme
+import com.oreki.stumpd.ui.theme.GradientHeroHeader
 import com.oreki.stumpd.ui.theme.StumpdTopBar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -62,8 +71,10 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import dagger.hilt.android.AndroidEntryPoint
 
 
+@AndroidEntryPoint
 class GroupManagementActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -102,6 +113,7 @@ fun GroupManagementScreen() {
     var unavailableCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
     var snackbarMessage by remember { mutableStateOf<String?>(null) }
+    var groupPendingDeletion by remember { mutableStateOf<PlayerGroup?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     fun refreshData() {
@@ -183,11 +195,21 @@ fun GroupManagementScreen() {
         }
     ) { padding ->
         LazyColumn(Modifier.padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item {
+                GradientHeroHeader(
+                    title = "Your Groups",
+                    subtitle = "${groups.size} group${if (groups.size == 1) "" else "s"} • " +
+                        "${memberCounts.values.sum()} players",
+                    emoji = "👥",
+                    shape = MaterialTheme.shapes.extraLarge
+                )
+            }
+
             items(groups.size) { idx ->
                 val g = groups[idx]
                 val totalCount = memberCounts[g.id] ?: 0
                 val unavailableCount = unavailableCounts[g.id] ?: 0
-                val availableCount = totalCount - unavailableCount
+                val availableCount = (totalCount - unavailableCount).coerceAtLeast(0)
                 val inviteCode = inviteCodes[g.id]
                 val claimCode = claimCodes[g.id]
                 val isOwner = groupOwnership[g.id] ?: true
@@ -205,6 +227,13 @@ fun GroupManagementScreen() {
                         val intent = android.content.Intent(context, EditGroupActivity::class.java)
                         intent.putExtra("group_id", g.id)
                         context.startActivity(intent)
+                    },
+                    // Only offered for groups you own, and the button itself is still behind
+                    // the deletions feature flag. Confirmed before anything is removed.
+                    onDelete = if (isOwner) {
+                        { groupPendingDeletion = g }
+                    } else {
+                        null
                     },
                     onGenerateCode = {
                         scope.launch {
@@ -244,6 +273,46 @@ fun GroupManagementScreen() {
                 )
             }
         }
+    }
+
+    groupPendingDeletion?.let { target ->
+        val memberCount = memberCounts[target.id] ?: 0
+        AlertDialog(
+            onDismissRequest = { groupPendingDeletion = null },
+            icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Delete \"${target.name}\"?") },
+            text = {
+                Text(
+                    "This removes the group, its $memberCount member link${if (memberCount == 1) "" else "s"} " +
+                        "and its availability settings. Players themselves are kept, and matches " +
+                        "already played stay in history. This cannot be undone."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val name = target.name
+                        groupPendingDeletion = null
+                        scope.launch {
+                            try {
+                                groupRepo.deleteGroup(target.id)
+                                refreshData()
+                                snackbarMessage = "Deleted group \"$name\""
+                            } catch (e: Exception) {
+                                snackbarMessage = "Could not delete group: ${e.message}"
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { groupPendingDeletion = null }) { Text("Cancel") }
+            }
+        )
     }
 
     if (showCreate) {
@@ -299,13 +368,15 @@ fun GroupManagementScreen() {
                             )
                             // Also save the full group data so it shows immediately
                             withContext(Dispatchers.IO) {
-                                val db = (context.applicationContext as StumpdApplication).database
+                                val db = StumpdDb.get(context)
                                 db.groupDao().upsertGroup(groupData.group)
                                 db.groupDao().clearMembers(groupData.group.id)
                                 groupData.members.forEach { member ->
                                     db.groupDao().upsertMembers(listOf(member))
                                 }
-                                groupData.unavailable.forEach { unavailable ->
+                                db.groupDao().clearUnavailablePlayers(groupData.group.id)
+                                val memberIds = groupData.members.map { it.playerId }.toSet()
+                                groupData.unavailable.filter { it.playerId in memberIds }.forEach { unavailable ->
                                     db.groupDao().markPlayerUnavailable(unavailable)
                                 }
                                 groupData.defaults?.let { defaults ->
@@ -523,34 +594,28 @@ private fun GroupCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        ),
+        border = hairline(),
+        shape = MaterialTheme.shapes.large,
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(Modifier.padding(16.dp)) {
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        group.name, 
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        group.defaults.groundName.ifEmpty { "No ground set" },
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Icon(
-                    Icons.Default.Edit,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
+            // Header. No edit icon here: neither it nor the card was clickable, so it read as a
+            // button that did nothing. Editing is the "Edit Group" button lower down.
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    group.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    group.defaults.groundName.ifEmpty { "No ground set" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             
@@ -577,15 +642,14 @@ private fun GroupCard(
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            "$totalMembers",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
+                            animatedInt(totalMembers).toString(),
+                            style = StatValue,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                     Text(
-                        "Total Members",
-                        fontSize = 11.sp,
+                        "TOTAL MEMBERS",
+                        style = MicroLabel,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -609,9 +673,8 @@ private fun GroupCard(
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            "$availableMembers",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
+                            animatedInt(availableMembers).toString(),
+                            style = StatValue,
                             color = if (availableMembers > 0) 
                                 MaterialTheme.colorScheme.primary 
                             else 
@@ -619,8 +682,8 @@ private fun GroupCard(
                         )
                     }
                     Text(
-                        "Available",
-                        fontSize = 11.sp,
+                        "AVAILABLE",
+                        style = MicroLabel,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -638,14 +701,14 @@ private fun GroupCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "Invite Code",
-                        fontSize = 12.sp,
+                        "Invite Code".uppercase(),
+                        style = MicroLabel,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (inviteCode != null) {
                         Text(
                             com.oreki.stumpd.data.util.InviteCodeManager.formatForDisplay(inviteCode),
-                            fontSize = 20.sp,
+                            style = ScoreMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
                             letterSpacing = 2.sp
@@ -653,7 +716,7 @@ private fun GroupCard(
                     } else {
                         Text(
                             "Not generated",
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -692,23 +755,18 @@ private fun GroupCard(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "Recovery Code",
-                            fontSize = 12.sp,
+                            "Recovery Code".uppercase(),
+                            style = MicroLabel,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
                             "Tap to view (keep safe!)",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.tertiary
                         )
                     }
                     
-                    FilledTonalIconButton(
-                        onClick = { onShowRecoveryCode(claimCode) },
-                        colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer
-                        )
-                    ) {
+                    FilledTonalIconButton(onClick = { onShowRecoveryCode(claimCode) }) {
                         Icon(
                             Icons.Default.Lock,
                             contentDescription = "View Recovery Code",
@@ -729,30 +787,25 @@ private fun GroupCard(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "Not the owner",
-                            fontSize = 12.sp,
+                            "Not the owner".uppercase(),
+                            style = MicroLabel,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
                             "Have the recovery code?",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.tertiary
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                     
-                    FilledTonalButton(
-                        onClick = onClaimOwnership,
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer
-                        )
-                    ) {
+                    FilledTonalButton(onClick = onClaimOwnership) {
                         Icon(
                             Icons.Default.Person,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(4.dp))
-                        Text("Claim", fontSize = 13.sp)
+                        Text("Claim", style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
@@ -768,26 +821,26 @@ private fun GroupCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "Scoring access",
-                        fontSize = 12.sp,
+                        "Scoring access".uppercase(),
+                        style = MicroLabel,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (hasScoringAccess) {
                         Text(
                             "You can start and score matches",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary
                         )
                     } else if (isOwner) {
                         Text(
                             "Generate OTP for members to score",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else {
                         Text(
                             "Enter OTP to score matches",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -800,7 +853,7 @@ private fun GroupCard(
                         ) {
                             Icon(Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("Generate OTP", fontSize = 12.sp)
+                            Text("Generate OTP", style = MaterialTheme.typography.labelMedium)
                         }
                     }
                     if (!isOwner && !hasScoringAccess && onEnterScoringOtp != null) {
@@ -810,7 +863,7 @@ private fun GroupCard(
                         ) {
                             Icon(Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("Enter OTP", fontSize = 12.sp)
+                            Text("Enter OTP", style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
@@ -876,7 +929,7 @@ private fun GroupCard(
                     Spacer(Modifier.width(6.dp))
                     Text(
                         "Only the group owner can edit this group",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -916,6 +969,8 @@ private fun JoinGroupDialog(
                     singleLine = true,
                     textStyle = LocalTextStyle.current.copy(
                         fontSize = 24.sp,
+
+                        fontFeatureSettings = "tnum, lnum",
                         letterSpacing = 4.sp,
                         fontWeight = FontWeight.Bold
                     ),
@@ -1207,6 +1262,8 @@ private fun EnterScoringOtpDialog(
                     singleLine = true,
                     textStyle = LocalTextStyle.current.copy(
                         fontSize = 24.sp,
+
+                        fontFeatureSettings = "tnum, lnum",
                         letterSpacing = 4.sp,
                         fontWeight = FontWeight.Bold
                     ),
@@ -1371,7 +1428,7 @@ private fun CreateOrEditGroupDialog(
                 if (matchSettings.powerplayOvers > 0) {
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Double runs in powerplay", fontSize = 13.sp)
+                        Text("Double runs in powerplay", style = MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.width(8.dp))
                         Switch(
                             checked = matchSettings.doubleRunsInPowerplay,
@@ -1477,8 +1534,9 @@ private fun RecoveryCodeDialog(
                 
                 Card(
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
                     ),
+                    border = hairline(),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
@@ -1487,7 +1545,7 @@ private fun RecoveryCodeDialog(
                     ) {
                         Text(
                             formattedCode,
-                            fontSize = 24.sp,
+                            style = ScoreMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onTertiaryContainer,
                             letterSpacing = 2.sp
@@ -1511,7 +1569,11 @@ private fun RecoveryCodeDialog(
                             as android.content.ClipboardManager
                         val clip = android.content.ClipData.newPlainText("Recovery Code", recoveryCode)
                         clipboard.setPrimaryClip(clip)
-                        android.widget.Toast.makeText(context, "Copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+                        // Stays a toast: this is inside a dialog, and a snackbar would be drawn
+                        // behind the dialog's scrim where nobody would see it.
+                        android.widget.Toast
+                            .makeText(context, "Copied to clipboard", android.widget.Toast.LENGTH_SHORT)
+                            .show()
                     }
                 ) {
                     Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -1573,6 +1635,8 @@ private fun ClaimOwnershipDialog(
                     singleLine = true,
                     textStyle = LocalTextStyle.current.copy(
                         fontSize = 18.sp,
+
+                        fontFeatureSettings = "tnum, lnum",
                         letterSpacing = 2.sp,
                         fontWeight = FontWeight.Bold
                     ),

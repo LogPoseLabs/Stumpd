@@ -66,14 +66,14 @@ fun PlayerSuggestionDialog(
         onDismissRequest = onDismiss,
         title = {
             Column {
-                Text(text = title, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 if (currentTeamName.isNotEmpty()) {
-                    Text(text = "Adding to: $currentTeamName", fontSize = 12.sp, color = Color.Gray)
+                    Text(text = "Adding to: $currentTeamName", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (selectedPlayers.isNotEmpty()) {
                     Text(
                         text = "${selectedPlayers.size} player(s) already selected",
-                        fontSize = 10.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.secondary
                     )
                 }
@@ -136,7 +136,7 @@ fun PlayerSuggestionDialog(
                             item {
                                 Text(
                                     text = "Available Players", // title change
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(vertical = 4.dp),
@@ -161,8 +161,8 @@ fun PlayerSuggestionDialog(
                                             "All the players are already part of a team.\nType a name to add new player.",
                                         modifier = Modifier.padding(16.dp),
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                        fontSize = 12.sp,
-                                        color = Color.Gray,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
                             }
@@ -172,7 +172,7 @@ fun PlayerSuggestionDialog(
                             item {
                                 Text(
                                     text = "Available Players",
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(vertical = 4.dp),
@@ -195,8 +195,8 @@ fun PlayerSuggestionDialog(
                                         text = "No available players found matching '$searchQuery'.\nAll matching players may already be selected.",
                                         modifier = Modifier.padding(16.dp),
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                        fontSize = 12.sp,
-                                        color = Color.Gray,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
                             }
@@ -210,19 +210,21 @@ fun PlayerSuggestionDialog(
                             Spacer(Modifier.height(8.dp))
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD)),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                ),
                             ) {
                                 Column(Modifier.padding(12.dp)) {
                                     Text(
                                         text = "Already Selected (${selectedPlayers.size}):",
-                                        fontSize = 12.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF1976D2),
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
                                     )
                                     Text(
                                         text = selectedNames.joinToString(", "),
-                                        fontSize = 10.sp,
-                                        color = Color(0xFF1976D2),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
                                         maxLines = 2,
                                     )
                                 }
@@ -281,20 +283,20 @@ fun PlayerSuggestionCard(
                         if (startIndex > 0) {
                             Text(
                                 text = player.name.substring(0, startIndex),
-                                fontSize = 14.sp,
+                                style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium,
                             )
                         }
                         Text(
                             text = player.name.substring(startIndex, endIndex),
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
                         )
                         if (endIndex < player.name.length) {
                             Text(
                                 text = player.name.substring(endIndex),
-                                fontSize = 14.sp,
+                                style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium,
                             )
                         }
@@ -302,7 +304,7 @@ fun PlayerSuggestionCard(
                 } else {
                     Text(
                         text = player.name,
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                     )
                 }
@@ -365,7 +367,7 @@ suspend fun loadAll(playerRepo: PlayerRepository): List<UiPlayer> =
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+        title = { Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium) },
         text = {
             Column {
                 OutlinedTextField(
@@ -525,7 +527,7 @@ private fun InfoCard(text: String) {
             text = text,
             modifier = Modifier.padding(16.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 12.sp
+            style = MaterialTheme.typography.bodySmall
         )
     }
 }

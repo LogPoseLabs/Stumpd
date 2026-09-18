@@ -2,9 +2,11 @@ package com.oreki.stumpd.ui.scoring
 
 import com.oreki.stumpd.*
 
+import com.oreki.stumpd.data.preferences.MatchSettingsManager
 import com.oreki.stumpd.domain.model.*
 import android.content.Intent
 import android.os.Bundle
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,15 +18,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.oreki.stumpd.ui.theme.Feedback
+import com.oreki.stumpd.ui.theme.rememberHaptics
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import com.oreki.stumpd.ui.theme.StumpdTopBar
 import java.util.UUID
@@ -33,8 +40,18 @@ import com.oreki.stumpd.viewmodel.ScoringViewModel
 import com.oreki.stumpd.viewmodel.ScoringViewModelFactory
 import com.oreki.stumpd.viewmodel.ScoringInitParams
 import com.oreki.stumpd.viewmodel.ToastEvent
+import dagger.hilt.android.AndroidEntryPoint
 
 
+/**
+ * How long a celebration waits for the scoring surface to clear before being dropped. Long enough
+ * to cover choosing a dismissal type and the next batsman, short enough that it can't surface
+ * after an innings break.
+ */
+private const val CELEBRATION_GRACE_MS = 6_000L
+
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
+@AndroidEntryPoint
 class ScoringActivity : ComponentActivity() {
     
     private var persistedMatchId: String? = null
@@ -42,6 +59,7 @@ class ScoringActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         actionBar?.hide()
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         
         // Restore matchId from saved state (survives configuration changes)
         persistedMatchId = savedInstanceState?.getString("MATCH_ID")
@@ -61,6 +79,11 @@ class ScoringActivity : ComponentActivity() {
         val tossWinner = intent.getStringExtra("toss_winner")
         val tossChoice = intent.getStringExtra("toss_choice")
         val resumeMatchId = intent.getStringExtra("resume_match_id")
+        // Present only for a tournament fixture; keyed to team1/team2 as set up, not to who bats.
+        val tournamentId = intent.getStringExtra("tournament_id")
+        val tournamentFixtureId = intent.getStringExtra("tournament_fixture_id")
+        val team1Id = intent.getStringExtra("team1_id")
+        val team2Id = intent.getStringExtra("team2_id")
         
         // Priority: persistedMatchId (config change) > resumeMatchId (explicit resume) > new UUID
         val matchId = persistedMatchId ?: resumeMatchId ?: UUID.randomUUID().toString()
@@ -84,18 +107,26 @@ class ScoringActivity : ComponentActivity() {
             groupName = groupName,
             tossChoice = tossChoice,
             tossWinner = tossWinner,
-            resumeMatchId = if (persistedMatchId != null) matchId else resumeMatchId
+            resumeMatchId = if (persistedMatchId != null) matchId else resumeMatchId,
+            tournamentId = tournamentId,
+            tournamentFixtureId = tournamentFixtureId,
+            team1Id = team1Id,
+            team2Id = team2Id
         )
         val factory = ScoringViewModelFactory(application, initParams)
 
         setContent {
             StumpdTheme {
+                val windowSizeClass = calculateWindowSizeClass(this@ScoringActivity)
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
                     val vm: ScoringViewModel = viewModel(factory = factory)
-                    ScoringScreen(viewModel = vm)
+                    ScoringScreen(
+                        viewModel = vm,
+                        widthSizeClass = windowSizeClass.widthSizeClass,
+                    )
                 }
             }
         }
@@ -119,7 +150,10 @@ object NoBallOutcomeHolders {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun ScoringScreen(viewModel: ScoringViewModel) {
+fun ScoringScreen(
+    viewModel: ScoringViewModel,
+    widthSizeClass: WindowWidthSizeClass = WindowWidthSizeClass.Compact,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -145,6 +179,82 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
     val availableBatsmen = vm.availableBatsmen
     val isInningsComplete = vm.isInningsComplete
     val isPowerplayActive = vm.isPowerplayActive
+
+    // Celebrations and haptics: collected as events, so nothing replays on recomposition or
+    // re-fires when a mid-match process death is restored.
+    var celebration by remember { mutableStateOf<ScoringEffect?>(null) }
+    // Received but not yet shown. A wicket lands the instant the dismissal type is tapped, and
+    // the new-batsman dialog opens on top of it immediately — so an effect played at that moment
+    // spends its whole life behind a dialog scrim and is never seen. It waits here until the
+    // scoring surface is clear, which for a wicket is the moment the batsman has been chosen.
+    var pendingCelebration by remember { mutableStateOf<ScoringEffect?>(null) }
+    // `vibrationFeedback` is a global preference, not a per-match one. It has existed unread
+    // since before this screen had any feedback at all; this is what finally honours it.
+    val settingsManager = remember { MatchSettingsManager(context) }
+    val hapticsEnabled = remember { settingsManager.getGlobalSettings().vibrationFeedback }
+    val haptics = rememberHaptics(enabled = hapticsEnabled)
+    LaunchedEffect(vm) {
+        vm.scoringEffect.collect { effect ->
+            pendingCelebration = effect
+            // The haptic is not deferred: it's felt rather than watched, so it belongs at the
+            // true moment of the wicket, dialog or no dialog.
+            haptics.perform(
+                when (effect) {
+                    ScoringEffect.Four, ScoringEffect.Six -> Feedback.Confirm
+                    ScoringEffect.Wicket -> Feedback.Reject
+                }
+            )
+        }
+    }
+    val surfaceObscured = vm.showWicketDialog || vm.showRunOutDialog ||
+        vm.showFielderSelectionDialog || vm.showBatsmanDialog || vm.showBowlerDialog ||
+        vm.showExtrasDialog || vm.showQuickWideDialog || vm.showQuickNoBallDialog ||
+        vm.showRetirementDialog || vm.showInningsBreakDialog || vm.showMatchCompleteDialog ||
+        vm.showExitDialog || vm.showLiveScorecardDialog ||
+        vm.showFixMenu || vm.showFixWicketDialog || vm.showFixBowlerDialog ||
+        vm.showFixLastBallDialog || vm.showSuperOverOfferDialog ||
+        vm.showSuperOverIntervalDialog
+    LaunchedEffect(pendingCelebration, surfaceObscured) {
+        val pending = pendingCelebration ?: return@LaunchedEffect
+        if (surfaceObscured) {
+            // Don't hold it indefinitely — an innings break can sit open for minutes, and a
+            // flourish arriving after that reads as a glitch rather than as feedback.
+            delay(CELEBRATION_GRACE_MS)
+            pendingCelebration = null
+            return@LaunchedEffect
+        }
+        celebration = pending
+        pendingCelebration = null
+    }
+
+    // Remembered so the set is stable across recompositions; the lambdas only capture `vm`,
+    // `context` and the non-striker's name for the swap toast.
+    val liveScoreActions = remember(vm, context, nonStriker?.name) {
+        LiveScoreActions(
+            onSelectStriker = { vm.selectingBatsman = 1; vm.showBatsmanDialog = true },
+            onSelectNonStriker = { vm.selectingBatsman = 2; vm.showBatsmanDialog = true },
+            onSelectBowler = { vm.showBowlerDialog = true },
+            onSwapStrike = {
+                vm.swapStrike()
+                Toast.makeText(
+                    context,
+                    "Strike swapped! ${nonStriker?.name} now on strike",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            },
+            onScoreRuns = { runs ->
+                // Boundaries get their own, firmer feedback from the effect collector above.
+                if (runs != 4 && runs != 6) haptics.perform(Feedback.Tick)
+                vm.onRunScored(runs)
+            },
+            onShowExtras = { vm.showExtrasDialog = true },
+            onShowWicket = { vm.showWicketDialog = true },
+            onUndo = { vm.undoLastDelivery() },
+            onWide = { vm.onQuickWide() },
+            onRetire = { vm.showRetirementDialog = true },
+            onFix = { vm.showFixMenu = true },
+        )
+    }
 
     // ── Collect toast events from ViewModel ─────────────────────────
     LaunchedEffect(Unit) {
@@ -191,13 +301,11 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
         // When pager changes (swipe), update nothing - just observe
     }
 
-    // Responsive tab text size based on screen width
-    val configuration = LocalConfiguration.current
-    val screenWidthDp = configuration.screenWidthDp
-    val tabFontSize = when {
-        screenWidthDp >= 900 -> 11.sp  // Extra large screens
-        screenWidthDp >= 600 -> 12.sp  // Large screens (tablets, S24 Ultra landscape)
-        else -> 14.sp                  // Normal screens
+    val tabFontSize = when (widthSizeClass) {
+        WindowWidthSizeClass.Expanded -> 11.sp
+        WindowWidthSizeClass.Medium -> 12.sp
+        WindowWidthSizeClass.Compact -> 14.sp
+        else -> 14.sp
     }
     
     Scaffold(
@@ -222,6 +330,7 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
             )
         }
     ) { padding ->
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -259,55 +368,17 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
         ) { page ->
             when (page) {
             0 -> LiveScoreTab(
-                modifier = Modifier.padding(16.dp),
-            battingTeamName = battingTeamName,
-            currentInnings = currentInnings,
-            matchSettings = matchSettings,
-            calculatedTotalRuns = calculatedTotalRuns,
-            totalWickets = totalWickets,
-            currentOver = currentOver,
-            ballsInOver = ballsInOver,
-            totalExtras = totalExtras,
-            battingTeamPlayers = battingTeamPlayers,
-                firstInningsRuns = firstInningsRuns,
-            showSingleSideLayout = showSingleSideLayout,
-            striker = striker,
-            nonStriker = nonStriker,
-            bowler = bowler,
-            availableBatsmen = availableBatsmen,
-                currentBowlerSpell = vm.currentBowlerSpell,
+                state = vm.liveScoreUiState,
+                actions = liveScoreActions,
+                battingTeamPlayers = battingTeamPlayers,
+                striker = striker,
+                nonStriker = nonStriker,
+                bowler = bowler,
                 jokerPlayer = jokerPlayer,
                 currentOverDeliveries = vm.currentOverDeliveries,
-                isInningsComplete = isInningsComplete,
-                isPowerplayActive = isPowerplayActive,
-                context = context,
-            onSelectStriker = { vm.selectingBatsman = 1; vm.showBatsmanDialog = true },
-            onSelectNonStriker = { vm.selectingBatsman = 2; vm.showBatsmanDialog = true },
-            onSelectBowler = { vm.showBowlerDialog = true },
-            onSwapStrike = {
-                vm.swapStrike()
-                Toast.makeText(context, "Strike swapped! ${nonStriker?.name} now on strike", Toast.LENGTH_SHORT).show()
-            },
-            onRetire = { vm.showRetirementDialog = true },
-            onScoreRuns = { runs -> vm.onRunScored(runs) },
-            onShowExtras = { vm.showExtrasDialog = true },
-            onShowWicket = { vm.showWicketDialog = true },
-            onUndo = { vm.undoLastDelivery() },
-                        onWide = { vm.onQuickWide() },
-                        unlimitedUndoEnabled = vm.unlimitedUndoEnabled,
-                        onToggleUnlimitedUndo = { newValue ->
-                            vm.pendingUnlimitedUndoValue = newValue
-                            vm.showUnlimitedUndoDialog = true
-                        },
-                        currentPartnershipRuns = vm.currentPartnershipRuns,
-                        currentPartnershipBalls = vm.currentPartnershipBalls,
-                        currentPartnershipBatsman1Name = vm.currentPartnershipBatsman1Name,
-                        currentPartnershipBatsman2Name = vm.currentPartnershipBatsman2Name,
-                        currentPartnershipBatsman1Runs = vm.currentPartnershipBatsman1Runs,
-                        currentPartnershipBatsman2Runs = vm.currentPartnershipBatsman2Runs,
-                        currentPartnershipBatsman1Balls = vm.currentPartnershipBatsman1Balls,
-                        currentPartnershipBatsman2Balls = vm.currentPartnershipBatsman2Balls
-        )
+                modifier = Modifier.padding(16.dp),
+                widthSizeClass = widthSizeClass,
+            )
             1 -> ScorecardTab(
                 modifier = Modifier.padding(16.dp),
                 currentInnings = currentInnings,
@@ -340,7 +411,9 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
             )
             2 -> OversTab(
                 modifier = Modifier.padding(16.dp),
-                allDeliveries = vm.allDeliveries
+                allDeliveries = vm.allDeliveries,
+                firstInningsTeamName = vm.initialBattingTeamName,
+                secondInningsTeamName = vm.initialBowlingTeamName,
             )
             3 -> SquadTab(
                 modifier = Modifier.padding(16.dp),
@@ -353,6 +426,16 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
                 }
             }
         }
+
+        // Above the scoreboard, not inside it: the live tab is large and non-skippable, so
+        // animating within it would recompose the whole surface every frame. This also means the
+        // flourish can't intercept a tap — the next ball is always ready.
+        CelebrationOverlay(
+            effect = celebration,
+            onFinished = { celebration = null },
+            modifier = Modifier.padding(padding),
+        )
+    }
     }
 
     // Dialogs
@@ -458,13 +541,29 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
                 else -> "Select Bowler"
             },
             players = bowlerPool,
-            jokerPlayer = if (battingTeamPlayers.any { it.isJoker } && (!vm.jokerOutInCurrentInnings)) null else jokerPlayer,
+            jokerPlayer = if (!matchSettings.jokerCanBowl ||
+                (battingTeamPlayers.any { it.isJoker } && !vm.jokerOutInCurrentInnings)
+            ) null else jokerPlayer,
             totalWickets = totalWickets,
             battingTeamPlayers = battingTeamPlayers,
             bowlingTeamPlayers = bowlingTeamPlayers,
             jokerOversThisInnings = vm.jokerOversBowledThisInnings(),
             jokerOutInCurrentInnings = vm.jokerOutInCurrentInnings,
             onPlayerSelected = { player -> vm.onBowlerSelected(player, overrideToCompleteOverAllowed) },
+            // Show the over cap on the row rather than accepting the tap and rejecting it with
+            // a toast, which made the limit look like it was not being enforced at all.
+            ineligibleReason = { p ->
+                val bowled = if (p.isJoker) vm.jokerBallsBowledThisInningsRaw() else p.ballsBowled
+                val capOvers = if (p.isJoker) matchSettings.jokerMaxOvers else matchSettings.maxOversPerBowler
+                val remaining = (capOvers * 6 - bowled).coerceAtLeast(0)
+                val needed = if (ballsInOver == 0) 6 else 6 - ballsInOver
+                when {
+                    remaining == 0 -> "Over limit reached ($capOvers of $capOvers overs bowled)"
+                    remaining < needed && !overrideToCompleteOverAllowed ->
+                        "Only $remaining ball${if (remaining == 1) "" else "s"} left of the $capOvers-over limit"
+                    else -> null
+                }
+            },
             onDismiss = {
                 if (ballsInOver > 0 && vm.bowlerIndex == null) {
                     Toast.makeText(context, "Please select a bowler to continue", Toast.LENGTH_SHORT).show()
@@ -494,13 +593,40 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
         )
     }
 
+    // ── Super over ──────────────────────────────────────────────────
+    // Both of these stand between a tied match and the complete dialog, which writes the match as
+    // soon as it appears. Nothing is saved until the tie is either broken or accepted.
+    if (vm.showSuperOverOfferDialog) {
+        SuperOverOfferDialog(
+            scoresLevelAt = vm.firstInningsRuns,
+            // Entering an odd innings keeps the same side batting, so whoever just batted goes
+            // again — which is the real rule: the side that batted second starts the super over.
+            battingFirstInSuperOver = vm.battingTeamName,
+            superOversPlayed = vm.superOvers.size / 2,
+            onStart = { vm.startSuperOver() },
+            onDecline = { vm.declineSuperOver() },
+        )
+    }
+
+    if (vm.showSuperOverIntervalDialog) {
+        vm.superOvers.lastOrNull()?.let { justBowled ->
+            SuperOverIntervalDialog(
+                justBowled = justBowled,
+                chasingTeam = justBowled.bowlingTeam,
+                onStart = { vm.startSuperOver() },
+            )
+        }
+    }
+
     if (vm.showMatchCompleteDialog) {
         EnhancedMatchCompleteDialog(
             matchId = vm.matchId,
             firstInningsRuns = vm.firstInningsRuns,
             firstInningsWickets = vm.firstInningsWickets,
-            secondInningsRuns = calculatedTotalRuns,
-            secondInningsWickets = totalWickets,
+            // The snapshots, not the live figures: a super over resets those, and this dialog is
+            // shown after it.
+            secondInningsRuns = vm.secondInningsRuns,
+            secondInningsWickets = vm.secondInningsWickets,
             team1Name = vm.initialBattingTeamName,
             team2Name = vm.initialBowlingTeamName,
             jokerPlayerName = vm.jokerName.takeIf { it.isNotEmpty() },
@@ -511,14 +637,24 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
             secondInningsBattingPlayers = vm.secondInningsBattingPlayers,
             secondInningsBowlingPlayers = vm.secondInningsBowlingPlayers,
             firstInningsPartnerships = vm.firstInningsPartnerships,
-            secondInningsPartnerships = vm.partnerships,
+            secondInningsPartnerships = vm.secondInningsPartnerships,
             firstInningsFallOfWickets = vm.firstInningsFallOfWickets,
-            secondInningsFallOfWickets = vm.fallOfWickets,
+            secondInningsFallOfWickets = vm.secondInningsFallOfWickets,
             onNewMatch = {
-                val intent = android.content.Intent(context, MainActivity::class.java)
-                intent.flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
-                context.startActivity(intent)
-                (context as androidx.activity.ComponentActivity).finish()
+                if (vm.tournamentId != null) {
+                    // A real navigation rather than a bare finish(), because a fixture can also
+                    // be reached by resuming an in-progress match from History — which never
+                    // puts a tournament screen on this activity's back stack at all.
+                    context.startActivity(
+                        com.oreki.stumpd.ui.tournament.TournamentActivity.intent(context, vm.tournamentId!!)
+                    )
+                    (context as androidx.activity.ComponentActivity).finish()
+                } else {
+                    val intent = android.content.Intent(context, MainActivity::class.java)
+                    intent.flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    context.startActivity(intent)
+                    (context as androidx.activity.ComponentActivity).finish()
+                }
             },
             onDismiss = { vm.showMatchCompleteDialog = false },
             matchSettings = matchSettings,
@@ -527,7 +663,15 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
             scope = scope,
             repo = vm.repo,
             inProgressManager = vm.inProgressManager,
-            allDeliveries = vm.allDeliveries.toList()
+            allDeliveries = vm.allDeliveries.toList(),
+            superOverWinner = vm.superOverWinner,
+            superOvers = vm.superOvers,
+            tournamentId = vm.tournamentId,
+            tournamentFixtureId = vm.tournamentFixtureId,
+            // team1 means "batted first" in a saved match, so the ids swap with the names — the
+            // same expression the captains above use, for the same reason.
+            team1Id = if (vm.initialBattingTeamName == vm.team1Name) vm.team1Id else vm.team2Id,
+            team2Id = if (vm.initialBattingTeamName == vm.team1Name) vm.team2Id else vm.team1Id
         )
     }
 
@@ -571,10 +715,18 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
             confirmButton = {
                 Button(
                     onClick = {
-                        val intent = android.content.Intent(context, MainActivity::class.java)
-                        intent.flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
-                        context.startActivity(intent)
-                        (context as androidx.activity.ComponentActivity).finish()
+                        if (vm.tournamentId != null) {
+                            // Same reasoning as the complete dialog's "Back to Tournament".
+                            context.startActivity(
+                                com.oreki.stumpd.ui.tournament.TournamentActivity.intent(context, vm.tournamentId!!)
+                            )
+                            (context as androidx.activity.ComponentActivity).finish()
+                        } else {
+                            val intent = android.content.Intent(context, MainActivity::class.java)
+                            intent.flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
+                            context.startActivity(intent)
+                            (context as androidx.activity.ComponentActivity).finish()
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                 ) {
@@ -589,99 +741,51 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
         )
     }
 
-    // Unlimited Undo Password Dialog
-    if (vm.showUnlimitedUndoDialog) {
-        var password by remember { mutableStateOf("") }
-        var errorMessage by remember { mutableStateOf<String?>(null) }
+    // ── Mid-match corrections ───────────────────────────────────────
+    // Each fix reports null on success or the reason it refused, which goes straight to a toast:
+    // the refusals are all "this needs the post-match editor", and saying so is more use than a
+    // disabled button with no explanation.
+    val onFixResult: (String?) -> Unit = { problem ->
+        vm.showFixMenu = false
+        vm.showFixWicketDialog = false
+        vm.showFixBowlerDialog = false
+        vm.showFixLastBallDialog = false
+        if (problem == null) vm.toast("Corrected — Undo still reverses it")
+        else vm.toastLong(problem)
+    }
 
-        AlertDialog(
-            onDismissRequest = {
-                vm.showUnlimitedUndoDialog = false
-                password = ""
-                errorMessage = null
-            },
-            title = {
-                Text(
-                    "🔒 Password Required",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column {
-                    Text(
-                        if (vm.pendingUnlimitedUndoValue) {
-                            "Enable unlimited undo to undo all the way back to match start. This is useful for correcting errors but should only be used by the match master.\n\nNote: Only deliveries from this point onward can be undone; earlier ones were not stored."
-                        } else {
-                            "Lock undo back to 2 balls only."
-                        },
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = {
-                            password = it
-                            errorMessage = null
-                        },
-                        label = { Text("Password") },
-                        singleLine = true,
-                        isError = errorMessage != null,
-                        supportingText = errorMessage?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val prefs = context.getSharedPreferences("stumpd_prefs", android.content.Context.MODE_PRIVATE)
-                        val savedPassword = prefs.getString("deletion_password", null)
+    if (vm.showFixMenu) {
+        FixMenuDialog(
+            corrections = vm.corrections,
+            onFixWicket = { vm.showFixMenu = false; vm.showFixWicketDialog = true },
+            onFixBowler = { vm.showFixMenu = false; vm.showFixBowlerDialog = true },
+            onFixLastBall = { vm.showFixMenu = false; vm.showFixLastBallDialog = true },
+            onDismiss = { vm.showFixMenu = false },
+        )
+    }
 
-                        if (savedPassword == null) {
-                            prefs.edit().putString("deletion_password", password).apply()
-                            com.oreki.stumpd.utils.FeatureFlags.setUnlimitedUndoEnabled(context, vm.pendingUnlimitedUndoValue)
-                            vm.unlimitedUndoEnabled = vm.pendingUnlimitedUndoValue
-                            vm.showUnlimitedUndoDialog = false
-                            password = ""
-                            errorMessage = null
-                            Toast.makeText(
-                                context,
-                                if (vm.pendingUnlimitedUndoValue) "✅ Unlimited undo on — you can undo back to the start from now on" else "✅ Undo locked to 2 balls",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        } else if (password == savedPassword) {
-                            com.oreki.stumpd.utils.FeatureFlags.setUnlimitedUndoEnabled(context, vm.pendingUnlimitedUndoValue)
-                            vm.unlimitedUndoEnabled = vm.pendingUnlimitedUndoValue
-                            vm.showUnlimitedUndoDialog = false
-                            password = ""
-                            errorMessage = null
-                            Toast.makeText(
-                                context,
-                                if (vm.pendingUnlimitedUndoValue) "✅ Unlimited undo on — you can undo back to the start from now on" else "✅ Undo locked to 2 balls",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        } else {
-                            errorMessage = "❌ Incorrect password"
-                        }
-                    },
-                    enabled = password.isNotBlank()
-                ) {
-                    Text("Confirm")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        vm.showUnlimitedUndoDialog = false
-                        password = ""
-                        errorMessage = null
-                    }
-                ) {
-                    Text("Cancel")
-                }
-            }
+    if (vm.showFixWicketDialog) {
+        FixWicketDialog(
+            corrections = vm.corrections,
+            onResult = onFixResult,
+            onDismiss = { vm.showFixWicketDialog = false },
+        )
+    }
+
+    if (vm.showFixBowlerDialog) {
+        FixBowlerDialog(
+            corrections = vm.corrections,
+            onResult = onFixResult,
+            onDismiss = { vm.showFixBowlerDialog = false },
+        )
+    }
+
+    if (vm.showFixLastBallDialog) {
+        FixLastBallDialog(
+            corrections = vm.corrections,
+            shortPitch = vm.matchSettings.shortPitch,
+            onResult = onFixResult,
+            onDismiss = { vm.showFixLastBallDialog = false },
         )
     }
 
@@ -760,322 +864,4 @@ fun ScoringScreen(viewModel: ScoringViewModel) {
 
 }
 
-private data class Agg(
-    val id: String,
-    val name: String,
-    val team: String,
-    var runs: Int = 0,
-    var balls: Int = 0,
-    var fours: Int = 0,
-    var sixes: Int = 0,
-    var notOut: Boolean = false,
-    var wkts: Int = 0,
-    var rcv: Int = 0,
-    var ballsBowled: Int = 0,
-    var isJoker: Boolean = false,
-    var catches: Int = 0,
-    var runOuts: Int = 0,
-    var stumpings: Int = 0
-)
-
-private fun summarizeAgg(a: Agg): String {
-    val bat = if (a.balls > 0) "${a.runs}${if (a.notOut) "*" else ""}(${a.balls})" else ""
-    val bowl = if (a.ballsBowled > 0) "${a.wkts}/${a.rcv}" else ""
-    val field = buildList {
-        if (a.catches > 0) add("${a.catches} ct")
-        if (a.runOuts > 0) add("${a.runOuts} ro")
-        if (a.stumpings > 0) add("${a.stumpings} st")
-    }.joinToString(", ")
-    return listOf(bat, bowl, field).filter { it.isNotBlank() }.joinToString(" and ")
-}
-
-private fun computeMatchEconomy(
-    firstBat: List<PlayerMatchStats>,
-    secondBat: List<PlayerMatchStats>,
-    totalOvers: Int
-): Double {
-    val totalRuns = firstBat.sumOf { it.runs } + secondBat.sumOf { it.runs }
-    val oversApprox = totalOvers * 2.0
-    return if (oversApprox > 0) totalRuns / oversApprox else 0.0
-}
-
-fun saveMatchToHistory(
-    team1Name: String,
-    team2Name: String,
-    jokerPlayerName: String?,
-    team1CaptainName: String? = null,
-    team2CaptainName: String? = null,
-    firstInningsRuns: Int,
-    firstInningsWickets: Int,
-    secondInningsRuns: Int,
-    secondInningsWickets: Int,
-    winnerTeam: String,
-    winningMargin: String,
-    firstInningsBattingStats: List<PlayerMatchStats> = emptyList(),
-    firstInningsBowlingStats: List<PlayerMatchStats> = emptyList(),
-    secondInningsBattingStats: List<PlayerMatchStats> = emptyList(),
-    secondInningsBowlingStats: List<PlayerMatchStats> = emptyList(),
-    firstInningsPartnerships: List<Partnership> = emptyList(),
-    secondInningsPartnerships: List<Partnership> = emptyList(),
-    firstInningsFallOfWickets: List<FallOfWicket> = emptyList(),
-    secondInningsFallOfWickets: List<FallOfWicket> = emptyList(),
-    context: android.content.Context,
-    matchSettings: MatchSettings,
-    groupId: String,
-    groupName: String,
-    allDeliveries: List<DeliveryUI> = emptyList()
-): MatchHistory {
-    android.util.Log.d("SaveMatch", "Attempting to save match: $team1Name vs $team2Name")
-    // Simple leaders for display
-    val allBattingStats = firstInningsBattingStats + secondInningsBattingStats
-    val allBowlingStats = firstInningsBowlingStats + secondInningsBowlingStats
-    val topBatsman = allBattingStats.maxByOrNull { it.runs }
-    val topBowler = allBowlingStats
-        .filter { it.oversBowled > 0 }
-        .maxWithOrNull { a, b ->
-            when {
-                a.wickets != b.wickets -> a.wickets.compareTo(b.wickets)
-                else -> {
-                    val economyA = a.runsConceded.toDouble() / a.oversBowled
-                    val economyB = b.runsConceded.toDouble() / b.oversBowled
-                    economyB.compareTo(economyA)
-                }
-            }
-        }
-
-    val wasChaseWin = winnerTeam == team2Name
-    val matchEconomy = computeMatchEconomy(firstInningsBattingStats, secondInningsBattingStats, matchSettings.totalOvers)
-
-// SINGLE aggregation for impacts
-    val aggMap: LinkedHashMap<String, Agg> = linkedMapOf()
-
-    fun keyOf(p: PlayerMatchStats) = "${p.team}::${p.name.trim().lowercase()}"
-
-    fun mergeInto(map: LinkedHashMap<String, Agg>, incoming: Agg) {
-        val k = "${incoming.team}::${incoming.name.trim().lowercase()}"
-        val a = map[k]
-        if (a == null) {
-            map[k] = incoming
-        } else {
-            a.runs += incoming.runs
-            a.balls += incoming.balls
-            a.fours += incoming.fours
-            a.sixes += incoming.sixes
-            a.notOut = a.notOut || incoming.notOut
-            a.wkts += incoming.wkts
-            a.rcv += incoming.rcv
-            a.ballsBowled += incoming.ballsBowled
-            a.isJoker = a.isJoker || incoming.isJoker
-            a.catches += incoming.catches
-            a.runOuts += incoming.runOuts
-            a.stumpings += incoming.stumpings
-        }
-    }
-
-    fun addBatting(ps: List<PlayerMatchStats>) {
-        ps.forEach { p ->
-            mergeInto(
-                aggMap,
-                Agg(
-                    id = p.id,
-                    name = p.name,
-                    team = p.team,
-                    runs = p.runs,
-                    balls = p.ballsFaced,
-                    fours = p.fours,
-                    sixes = p.sixes,
-                    notOut = (!p.isOut && p.ballsFaced > 0),
-                    isJoker = p.isJoker
-                )
-            )
-        }
-    }
-
-    fun addBowling(ps: List<PlayerMatchStats>) {
-        ps.forEach { p ->
-            mergeInto(
-                aggMap,
-                Agg(
-                    id = p.id,
-                    name = p.name,
-                    team = p.team,
-                    wkts = p.wickets,
-                    rcv = p.runsConceded,
-                    ballsBowled = (p.oversBowled * 6).toInt(),
-                    isJoker = p.isJoker
-                )
-            )
-        }
-    }
-
-    fun addFielding(ps: List<PlayerMatchStats>) {
-        ps.forEach { p ->
-            if (p.catches > 0 || p.runOuts > 0 || p.stumpings > 0) {
-                mergeInto(
-                    aggMap,
-                    Agg(
-                        id = p.id,
-                        name = p.name,
-                        team = p.team,
-                        catches = p.catches,
-                        runOuts = p.runOuts,
-                        stumpings = p.stumpings,
-                        isJoker = p.isJoker
-                    )
-                )
-            }
-        }
-    }
-
-    addBatting(firstInningsBattingStats)
-    addBatting(secondInningsBattingStats)
-    addBowling(firstInningsBowlingStats)
-    addBowling(secondInningsBowlingStats)
-    addFielding(firstInningsBattingStats)  // Fielding from first innings
-    addFielding(firstInningsBowlingStats)
-    addFielding(secondInningsBattingStats)  // Fielding from second innings
-    addFielding(secondInningsBowlingStats)
-
-    // Single scoring function closes over matchEconomy/wasChaseWin/winnerTeam
-    fun scoreAgg(a: Agg): Double {
-        if (a.isJoker) return 0.0
-        val overs = matchSettings.totalOvers.toDouble()
-
-        // Match context
-        val totalMatchRuns = firstInningsRuns + secondInningsRuns
-        val actualMatchEconomy = totalMatchRuns / (overs * 2)
-
-        val economyPar = when {
-            overs <= 10 -> kotlin.math.max(8.0, actualMatchEconomy - 1.0)
-            overs <= 20 -> kotlin.math.max(7.0, actualMatchEconomy - 0.5)
-            else -> kotlin.math.max(5.0, actualMatchEconomy - 0.5)
-        }
-
-        // BALANCED weights - reduced batting emphasis
-        val runsWeight = 15.0 / overs      // Reduced from 20.0
-        val fourBonus = 0.8 * (15.0 / overs)  // Reduced multiplier from 1.0
-        val sixBonus = 1.2 * (15.0 / overs)   // Reduced multiplier from 1.5
-        val wicketWeight = 60.0 / overs       // Increased for bowling from 50.0
-
-        // Batting calculation
-        val sr = if (a.balls > 0) a.runs * 100.0 / a.balls else 0.0
-        var bat = a.runs * runsWeight + a.fours * fourBonus + a.sixes * sixBonus
-
-        val srBonus = if (a.balls >= 10)
-            kotlin.math.max(0.0, kotlin.math.min(8.0, (sr - 100.0) / 6.0))  // Reduced cap & steeper
-        else 0.0
-        val chaseBonus = if (wasChaseWin) kotlin.math.min(10.0, a.runs / 6.0) else 0.0  // Reduced
-        bat += srBonus + chaseBonus
-
-        // Enhanced bowling with matching bonuses
-        val eco = if (a.ballsBowled > 0) a.rcv * 6.0 / a.ballsBowled else 0.0
-        val runPenalty = if (overs <= 20) 0.03 else 0.08  // Further reduced
-
-        // Expanded economy impact range to match batting bonuses
-        val economyImpact = when {
-            eco <= economyPar - 2.0 -> 15.0    // Exceptional
-            eco <= economyPar - 1.5 -> 12.0    // Brilliant
-            eco <= economyPar - 1.0 -> 8.0     // Very good
-            eco <= economyPar - 0.5 -> 4.0     // Good
-            eco <= economyPar -> 0.0           // Par
-            eco <= economyPar + 1.0 -> -3.0    // Expensive
-            else -> -8.0                       // Very expensive
-        }
-
-        // Bowling "strike rate" bonus - reward quick wickets
-        val bowlingStrikeRate = if (a.wkts > 0) a.ballsBowled.toDouble() / a.wkts else 999.0
-        val strikeRateBonus = if (a.ballsBowled >= 12 && a.wkts > 0) {  // Min 2 overs
-            val parSR = when {
-                overs <= 10 -> 9.0   // Very aggressive formats
-                overs <= 20 -> 12.0  // T20 standard
-                else -> 18.0         // ODI standard
-            }
-            kotlin.math.max(0.0, kotlin.math.min(8.0, (parSR - bowlingStrikeRate) / 2.0))
-        } else 0.0
-
-        val bowlBase = a.wkts * wicketWeight - runPenalty * a.rcv + economyImpact + strikeRateBonus
-        val fiveW = if (a.wkts >= 5) 15.0 else if (a.wkts >= 4) 8.0 else 0.0  // Adjusted
-        var bowl = if (a.ballsBowled > 0) bowlBase + fiveW else 0.0
-
-        // Fielding contributions
-        val catchPoints = a.catches * 5.0  // 5 points per catch
-        val runOutPoints = a.runOuts * 8.0  // 8 points per run-out (more impactful)
-        val stumpingPoints = a.stumpings * 8.0  // 8 points per stumping (keeper skill)
-        val fieldingScore = catchPoints + runOutPoints + stumpingPoints
-
-        // True balance - equal weighting including fielding
-        val base = when {
-            a.balls > 0 && a.ballsBowled > 0 -> 0.5 * bat + 0.5 * bowl + fieldingScore  // Perfect balance + fielding
-            a.balls > 0 -> bat + fieldingScore
-            else -> bowl + fieldingScore
-        }
-
-        return if (a.team == winnerTeam) base * 1.10 else base
-    }
-
-
-    // Build impacts once
-    val impactsUnsorted: List<PlayerImpact> = aggMap.values.map { a ->
-        val impact = scoreAgg(a)
-        PlayerImpact(
-            id = a.id, name = a.name, team = a.team,
-            impact = "%.1f".format(impact).toDouble(),
-            summary = summarizeAgg(a),
-            isJoker = a.isJoker,
-            runs = a.runs, balls = a.balls, fours = a.fours, sixes = a.sixes,
-            wickets = a.wkts, runsConceded = a.rcv,
-            oversBowled = (a.ballsBowled / 6) + (a.ballsBowled % 6) * 0.1 // Convert to overs.balls format
-        )
-    }
-
-    val playerImpactsListWithoutJoker: List<PlayerImpact> =
-        impactsUnsorted
-            .filterNot { it.isJoker }
-            .sortedByDescending { it.impact }
-
-
-    // POTM = top of impact list
-    val potm = playerImpactsListWithoutJoker.firstOrNull()
-
-    val matchHistory = MatchHistory(
-        team1Name = team1Name,
-        team2Name = team2Name,
-        jokerPlayerName = jokerPlayerName,
-        team1CaptainName = team1CaptainName,
-        team2CaptainName = team2CaptainName,
-        firstInningsRuns = firstInningsRuns,
-        firstInningsWickets = firstInningsWickets,
-        secondInningsRuns = secondInningsRuns,
-        secondInningsWickets = secondInningsWickets,
-        winnerTeam = winnerTeam,
-        winningMargin = winningMargin,
-        firstInningsBatting = firstInningsBattingStats,
-        firstInningsBowling = firstInningsBowlingStats,
-        secondInningsBatting = secondInningsBattingStats,
-        secondInningsBowling = secondInningsBowlingStats,
-        team1Players = firstInningsBattingStats + secondInningsBowlingStats,
-        team2Players = firstInningsBowlingStats + secondInningsBattingStats,
-        topBatsman = topBatsman,
-        topBowler = topBowler,
-        matchDate = System.currentTimeMillis(),
-        matchSettings = matchSettings,
-        groupId = groupId,
-        groupName = groupName,
-        shortPitch = matchSettings.shortPitch,
-        // Partnerships and Fall of Wickets
-        firstInningsPartnerships = firstInningsPartnerships,
-        secondInningsPartnerships = secondInningsPartnerships,
-        firstInningsFallOfWickets = firstInningsFallOfWickets,
-        secondInningsFallOfWickets = secondInningsFallOfWickets,
-        // POTM from impacts
-        playerOfTheMatchId = potm?.id,
-        playerOfTheMatchName = potm?.name,
-        playerOfTheMatchTeam = potm?.team,
-        playerOfTheMatchImpact = potm?.impact,
-        playerOfTheMatchSummary = potm?.summary,
-        playerImpacts = playerImpactsListWithoutJoker,
-        allDeliveries = allDeliveries
-    )
-    return matchHistory
-}
 

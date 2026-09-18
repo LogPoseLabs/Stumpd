@@ -5,7 +5,6 @@ import com.oreki.stumpd.ui.scoring.ScoringActivity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
@@ -14,6 +13,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import com.oreki.stumpd.ui.theme.hairline
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.oreki.stumpd.ui.theme.rememberMessenger
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,7 +38,6 @@ import com.oreki.stumpd.ui.theme.PrimaryCta
 import com.oreki.stumpd.ui.theme.SectionTitle
 import com.oreki.stumpd.ui.theme.StumpdTheme
 import androidx.compose.foundation.layout.FlowRow
-import com.oreki.stumpd.ui.theme.SectionCard
 import com.oreki.stumpd.ui.theme.StumpdTopBar
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.lazy.items
@@ -53,6 +53,7 @@ import com.oreki.stumpd.viewmodel.TeamSetupViewModelFactory
 import com.oreki.stumpd.viewmodel.ToastEvent
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
 
 // Result class for better handling
 sealed class TeamGenerationResult {
@@ -66,18 +67,24 @@ sealed class TeamGenerationResult {
     ) : TeamGenerationResult()
 }
 
+@AndroidEntryPoint
 class TeamSetupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         actionBar?.hide()
         val defaultGroupId = intent.getStringExtra("default_group_id")
+        // A tournament fixture arrives as one JSON extra. A malformed one is ignored rather than
+        // crashing the screen — the worst case is an ordinary quick match.
+        val preset = intent.getStringExtra(TeamSetupPreset.INTENT_EXTRA)?.let { json ->
+            runCatching { Gson().fromJson(json, TeamSetupPreset::class.java) }.getOrNull()
+        }
         setContent {
             StumpdTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    val factory = TeamSetupViewModelFactory(application, defaultGroupId)
+                    val factory = TeamSetupViewModelFactory(application, defaultGroupId, preset)
                     val vm: TeamSetupViewModel = viewModel(factory = factory)
                     TeamSetupScreen(vm = vm)
                 }
@@ -89,6 +96,9 @@ class TeamSetupActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TeamSetupScreen(vm: TeamSetupViewModel) {
+    val snackbarHostState = remember { SnackbarHostState() }
+    val messenger = rememberMessenger(snackbarHostState)
+
     val context = LocalContext.current
 
     val matchSettings = vm.matchSettings
@@ -103,24 +113,140 @@ fun TeamSetupScreen(vm: TeamSetupViewModel) {
     LaunchedEffect(Unit) {
         vm.toastEvent.collect { event ->
             when (event) {
-                is ToastEvent.Short -> Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
-                is ToastEvent.Long -> Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
+                is ToastEvent.Short -> messenger.show(event.message)
+                is ToastEvent.Long -> messenger.show(event.message, long = true)
+            }
+        }
+    }
+
+    val setupProblem = vm.validateMatchSetup()
+    val teamsPicked = team1.players.isNotEmpty() && team2.players.isNotEmpty()
+
+    val startMatch: () -> Unit = {
+        val error = vm.validateMatchSetup()
+        if (error != null) {
+            messenger.show(error)
+        } else {
+            val intent = Intent(context, ScoringActivity::class.java)
+            intent.putExtra("group_id", selectedGroup?.id ?: "")
+            intent.putExtra("group_name", selectedGroup?.name ?: "")
+            intent.putExtra("team1_name", team1.name)
+            intent.putExtra("team2_name", team2.name)
+            intent.putExtra("joker_name", jokerPlayer?.name ?: "")
+
+            // A fixture's captain is an id picked with the squad; a quick match's is parsed out
+            // of "<name>'s Team". One call handles both.
+            intent.putExtra("team1_captain", vm.captainNameFor(team1.name) ?: "")
+            intent.putExtra("team2_captain", vm.captainNameFor(team2.name) ?: "")
+
+            intent.putExtra("team1_players", team1.players.map { it.name }.toTypedArray())
+            intent.putExtra("team2_players", team2.players.map { it.name }.toTypedArray())
+            intent.putExtra("team1_player_ids", team1.players.map { it.id.value }.toTypedArray())
+            intent.putExtra("team2_player_ids", team2.players.map { it.id.value }.toTypedArray())
+            intent.putExtra("toss_winner", vm.tossWinner ?: "")
+            intent.putExtra("toss_choice", vm.tossChoice ?: "")
+
+            intent.putExtra("match_settings", vm.gson.toJson(vm.buildFinalMatchSettings()))
+
+            vm.preset?.let { fixture ->
+                intent.putExtra("tournament_id", fixture.tournamentId)
+                intent.putExtra("tournament_fixture_id", fixture.fixtureId)
+                intent.putExtra("team1_id", fixture.teamIdFor(team1.name))
+                intent.putExtra("team2_id", fixture.teamIdFor(team2.name))
+            }
+
+            // Skipped for a fixture, so a tournament line-up never becomes the group's "last teams".
+            vm.saveLastTeams()
+            context.startActivity(intent)
+
+            // For a fixture, this screen has nothing left to do — there is no "resume team
+            // setup" once the match is under way. Finishing it now means the tournament
+            // detail screen underneath (never itself finished when the fixture was opened) is
+            // exactly what "back" or "Back to Tournament" lands on, at the end of the match or
+            // if the scorer backs out mid-way.
+            if (vm.isFixture) {
+                (context as ComponentActivity).finish()
             }
         }
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             StumpdTopBar(
-                title = "Quick Match Setup",
-                subtitle = "Configure match settings and teams",
+                title = if (vm.isFixture) "Fixture Setup" else "Quick Match Setup",
+                subtitle = vm.preset?.let { "${it.tournamentName} · ${it.fixtureLabel}" }
+                    ?: "Configure match settings and teams",
                 onBack = {
-                    val intent = Intent(context, MainActivity::class.java)
-                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    context.startActivity(intent)
-                    (context as ComponentActivity).finish()
+                    // Backing out of a fixture returns to the tournament that sent us here;
+                    // backing out of a quick match goes home.
+                    if (vm.isFixture) {
+                        (context as ComponentActivity).finish()
+                    } else {
+                        val intent = Intent(context, MainActivity::class.java)
+                        intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        context.startActivity(intent)
+                        (context as ComponentActivity).finish()
+                    }
                 }
             )
+        },
+        // Pinned so starting a match never requires scrolling to the bottom. A bar rather than
+        // a round FAB because the label is long and a blocked setup needs to say why.
+        bottomBar = {
+            Surface(
+                tonalElevation = 3.dp,
+                shadowElevation = 8.dp,
+                color = MaterialTheme.colorScheme.surface,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    val blockedMessage = when {
+                        selectedGroup == null -> "Select a group to continue"
+                        !teamsPicked -> "Add players to both teams to continue"
+                        else -> setupProblem
+                    }
+                    if (blockedMessage != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 10.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = blockedMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "${team1.players.size} v ${team2.players.size} • " +
+                                "${matchSettings.totalOvers} overs • " +
+                                "max ${matchSettings.maxOversPerBowler}/bowler",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        )
+                    }
+
+                    PrimaryCta(
+                        text = "Start ${matchSettings.totalOvers} overs Match",
+                        onClick = startMatch,
+                        enabled = blockedMessage == null
+                    )
+                }
+            }
         }
     ) { padding ->
         LazyColumn(
@@ -134,8 +260,9 @@ fun TeamSetupScreen(vm: TeamSetupViewModel) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
                     ),
+                    border = hairline(),
                     elevation = CardDefaults.cardElevation(2.dp)
                 ) {
                     Column(Modifier.padding(16.dp)) {
@@ -152,7 +279,7 @@ fun TeamSetupScreen(vm: TeamSetupViewModel) {
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 "Group Selection",
-                                fontSize = 16.sp,
+                                style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -172,12 +299,12 @@ fun TeamSetupScreen(vm: TeamSetupViewModel) {
                             Column {
                                 Text(
                                     text = "Group",
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
                                     text = selectedGroup?.name ?: "No group selected",
-                                    fontSize = 15.sp,
+                                    style = MaterialTheme.typography.bodyLarge,
                                     fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
@@ -186,7 +313,341 @@ fun TeamSetupScreen(vm: TeamSetupViewModel) {
                     }
                 }
             }
-            // Basic Settings Section
+            // Team Names Section
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
+                    border = hairline(),
+                    elevation = CardDefaults.cardElevation(2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Face,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Team Names",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            OutlinedTextField(
+                                value = team1.name,
+                                onValueChange = { vm.team1 = vm.team1.copy(name = it) },
+                                // A fixture's names are the tournament's, and results are recorded
+                                // against them: editable here would mean a match that no longer
+                                // matched its fixture.
+                                readOnly = vm.isFixture,
+                                label = { Text("Team 1") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.LocationOn, contentDescription = null)
+                                },
+                                modifier = Modifier.weight(1f),
+                                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    focusedLabelColor = MaterialTheme.colorScheme.primary
+                                )
+                            )
+
+                            OutlinedTextField(
+                                value = team2.name,
+                                onValueChange = { vm.team2 = vm.team2.copy(name = it) },
+                                readOnly = vm.isFixture,
+                                label = { Text("Team 2") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.LocationOn, contentDescription = null)
+                                },
+                                modifier = Modifier.weight(1f),
+                                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    focusedLabelColor = MaterialTheme.colorScheme.primary
+                                )
+                            )
+                        }
+                    }
+                }
+                // Quick Actions Card for Team Setup — a fixture's teams are already decided.
+                if (selectedGroup != null && !vm.isFixture) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
+                        ),
+                        border = hairline(),
+                        elevation = CardDefaults.cardElevation(2.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Star,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "Quick Actions",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            
+                            // Use Last Teams Button
+                            OutlinedButton(
+                                onClick = { vm.loadLastTeams() },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium
+                            ) {
+                                Icon(
+                                    Icons.Default.History,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalAlignment = Alignment.Start
+                                ) {
+                                    Text(
+                                        "Use Last Teams",
+                                        fontWeight = FontWeight.SemiBold,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        "from ${selectedGroup!!.name}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+
+                // Generate Random Teams Button
+                if (selectedGroup != null && !vm.isFixture) {
+                    Button(
+                        onClick = { vm.generateRandomTeams() },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Icon(
+                            Icons.Default.Star,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            Text(
+                                "Generate Random Teams",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                "with auto-assigned captains",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+            }
+
+            // Team Cards Section
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    // Team 1 Card
+                    EnhancedTeamCard(
+                        team = team1,
+                        jokerPlayer = jokerPlayer,
+                        onAddPlayer = {
+                            if (selectedGroup == null) {
+                                messenger.show("Select a group first")
+                            } else if (vm.isFixture) {
+                                messenger.show("Squads come from the tournament — edit them there")
+                            } else {
+                                vm.showTeam1Dialog = true
+                            }
+                        },
+                        onRemovePlayer = { player ->
+                            if (vm.isFixture) {
+                                messenger.show("Squads come from the tournament — edit them there")
+                            } else {
+                                vm.removePlayerFromTeam1(player)
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+
+                    // Team 2 Card
+                    EnhancedTeamCard(
+                        team = team2,
+                        jokerPlayer = jokerPlayer,
+                        onAddPlayer = {
+                            if (selectedGroup == null) {
+                                messenger.show("Select a group first")
+                            } else if (vm.isFixture) {
+                                messenger.show("Squads come from the tournament — edit them there")
+                            } else {
+                                vm.showTeam2Dialog = true
+                            }
+                        },
+                        onRemovePlayer = { player ->
+                            if (vm.isFixture) {
+                                messenger.show("Squads come from the tournament — edit them there")
+                            } else {
+                                vm.removePlayerFromTeam2(player)
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+
+            // Joker Section — a tournament squad is fixed, so there is nobody spare to be one.
+            if (matchSettings.jokerCanBatAndBowl && !vm.isFixture) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
+                        ),
+                        border = hairline(),
+                        elevation = CardDefaults.cardElevation(2.dp)
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            ) {
+                                Surface(
+                                    shape = MaterialTheme.shapes.small,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text("🃏", fontSize = 18.sp)
+                                    }
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        "Joker Player",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Can bat & bowl for both teams (max ${matchSettings.jokerMaxOvers} overs)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            if (jokerPlayer == null) {
+                                FilledTonalButton(
+                                    onClick = { 
+                                        if (selectedGroup == null) {
+                                            messenger.show("Select a group first")
+                                        } else {
+                                            vm.showJokerDialog = true
+                                        } 
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = "Add Joker")
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Select Joker")
+                                }
+                            } else {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = MaterialTheme.shapes.medium,
+                                    color = MaterialTheme.colorScheme.surface,
+                                    tonalElevation = 2.dp
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                Icons.Default.Person,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.tertiary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                text = jokerPlayer!!.name,
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                        Row {
+                                            TextButton(onClick = { vm.showJokerDialog = true }) { 
+                                                Text("Change", style = MaterialTheme.typography.bodySmall) 
+                                            }
+                                            TextButton(onClick = { vm.jokerPlayer = null }) { 
+                                                Text("Remove", style = MaterialTheme.typography.bodySmall) 
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Toss Section
+            if (team1.players.isNotEmpty() && team2.players.isNotEmpty()) {
+                item {
+                    TossSelectionCard(
+                        team1Name = team1.name,
+                        team2Name = team2.name
+                    ) { winner, choice ->
+                        vm.tossWinner = winner
+                        vm.tossChoice = choice
+                    }
+                }
+            }
+
+            // Match settings, below the team actions you use every match
             item {
                 SettingsSection(
                     title = "Match Format",
@@ -236,7 +697,7 @@ fun TeamSetupScreen(vm: TeamSetupViewModel) {
                                         vm.oversText = preset.toString()
                                         vm.matchSettings = vm.matchSettings.copy(totalOvers = preset)
                                     },
-                                    label = { Text("${preset} overs", fontSize = 12.sp) }
+                                    label = { Text("${preset} overs", style = MaterialTheme.typography.labelLarge) }
                                 )
                             }
                         }
@@ -312,6 +773,14 @@ fun TeamSetupScreen(vm: TeamSetupViewModel) {
                         }
                     )
                     SwitchSettingRow(
+                        label = "Super Over",
+                        description = "Break a tie with one over a side, two wickets",
+                        checked = matchSettings.enableSuperOver,
+                        onCheckedChange = {
+                            vm.matchSettings = vm.matchSettings.copy(enableSuperOver = it)
+                        }
+                    )
+                    SwitchSettingRow(
                         label = "Short Pitch",
                         description = "0-4 runs available. No 6",
                         checked = matchSettings.shortPitch,
@@ -331,6 +800,17 @@ fun TeamSetupScreen(vm: TeamSetupViewModel) {
                     )
 
                     if (matchSettings.jokerCanBatAndBowl) {
+                        SwitchSettingRow(
+                            label = "Joker Can Bowl",
+                            description = "Joker always bats. Turn off if he should not bowl",
+                            checked = matchSettings.jokerCanBowl,
+                            onCheckedChange = {
+                                vm.matchSettings = vm.matchSettings.copy(jokerCanBowl = it)
+                            }
+                        )
+                    }
+
+                    if (matchSettings.jokerCanBatAndBowl && matchSettings.jokerCanBowl) {
                         SettingRow(
                             label = "Joker Max Overs",
                             value = vm.jokerMaxOversText,
@@ -392,316 +872,6 @@ fun TeamSetupScreen(vm: TeamSetupViewModel) {
                 }
             }
 
-            // Team Names Section
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                    ),
-                    elevation = CardDefaults.cardElevation(2.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Face,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = "Team Names",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            OutlinedTextField(
-                                value = team1.name,
-                                onValueChange = { vm.team1 = vm.team1.copy(name = it) },
-                                label = { Text("Team 1") },
-                                leadingIcon = {
-                                    Icon(Icons.Default.LocationOn, contentDescription = null)
-                                },
-                                modifier = Modifier.weight(1f),
-                                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    focusedLabelColor = MaterialTheme.colorScheme.primary
-                                )
-                            )
-
-                            OutlinedTextField(
-                                value = team2.name,
-                                onValueChange = { vm.team2 = vm.team2.copy(name = it) },
-                                label = { Text("Team 2") },
-                                leadingIcon = {
-                                    Icon(Icons.Default.LocationOn, contentDescription = null)
-                                },
-                                modifier = Modifier.weight(1f),
-                                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    focusedLabelColor = MaterialTheme.colorScheme.primary
-                                )
-                            )
-                        }
-                    }
-                }
-                // Quick Actions Card for Team Setup
-                if (selectedGroup != null) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                        ),
-                        elevation = CardDefaults.cardElevation(2.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Default.Star,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    "Quick Actions",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            
-                            // Use Last Teams Button
-                            OutlinedButton(
-                                onClick = { vm.loadLastTeams() },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = MaterialTheme.shapes.medium
-                            ) {
-                                Icon(
-                                    Icons.Default.History,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    horizontalAlignment = Alignment.Start
-                                ) {
-                                    Text(
-                                        "Use Last Teams",
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 14.sp
-                                    )
-                                    Text(
-                                        "from ${selectedGroup!!.name}",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                }
-
-                // Generate Random Teams Button
-                if (selectedGroup != null) {
-                    Button(
-                        onClick = { vm.generateRandomTeams() },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Icon(
-                            Icons.Default.Star,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            horizontalAlignment = Alignment.Start
-                        ) {
-                            Text(
-                                "Generate Random Teams",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            )
-                            Text(
-                                "with auto-assigned captains",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f)
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                }
-            }
-
-            // Team Cards Section
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    // Team 1 Card
-                    EnhancedTeamCard(
-                        team = team1,
-                        jokerPlayer = jokerPlayer,
-                        onAddPlayer = {
-                            if (selectedGroup == null) {
-                                Toast.makeText(context, "Select a group first", Toast.LENGTH_SHORT).show()
-                            } else {
-                                vm.showTeam1Dialog = true
-                            }
-                        },
-                        onRemovePlayer = { player -> vm.removePlayerFromTeam1(player) },
-                        modifier = Modifier.weight(1f),
-                    )
-
-                    // Team 2 Card
-                    EnhancedTeamCard(
-                        team = team2,
-                        jokerPlayer = jokerPlayer,
-                        onAddPlayer = {
-                            if (selectedGroup == null) {
-                                Toast.makeText(context, "Select a group first", Toast.LENGTH_SHORT).show()
-                            } else {
-                                vm.showTeam2Dialog = true
-                            }
-                        },
-                        onRemovePlayer = { player -> vm.removePlayerFromTeam2(player) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-
-            // Joker Section
-            if (matchSettings.jokerCanBatAndBowl) {
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
-                        ),
-                        elevation = CardDefaults.cardElevation(2.dp)
-                    ) {
-                        Column(Modifier.padding(16.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            ) {
-                                Surface(
-                                    shape = MaterialTheme.shapes.small,
-                                    color = MaterialTheme.colorScheme.tertiary,
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text("🃏", fontSize = 18.sp)
-                                    }
-                                }
-                                Spacer(Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        "Joker Player",
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "Can bat & bowl for both teams (max ${matchSettings.jokerMaxOvers} overs)",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-
-                            if (jokerPlayer == null) {
-                                FilledTonalButton(
-                                    onClick = { 
-                                        if (selectedGroup == null) {
-                                            Toast.makeText(context, "Select a group first", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            vm.showJokerDialog = true
-                                        } 
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = "Add Joker")
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Select Joker")
-                                }
-                            } else {
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = MaterialTheme.shapes.medium,
-                                    color = MaterialTheme.colorScheme.surface,
-                                    tonalElevation = 2.dp
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                Icons.Default.Person,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.tertiary,
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(
-                                                text = jokerPlayer!!.name,
-                                                fontSize = 15.sp,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                        Row {
-                                            TextButton(onClick = { vm.showJokerDialog = true }) { 
-                                                Text("Change", fontSize = 13.sp) 
-                                            }
-                                            TextButton(onClick = { vm.jokerPlayer = null }) { 
-                                                Text("Remove", fontSize = 13.sp) 
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Toss Section
-            if (team1.players.isNotEmpty() && team2.players.isNotEmpty()) {
-                item {
-                    TossSelectionCard(
-                        team1Name = team1.name,
-                        team2Name = team2.name
-                    ) { winner, choice ->
-                        vm.tossWinner = winner
-                        vm.tossChoice = choice
-                    }
-                }
-            }
-
             // Match Summary & Start Button
             item {
                 Card(
@@ -749,48 +919,10 @@ fun TeamSetupScreen(vm: TeamSetupViewModel) {
                                     if (isEmpty()) append("Standard Rules")
                                 },
                                 fontWeight = FontWeight.Thin,
-                                fontSize = 10.sp
+                                style = MaterialTheme.typography.labelSmall
                             )
                         }
 
-                        Spacer(Modifier.height(12.dp))
-
-                        PrimaryCta(
-                            text = "Start ${matchSettings.totalOvers} overs Match",
-                            onClick = {
-                                val error = vm.validateMatchSetup()
-                                if (error != null) {
-                                    Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
-                                    return@PrimaryCta
-                                }
-
-                                val intent = Intent(context, ScoringActivity::class.java)
-                                intent.putExtra("group_id", selectedGroup?.id ?: "")
-                                intent.putExtra("group_name", selectedGroup?.name ?: "")
-                                intent.putExtra("team1_name", team1.name)
-                                intent.putExtra("team2_name", team2.name)
-                                intent.putExtra("joker_name", jokerPlayer?.name ?: "")
-
-                                val team1Captain = vm.extractCaptainFromTeamName(team1.name) ?: ""
-                                val team2Captain = vm.extractCaptainFromTeamName(team2.name) ?: ""
-                                intent.putExtra("team1_captain", team1Captain)
-                                intent.putExtra("team2_captain", team2Captain)
-
-                                intent.putExtra("team1_players", team1.players.map { it.name }.toTypedArray())
-                                intent.putExtra("team2_players", team2.players.map { it.name }.toTypedArray())
-                                intent.putExtra("team1_player_ids", team1.players.map { it.id.value }.toTypedArray())
-                                intent.putExtra("team2_player_ids", team2.players.map { it.id.value }.toTypedArray())
-                                intent.putExtra("toss_winner", vm.tossWinner ?: "")
-                                intent.putExtra("toss_choice", vm.tossChoice ?: "")
-
-                                val finalMatchSettings = vm.buildFinalMatchSettings()
-                                intent.putExtra("match_settings", vm.gson.toJson(finalMatchSettings))
-
-                                vm.saveLastTeams()
-                                context.startActivity(intent)
-                            },
-                            enabled = selectedGroup != null && team1.players.isNotEmpty() && team2.players.isNotEmpty()
-                        )
                     }
                 }
             }
@@ -885,8 +1017,9 @@ fun SettingsSection(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
         ),
+        border = hairline(),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Column {
@@ -896,7 +1029,7 @@ fun SettingsSection(
                     .fillMaxWidth()
                     .clickable { onToggle() },
                 color = if (isExpanded) 
-                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                    MaterialTheme.colorScheme.surfaceContainer
                 else 
                     Color.Transparent
             ) {
@@ -914,7 +1047,7 @@ fun SettingsSection(
                         }
                         Text(
                             text = title,
-                            fontSize = 16.sp,
+                            style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -1016,7 +1149,7 @@ fun SettingDropdownRow(
                     ) {
                         Text(
                             text = value.toString(),
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium
                         )
                         Icon(
@@ -1114,8 +1247,9 @@ fun TossSelectionCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
         ),
+        border = hairline(),
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Column(
@@ -1136,7 +1270,7 @@ fun TossSelectionCard(
                 Spacer(Modifier.width(8.dp))
                 Text(
                     "Who Bats First?",
-                    fontSize = 16.sp,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -1146,7 +1280,7 @@ fun TossSelectionCard(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                color = MaterialTheme.colorScheme.surfaceContainer,
                 tonalElevation = 1.dp
             ) {
                 Column(
@@ -1155,7 +1289,7 @@ fun TossSelectionCard(
                 ) {
                     Text(
                         "Flip a Coin to Decide",
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -1206,7 +1340,7 @@ fun TossSelectionCard(
                         ) {
                             Text(
                                 "Result: $coinSide",
-                                fontSize = 16.sp,
+                                style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(12.dp)
@@ -1242,7 +1376,7 @@ fun TossSelectionCard(
             // Manual selection
             Text(
                 "Select Team to Bat First:",
-                fontSize = 13.sp,
+                style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(bottom = 8.dp)
@@ -1280,7 +1414,7 @@ fun TossSelectionCard(
                             ) {
                                 Text(
                                     text = name,
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = if (battingFirst == name) FontWeight.Bold else FontWeight.Medium,
                                     color = if (battingFirst == name)
                                         MaterialTheme.colorScheme.onPrimaryContainer
@@ -1290,7 +1424,7 @@ fun TossSelectionCard(
                                 if (battingFirst == name) {
                                     Text(
                                         text = "Bats First",
-                                        fontSize = 11.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                                     )
                                 }
@@ -1317,8 +1451,9 @@ fun EnhancedTeamCard(
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
         ),
+        border = hairline(),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
     ) {
         Column(
@@ -1351,13 +1486,13 @@ fun EnhancedTeamCard(
                     Column {
                         Text(
                             text = team.name,
-                            fontSize = 18.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Text(
                             text = "${team.players.size} players",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -1381,7 +1516,7 @@ fun EnhancedTeamCard(
                             label = { 
                                 Text(
                                     player.name,
-                                    fontSize = 13.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.Medium
                                 ) 
                             },
@@ -1433,7 +1568,7 @@ fun EnhancedTeamCard(
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "No players added",
-                            fontSize = 13.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Medium
                         )
@@ -1442,18 +1577,18 @@ fun EnhancedTeamCard(
             }
 
             // Add Player Button
-            FilledTonalButton(
+            // Was a tonal button with its container forced to `primary`: tonal buttons keep
+            // `onSecondaryContainer` as their content colour, so the label was a mismatched hue
+            // on a saturated background. A filled Button pairs primary with onPrimary itself.
+            Button(
                 onClick = onAddPlayer,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                ),
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Add Player")
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     "Add Player",
-                    fontSize = 14.sp,
+                    style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold
                 )
             }
