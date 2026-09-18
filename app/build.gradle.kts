@@ -24,29 +24,29 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "com.oreki.stumpd"
     compileSdk = 35
-    
+
     // Signing configuration - works on Mac, Windows, Linux
     signingConfigs {
         create("release") {
             // Try local properties file first, then environment variables (CI)
             // Files are in app/ directory alongside google-services.json
             storeFile = file(
-                keystoreProperties.getProperty("storeFile") 
-                    ?: System.getenv("KEYSTORE_FILE") 
+                keystoreProperties.getProperty("storeFile")
+                    ?: System.getenv("KEYSTORE_FILE")
                     ?: "release-keystore.jks"
             )
-            storePassword = keystoreProperties.getProperty("storePassword") 
-                ?: System.getenv("KEYSTORE_PASSWORD") 
+            storePassword = keystoreProperties.getProperty("storePassword")
+                ?: System.getenv("KEYSTORE_PASSWORD")
                 ?: ""
-            keyAlias = keystoreProperties.getProperty("keyAlias") 
-                ?: System.getenv("KEY_ALIAS") 
+            keyAlias = keystoreProperties.getProperty("keyAlias")
+                ?: System.getenv("KEY_ALIAS")
                 ?: "stumpd"
-            keyPassword = keystoreProperties.getProperty("keyPassword") 
-                ?: System.getenv("KEY_PASSWORD") 
+            keyPassword = keystoreProperties.getProperty("keyPassword")
+                ?: System.getenv("KEY_PASSWORD")
                 ?: ""
         }
     }
-    
+
     applicationVariants.all {
         outputs.all {
             val variantName = name // e.g., debug, release
@@ -62,7 +62,7 @@ android {
         minSdk = 24
         targetSdk = 34
         versionCode = 25
-        versionName = "1.1.13"
+        versionName = "2.0.0"
 
         testInstrumentationRunner = "dagger.hilt.android.testing.HiltTestRunner"
         vectorDrawables {
@@ -129,7 +129,7 @@ dependencies {
     implementation("androidx.compose.material3:material3-window-size-class")
     implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.room.common.jvm)
-    
+
     // Firebase for online sync
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     implementation("com.google.firebase:firebase-firestore-ktx")
@@ -138,10 +138,10 @@ dependencies {
     implementation("com.google.firebase:firebase-crashlytics-ktx")
     implementation("com.google.firebase:firebase-analytics-ktx")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
-    
+
     // Google Sign-In for multi-device sync
     implementation("com.google.android.gms:play-services-auth:20.7.0")
-    
+
     // Unit Testing
     testImplementation(libs.junit)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
@@ -149,7 +149,7 @@ dependencies {
     testImplementation("androidx.arch.core:core-testing:2.2.0")
     testImplementation("com.google.truth:truth:1.1.5")
     testImplementation("org.robolectric:robolectric:4.11.1")
-    
+
     // Instrumented Testing
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -159,7 +159,7 @@ dependencies {
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
     androidTestImplementation("com.google.truth:truth:1.1.5")
     androidTestImplementation("androidx.arch.core:core-testing:2.2.0")
-    
+
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
