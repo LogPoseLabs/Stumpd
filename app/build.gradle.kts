@@ -61,7 +61,7 @@ android {
         applicationId = "com.oreki.stumpd"
         minSdk = 24
         targetSdk = 34
-        versionCode = 25
+        versionCode = 26
         versionName = "2.0.0"
 
         testInstrumentationRunner = "dagger.hilt.android.testing.HiltTestRunner"
